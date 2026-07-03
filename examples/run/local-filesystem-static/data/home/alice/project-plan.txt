@@ -1,0 +1,6 @@
+Cagnard local filesystem example
+
+- Browse personal documents
+- Compare metadata
+- Upload and download small files
+- Test rename, move, and delete flows

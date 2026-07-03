@@ -18,7 +18,7 @@ backend/       Scala backend service
 frontend/      Refine React application
 config/        Example stateless backend configuration
 docs/          Maintained feature and operator documentation
-examples/      Local filesystem content used by the example config
+examples/      Sample storage content and runnable Docker Compose examples
 deploy/        Container, Helm, and deployment automation artifacts
 openspec/      OpenSpec change artifacts and specs
 ```
@@ -75,6 +75,14 @@ docker build -f frontend/Containerfile -t cagnard-frontend:local .
 
 The backend image accepts `CAGNARD_CONFIG` for mounted HOCON configuration. The frontend image serves the production build and proxies `/api` to `CAGNARD_API_UPSTREAM`.
 
+Runnable examples are available under `examples/run`. For example:
+
+```bash
+cd examples/run/local-filesystem-static
+cp .env.example .env
+docker compose up --build
+```
+
 ## Local Mocker Validation
 
 Mocker is used for local image validation on macOS. CI and publishing use Docker.
@@ -105,6 +113,8 @@ helm install cagnard deploy/helm/cagnard -f deploy/helm/cagnard/examples/demo-va
 ```
 
 Use `deploy/helm/cagnard/examples/external-config-values.yaml` as the starting point when the backend config is provided through an existing Kubernetes Secret.
+
+Pure Helm values matching the runnable examples are also available under `deploy/helm/cagnard/examples`.
 
 ## GitHub Actions
 

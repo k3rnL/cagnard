@@ -23,6 +23,8 @@ frontend/.vite/
 *.log
 tmp/
 data/
+!examples/run/**/data/
+!examples/run/**/data/**
 
 # Local sample/user documents
 examples/storage/**/*.pdf

@@ -1,0 +1,5 @@
+{
+  "example": "local-and-s3-static",
+  "root": "documents",
+  "generated": true
+}

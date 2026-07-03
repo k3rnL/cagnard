@@ -1,0 +1,25 @@
+services:
+  backend:
+    image: ${CAGNARD_BACKEND_IMAGE:-cagnard-backend:local}
+    build:
+      context: ../../..
+      dockerfile: Containerfile.backend
+    environment:
+      CAGNARD_CONFIG: /etc/cagnard/cagnard.conf
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ./cagnard.conf:/etc/cagnard/cagnard.conf:ro
+      - ./data:/data
+
+  frontend:
+    image: ${CAGNARD_FRONTEND_IMAGE:-cagnard-frontend:local}
+    build:
+      context: ../../..
+      dockerfile: frontend/Containerfile
+    environment:
+      CAGNARD_API_UPSTREAM: http://backend:8080
+    ports:
+      - "${FRONTEND_PORT:-5173}:8080"
+    depends_on:
+      - backend

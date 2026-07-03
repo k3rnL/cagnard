@@ -22,11 +22,15 @@ Cagnard SHALL run the validation workflow on relevant pushes to the default bran
 - **THEN** GitHub Actions SHALL run the same validation checks used for pull requests
 
 ### Requirement: Container publishing workflow
-Cagnard SHALL provide a GitHub Actions workflow that can publish backend and frontend container images to a configured registry.
+Cagnard SHALL provide a GitHub Actions workflow that can publish backend and frontend container images to a configured registry and create a GitHub Release for version tags.
 
 #### Scenario: Publish tagged images
 - **WHEN** a release tag or manual publishing event is triggered with registry access configured
 - **THEN** the workflow SHALL use Docker to build and push both backend and frontend images with deterministic tags
+
+#### Scenario: Create GitHub release
+- **WHEN** a version tag matching `v*` is pushed
+- **THEN** the workflow SHALL create or update a GitHub Release for that tag with generated release notes and references to the published backend and frontend images
 
 #### Scenario: Missing registry credentials
 - **WHEN** required registry credentials or permissions are unavailable
@@ -37,5 +41,4 @@ Cagnard SHALL document workflow triggers, required secrets or permissions, image
 
 #### Scenario: Read CI documentation
 - **WHEN** a maintainer reads the CI documentation
-- **THEN** it SHALL describe how validation runs, how image publishing is triggered, and what registry configuration is required
-
+- **THEN** it SHALL describe how validation runs, how image publishing is triggered, how GitHub Releases and release notes are produced, and what registry configuration is required

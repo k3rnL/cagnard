@@ -1,0 +1,6 @@
+{
+  "example": "s3-minio-static",
+  "generated": true,
+  "provider": "minio",
+  "objects": 3
+}

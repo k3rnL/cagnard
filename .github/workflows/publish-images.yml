@@ -20,7 +20,7 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -37,6 +37,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Resolve image names
+        run: |
+          image_namespace="$(printf '%s' "$IMAGE_NAMESPACE" | tr '[:upper:]' '[:lower:]')"
+          image_tag="$(printf '%s' "$IMAGE_TAG" | tr '[:upper:]' '[:lower:]')"
+
+          echo "IMAGE_NAMESPACE=$image_namespace" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=$image_tag" >> "$GITHUB_ENV"
+          echo "BACKEND_IMAGE=$REGISTRY/$image_namespace/cagnard-backend:$image_tag" >> "$GITHUB_ENV"
+          echo "FRONTEND_IMAGE=$REGISTRY/$image_namespace/cagnard-frontend:$image_tag" >> "$GITHUB_ENV"
+
       - name: Log in to registry
         env:
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME || github.actor }}
@@ -46,10 +56,43 @@ jobs:
 
       - name: Build and push backend image
         run: |
-          docker build -f Containerfile.backend -t "$REGISTRY/$IMAGE_NAMESPACE/cagnard-backend:$IMAGE_TAG" .
-          docker push "$REGISTRY/$IMAGE_NAMESPACE/cagnard-backend:$IMAGE_TAG"
+          docker build -f Containerfile.backend -t "$BACKEND_IMAGE" .
+          docker push "$BACKEND_IMAGE"
 
       - name: Build and push frontend image
         run: |
-          docker build -f frontend/Containerfile -t "$REGISTRY/$IMAGE_NAMESPACE/cagnard-frontend:$IMAGE_TAG" .
-          docker push "$REGISTRY/$IMAGE_NAMESPACE/cagnard-frontend:$IMAGE_TAG"
+          docker build -f frontend/Containerfile -t "$FRONTEND_IMAGE" .
+          docker push "$FRONTEND_IMAGE"
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_notes="$(mktemp)"
+          generated_notes="$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$GITHUB_REF_NAME" \
+            -f target_commitish="$GITHUB_SHA" \
+            --jq '.body')"
+
+          {
+            echo "## Container Images"
+            echo
+            echo "- \`$BACKEND_IMAGE\`"
+            echo "- \`$FRONTEND_IMAGE\`"
+            echo
+            printf '%s\n' "$generated_notes"
+          } > "$release_notes"
+
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "Cagnard $GITHUB_REF_NAME" \
+              --notes-file "$release_notes" \
+              --latest
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "Cagnard $GITHUB_REF_NAME" \
+              --notes-file "$release_notes" \
+              --verify-tag \
+              --latest
+          fi

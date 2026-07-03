@@ -24,6 +24,7 @@ import org.http4s.circe.CirceEntityCodec.given
 import org.typelevel.ci.CIString
 
 import java.nio.file.{Files, Path, Paths}
+import scala.jdk.CollectionConverters.*
 
 class BackendCoreSuite extends CatsEffectSuite:
   test("loads the example stateless configuration") {
@@ -35,6 +36,20 @@ class BackendCoreSuite extends CatsEffectSuite:
       assertEquals(config.globalStorage.map(_.id), List("shared"))
       assertEquals(config.uiPlugins.map(_.id), List("text-preview"))
       assert(config.personalStorage.head.path.exists(_.endsWith("examples/storage/home/{user.id}")))
+    }
+  }
+
+  test("loads runnable example configurations") {
+    val paths = runnableExampleConfigPaths
+    assertEquals(paths.map(_.getParent.getFileName.toString).sorted, List("local-and-s3-static", "local-filesystem-static", "s3-minio-static"))
+
+    paths.foldLeft(IO.pure(List.empty[CagnardConfig])) { (acc, path) =>
+      acc.flatMap(configs => ConfigLoader.load(path).map(config => configs :+ config))
+    }.map { configs =>
+      assert(configs.forall(_.auth.mode.contains("static")))
+      assert(configs.exists(_.providers.exists(_.`type` == "filesystem")))
+      assert(configs.exists(_.providers.exists(_.`type` == "s3")))
+      assert(configs.forall(_.users.exists(_.id == "alice")))
     }
   }
 
@@ -493,3 +508,18 @@ class BackendCoreSuite extends CatsEffectSuite:
   private def exampleConfigPath: Path =
     val rootRelative = Paths.get("config/cagnard.example.conf")
     if Files.exists(rootRelative) then rootRelative else Paths.get("..", "config", "cagnard.example.conf")
+
+  private def runnableExampleConfigPaths: List[Path] =
+    val rootRelative = Paths.get("examples/run")
+    val root = if Files.exists(rootRelative) then rootRelative else Paths.get("..", "examples", "run")
+    if !Files.exists(root) then Nil
+    else
+      val stream = Files.walk(root)
+      try
+        stream
+          .iterator()
+          .asScala
+          .filter(path => Files.isRegularFile(path) && path.getFileName.toString == "cagnard.conf")
+          .toList
+          .sortBy(_.toString)
+      finally stream.close()

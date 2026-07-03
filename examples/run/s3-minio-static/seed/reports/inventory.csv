@@ -1,0 +1,4 @@
+name,type,status
+README.md,markdown,generated
+summary.json,json,generated
+inventory.csv,csv,generated

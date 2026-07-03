@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-07-03
+goal: Create easy-to-use examples from simple local setups to richer static-user
+  plus S3/MinIO setups, with matching docker-compose and Helm values for
+  provider/auth combinations.

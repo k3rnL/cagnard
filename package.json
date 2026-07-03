@@ -4,6 +4,9 @@
   "scripts": {
     "backend:test": "sbt backend/test",
     "frontend:check": "pnpm --filter @cagnard/frontend typecheck",
+    "examples:compose:check": "bash scripts/validate-compose-examples.sh",
+    "examples:helm:check": "bash scripts/validate-helm-examples.sh",
+    "examples:check": "pnpm examples:compose:check && pnpm examples:helm:check",
     "check": "sbt backend/test && pnpm --dir frontend typecheck"
   },
   "packageManager": "pnpm@11.7.0"

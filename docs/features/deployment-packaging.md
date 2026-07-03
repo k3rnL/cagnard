@@ -44,6 +44,23 @@ docker run --rm \
   cagnard-frontend:local
 ```
 
+## Runnable Docker Compose Examples
+
+Runnable examples live under `examples/run` and start both backend and frontend services:
+
+- `local-filesystem-static`: static users with filesystem storage.
+- `s3-minio-static`: static users with S3-compatible storage backed by MinIO.
+- `local-and-s3-static`: static users with filesystem and S3/MinIO storage roots.
+
+From an example directory:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+S3 examples include MinIO and an initialization service that creates the bucket and seeds generated sample files.
+
 ## Local Mocker Validation
 
 Mocker requires Apple's `container` runtime on macOS:
@@ -90,6 +107,15 @@ helm install cagnard deploy/helm/cagnard \
   -f deploy/helm/cagnard/examples/demo-values.yaml
 ```
 
+Render a runnable example values file:
+
+```bash
+helm template cagnard deploy/helm/cagnard \
+  -f deploy/helm/cagnard/examples/local-filesystem-static-values.yaml
+```
+
+The chart examples are pure Helm values. Helmfile wrappers are not provided; Helmfile users can reference these values files from their own Helmfile definitions.
+
 Use an existing Kubernetes Secret for backend config:
 
 ```bash
@@ -117,4 +143,9 @@ Secrets should not be written into `values.yaml`. Use Kubernetes Secrets, mounte
 - The chart is source-controlled only; OCI chart publishing is not implemented yet.
 - The default inline config is for demos and local clusters, not production.
 - The first chart does not include cloud-specific ingress annotations, certificate automation, or external secret controller templates.
+- The S3/MinIO Helm values assume a reachable MinIO or S3-compatible service; the Cagnard chart does not deploy MinIO as a chart dependency.
 - The backend image uses a JVM runtime image and is not yet optimized with jlink or native-image.
+
+## Example Maintenance
+
+Storage provider and authentication changes must update runnable examples when they affect startup configuration. Add or update a Docker Compose example and matching Helm values for each relevant starter combination.
