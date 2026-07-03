@@ -1,0 +1,10 @@
+{
+  "name": "cagnard",
+  "private": true,
+  "scripts": {
+    "backend:test": "sbt backend/test",
+    "frontend:check": "pnpm --filter @cagnard/frontend typecheck",
+    "check": "sbt backend/test && pnpm --dir frontend typecheck"
+  },
+  "packageManager": "pnpm@11.7.0"
+}

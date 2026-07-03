@@ -1,0 +1,15 @@
+backend:
+  image:
+    repository: cagnard-backend
+    tag: local
+    pullPolicy: IfNotPresent
+
+frontend:
+  image:
+    repository: cagnard-frontend
+    tag: local
+    pullPolicy: IfNotPresent
+
+ingress:
+  enabled: false
+

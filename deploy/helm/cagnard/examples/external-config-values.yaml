@@ -1,0 +1,10 @@
+backend:
+  config:
+    inline:
+      enabled: false
+    existingSecret:
+      name: cagnard-backend-config
+      key: cagnard.conf
+
+frontend:
+  apiUpstream: http://cagnard-backend:8080

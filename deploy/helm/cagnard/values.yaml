@@ -1,0 +1,148 @@
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+backend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/example/cagnard-backend
+    tag: ""
+    pullPolicy: IfNotPresent
+  podAnnotations: {}
+  env: []
+  envFrom: []
+  service:
+    type: ClusterIP
+    port: 8080
+  config:
+    mountPath: /etc/cagnard
+    fileName: cagnard.conf
+    inline:
+      enabled: true
+      content: |
+        server {
+          host = "0.0.0.0"
+          port = 8080
+        }
+
+        auth {
+          configuredUsersEnabled = true
+          defaultUser = alice
+          oidcProviders = []
+        }
+
+        users = [
+          {
+            id = alice
+            displayName = "Alice Example"
+            roles = [user, admin]
+            groups = [engineering]
+            claims = { email = "alice@example.test" }
+          }
+        ]
+
+        providers = [
+          {
+            id = local
+            type = filesystem
+            family = unix
+            displayName = "Local filesystem"
+          }
+        ]
+
+        accounts = [
+          {
+            id = local-admin
+            providerId = local
+            displayName = "Local"
+            enabled = true
+            readOnly = false
+            authMode = local-process
+          }
+        ]
+
+        personalStorage = [
+          {
+            id = home
+            label = Home
+            providerId = local
+            accountId = local-admin
+            path = "/tmp/cagnard/home/{user.id}"
+            allowedUsers = [alice]
+          }
+        ]
+
+        globalStorage = [
+          {
+            id = shared
+            label = Global
+            providerId = local
+            accountId = local-admin
+            path = "/tmp/cagnard/global"
+            allowedRoles = [admin]
+          }
+        ]
+
+        uiPlugins = [
+          {
+            id = text-preview
+            label = "Text preview"
+            kind = preview
+            apiVersion = "1"
+            enabled = true
+            mimeTypes = ["text/plain", "text/markdown", "application/json"]
+            extensions = [".txt", ".md", ".json", ".csv"]
+            permissions = [read]
+            priority = 10
+          }
+        ]
+    existingConfigMap:
+      name: ""
+      key: cagnard.conf
+    existingSecret:
+      name: ""
+      key: cagnard.conf
+    existingVolume:
+      enabled: false
+      volume: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraVolumes: []
+  extraVolumeMounts: []
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/example/cagnard-frontend
+    tag: ""
+    pullPolicy: IfNotPresent
+  podAnnotations: {}
+  apiUpstream: ""
+  env: []
+  envFrom: []
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraVolumes: []
+  extraVolumeMounts: []
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  routeApiToBackend: true
+  hosts:
+    - host: cagnard.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+

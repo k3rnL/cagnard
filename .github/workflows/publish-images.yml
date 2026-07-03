@@ -1,0 +1,63 @@
+name: Publish Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      registry:
+        description: Container registry host
+        required: true
+        default: ghcr.io
+      image_namespace:
+        description: Registry namespace or organization
+        required: false
+        default: ""
+      image_tag:
+        description: Image tag to publish
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build and publish images
+    runs-on: macos-26
+
+    env:
+      REGISTRY: ${{ inputs.registry || 'ghcr.io' }}
+      IMAGE_NAMESPACE: ${{ inputs.image_namespace || github.repository_owner }}
+      IMAGE_TAG: ${{ inputs.image_tag || github.ref_name || github.sha }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Mocker
+        run: |
+          brew install container
+          brew tap us/tap
+          brew install us/tap/mocker
+          container system start --enable-kernel-install
+          mocker version
+
+      - name: Log in to registry
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN || github.token }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | mocker login "$REGISTRY" --username "$REGISTRY_USERNAME" --password-stdin
+
+      - name: Build and push backend image
+        run: |
+          mocker build -f Containerfile.backend -t "$REGISTRY/$IMAGE_NAMESPACE/cagnard-backend:$IMAGE_TAG" .
+          mocker push "$REGISTRY/$IMAGE_NAMESPACE/cagnard-backend:$IMAGE_TAG"
+
+      - name: Build and push frontend image
+        run: |
+          mocker build -f frontend/Containerfile -t "$REGISTRY/$IMAGE_NAMESPACE/cagnard-frontend:$IMAGE_TAG" .
+          mocker push "$REGISTRY/$IMAGE_NAMESPACE/cagnard-frontend:$IMAGE_TAG"

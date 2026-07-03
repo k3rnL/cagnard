@@ -1,0 +1,13 @@
+{{- if and .Values.backend.config.inline.enabled (not .Values.backend.config.existingConfigMap.name) (not .Values.backend.config.existingSecret.name) (not .Values.backend.config.existingVolume.enabled) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cagnard.backendConfigName" . }}
+  labels:
+    {{- include "cagnard.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+data:
+  {{ include "cagnard.backendConfigFileName" . }}: |
+{{ .Values.backend.config.inline.content | indent 4 }}
+{{- end }}
+

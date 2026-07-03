@@ -1,0 +1,104 @@
+name: Validate
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".dockerignore"
+      - "backend/**"
+      - "config/**"
+      - "deploy/**"
+      - "frontend/**"
+      - "project/**"
+      - "build.sbt"
+      - "Containerfile.backend"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/**"
+      - ".dockerignore"
+      - "backend/**"
+      - "config/**"
+      - "deploy/**"
+      - "frontend/**"
+      - "project/**"
+      - "build.sbt"
+      - "Containerfile.backend"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate application and deployment artifacts
+    runs-on: macos-26
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: sbt
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run backend tests
+        run: sbt backend/test
+
+      - name: Run frontend typecheck
+        run: pnpm --filter @cagnard/frontend typecheck
+
+      - name: Build frontend
+        run: pnpm --filter @cagnard/frontend build
+
+      - name: Install Mocker
+        run: |
+          brew install container
+          brew tap us/tap
+          brew install us/tap/mocker
+          container system start --enable-kernel-install
+          mocker version
+
+      - name: Build backend image
+        run: mocker build -f Containerfile.backend -t cagnard-backend:ci .
+
+      - name: Build frontend image
+        run: mocker build -f frontend/Containerfile -t cagnard-frontend:ci .
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint Helm chart
+        run: helm lint deploy/helm/cagnard
+
+      - name: Render Helm chart with defaults
+        run: helm template cagnard deploy/helm/cagnard
+
+      - name: Render Helm chart with external config values
+        run: helm template cagnard deploy/helm/cagnard -f deploy/helm/cagnard/examples/external-config-values.yaml

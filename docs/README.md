@@ -1,0 +1,24 @@
+# Cagnard Documentation
+
+This directory is the maintained documentation surface for implemented Cagnard features.
+
+Feature documentation is organized by spec area:
+
+- [Stateless backend configuration](features/stateless-backend-configuration.md)
+- [Storage browser](features/storage-browser.md)
+- [Storage plugin system](features/storage-plugin-system.md)
+- [Secure account management](features/secure-account-management.md)
+- [User storage access model](features/user-storage-access-model.md)
+- [UI plugin system](features/ui-plugin-system.md)
+- [Cross-provider transfer](features/cross-provider-transfer.md)
+- [Deployment packaging](features/deployment-packaging.md)
+- [CI and release automation](features/ci-release-automation.md)
+- [Feature documentation](features/feature-documentation.md)
+
+Operational guides:
+
+- [Backend configuration](configuration.md)
+
+## Maintenance Rule
+
+Every change that adds or changes implemented behavior must update the matching feature documentation in this directory before the OpenSpec change is archived. If a change creates a new feature/spec area, add a new page under `docs/features/` and link it from this index.

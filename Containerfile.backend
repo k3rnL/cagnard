@@ -1,0 +1,52 @@
+# syntax=docker/dockerfile:1
+
+FROM eclipse-temurin:17-jdk-jammy AS build
+
+ARG SBT_VERSION=1.11.1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL "https://github.com/sbt/sbt/releases/download/v${SBT_VERSION}/sbt-${SBT_VERSION}.tgz" \
+    | tar -xz -C /opt \
+    && ln -s /opt/sbt/bin/sbt /usr/local/bin/sbt
+
+WORKDIR /workspace
+
+COPY project/build.properties project/build.properties
+COPY build.sbt build.sbt
+
+RUN sbt -Dsbt.log.noformat=true update
+
+COPY backend backend
+
+RUN sbt -Dsbt.log.noformat=true backend/package
+
+RUN bash -o pipefail -c 'set -eux; \
+    mkdir -p /opt/cagnard/lib; \
+    cp backend/target/scala-*/cagnard-backend_*.jar /opt/cagnard/lib/; \
+    sbt -Dsbt.log.noformat=true "show backend / Runtime / dependencyClasspath" > /tmp/backend-classpath.txt; \
+    grep "^\[info\] \* Attributed(" /tmp/backend-classpath.txt \
+      | sed -E "s/^\[info\] \* Attributed\((.*)\)$/\1/" \
+      | grep -v '/backend/target/.*/classes$' \
+      | while IFS= read -r artifact; do cp "$artifact" /opt/cagnard/lib/; done'
+
+FROM eclipse-temurin:17-jre-jammy AS runtime
+
+RUN groupadd --system cagnard \
+    && useradd --system --gid cagnard --home-dir /opt/cagnard --shell /usr/sbin/nologin cagnard
+
+WORKDIR /opt/cagnard
+
+COPY --from=build --chown=cagnard:cagnard /opt/cagnard/lib ./lib
+COPY --chown=cagnard:cagnard config ./config
+COPY --chown=cagnard:cagnard examples ./examples
+
+ENV CAGNARD_CONFIG=/opt/cagnard/config/cagnard.example.conf
+
+EXPOSE 8080
+
+USER cagnard
+
+ENTRYPOINT ["java", "-cp", "/opt/cagnard/lib/*", "io.cagnard.backend.Main"]

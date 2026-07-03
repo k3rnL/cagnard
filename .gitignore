@@ -1,0 +1,28 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Scala / sbt
+target/
+project/target/
+project/project/
+.bsp/
+.bloop/
+.metals/
+.scala-build/
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Logs and runtime output
+*.log
+tmp/
+data/
+
+# Local sample/user documents
+examples/storage/**/*.pdf

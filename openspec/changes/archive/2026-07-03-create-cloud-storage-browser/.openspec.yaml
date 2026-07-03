@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-07-02
+goal: Define the MVP architecture and specs for a versatile, secure,
+  plugin-oriented storage browser with provider capability discovery,
+  cross-provider transfer, multi-account support, and Refine-based frontend
+  direction.

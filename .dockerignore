@@ -1,0 +1,28 @@
+.git
+.github
+.DS_Store
+.env
+.env.*
+
+# Scala / sbt
+target/
+backend/target/
+project/target/
+project/project/
+.bsp/
+.bloop/
+.metals/
+.scala-build/
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Runtime and logs
+tmp/
+data/
+*.log
+

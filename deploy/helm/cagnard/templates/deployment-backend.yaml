@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cagnard.fullname" . }}-backend
+  labels:
+    {{- include "cagnard.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cagnard.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "cagnard.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+      {{- with .Values.backend.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: CAGNARD_CONFIG
+              value: {{ include "cagnard.backendConfigPath" . | quote }}
+            {{- with .Values.backend.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.backend.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: backend-config
+              mountPath: {{ include "cagnard.backendConfigMountPath" . | quote }}
+              readOnly: true
+            {{- with .Values.backend.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          {{- with .Values.backend.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: backend-config
+          {{- if .Values.backend.config.existingVolume.enabled }}
+          {{- toYaml .Values.backend.config.existingVolume.volume | nindent 10 }}
+          {{- else if .Values.backend.config.existingSecret.name }}
+          secret:
+            secretName: {{ .Values.backend.config.existingSecret.name | quote }}
+            items:
+              - key: {{ .Values.backend.config.existingSecret.key | quote }}
+                path: {{ include "cagnard.backendConfigFileName" . | quote }}
+          {{- else if .Values.backend.config.existingConfigMap.name }}
+          configMap:
+            name: {{ .Values.backend.config.existingConfigMap.name | quote }}
+            items:
+              - key: {{ .Values.backend.config.existingConfigMap.key | quote }}
+                path: {{ include "cagnard.backendConfigFileName" . | quote }}
+          {{- else }}
+          configMap:
+            name: {{ include "cagnard.backendConfigName" . }}
+          {{- end }}
+        {{- with .Values.backend.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+

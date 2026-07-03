@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-07-03
+goal: "Implement the basic file-browser slice: selection, breadcrumbs, download,
+  upload, create folder, rename, delete, copy/move within the current storage
+  root, text preview, capability-driven UI states, and backend filesystem
+  support with tests."
