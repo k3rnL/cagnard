@@ -27,6 +27,7 @@ object StorageRegistry:
       val provider: Either[Throwable, StorageProvider] =
         providerConfig.`type` match
           case "filesystem" => Right(FilesystemProvider(providerConfig))
+          case "s3" => S3StorageProvider.fromConfig(providerConfig, config.accounts.filter(_.providerId == providerConfig.id))
           case other => Left(IllegalArgumentException(s"Unsupported provider type '$other' for provider '${providerConfig.id}'"))
 
       provider.map(providerConfig.id -> _)

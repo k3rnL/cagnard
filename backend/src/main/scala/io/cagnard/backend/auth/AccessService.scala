@@ -2,7 +2,7 @@ package io.cagnard.backend.auth
 
 import io.cagnard.backend.api.UserProfile
 import io.cagnard.backend.config.{CagnardConfig, StorageRootConfig}
-import io.cagnard.backend.storage.ResolvedStorageRoot
+import io.cagnard.backend.storage.{FilesystemRootTarget, ObjectStoreRootTarget, ResolvedStorageRoot, StorageRootTarget}
 
 import java.nio.file.Paths
 
@@ -31,16 +31,45 @@ class AccessService(config: CagnardConfig):
     for
       account <- accounts.get(root.accountId).filter(_.enabled)
       provider <- providers.get(root.providerId)
+      target <- rootTarget(provider.`type`, root, user)
     yield ResolvedStorageRoot(
       id = root.id,
-      label = root.label,
+      label = displayLabel(provider.`type`, root),
       tunnel = tunnel,
       providerId = root.providerId,
       accountId = root.accountId,
       providerFamily = provider.family,
       readOnly = account.readOnly,
-      basePath = Paths.get(interpolate(root.path, user)).normalize()
+      target = target,
+      settings = root.settings.getOrElse(Map.empty)
     )
+
+  private def rootTarget(providerType: String, root: StorageRootConfig, user: UserProfile): Option[StorageRootTarget] =
+    providerType match
+      case "filesystem" =>
+        root.path.map(path => FilesystemRootTarget(Paths.get(interpolate(path, user)).normalize()))
+      case "s3" =>
+        root.settings
+          .flatMap(_.get("bucket"))
+          .map(bucket => ObjectStoreRootTarget(bucket, normalizePrefix(root.settings.flatMap(_.get("prefix")).getOrElse(""))))
+      case _ => None
+
+  private def displayLabel(providerType: String, root: StorageRootConfig): String =
+    root.label
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .orElse(
+        Option.when(providerType == "s3") {
+          root.settings.flatMap(_.get("bucket")).getOrElse(root.id)
+        }
+      )
+      .getOrElse(root.id)
+
+  private def normalizePrefix(raw: String): String =
+    raw
+      .split("/")
+      .filter(_.nonEmpty)
+      .mkString("/")
 
   private def interpolate(raw: String, user: UserProfile): String =
     val withUser = raw.replace("{user.id}", user.id).replace("{user.name}", user.id)

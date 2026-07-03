@@ -59,7 +59,8 @@ case class ProviderConfig(
     id: String,
     `type`: String,
     family: String,
-    displayName: String
+    displayName: String,
+    settings: Option[Map[String, String]]
 )
 
 case class StorageAccountConfig(
@@ -68,15 +69,17 @@ case class StorageAccountConfig(
     displayName: String,
     enabled: Boolean,
     readOnly: Boolean,
-    authMode: String
+    authMode: String,
+    settings: Option[Map[String, String]]
 )
 
 case class StorageRootConfig(
     id: String,
-    label: String,
+    label: Option[String],
     providerId: String,
     accountId: String,
-    path: String,
+    path: Option[String],
+    settings: Option[Map[String, String]],
     allowedUsers: Option[List[String]],
     allowedRoles: Option[List[String]],
     allowedGroups: Option[List[String]]

@@ -16,7 +16,7 @@ import io.cagnard.backend.api.{
 import io.cagnard.backend.api.ApiModels.given
 import io.cagnard.backend.auth.{AccessService, RequestIdentity}
 import io.cagnard.backend.config.*
-import io.cagnard.backend.storage.{ResolvedStorageRoot, StorageRegistry}
+import io.cagnard.backend.storage.{FilesystemRootTarget, ResolvedStorageRoot, StorageRegistry}
 import com.typesafe.config.ConfigFactory
 import munit.CatsEffectSuite
 import org.http4s.{Header, Method, Request, Response, Status, Uri}
@@ -34,7 +34,7 @@ class BackendCoreSuite extends CatsEffectSuite:
       assertEquals(config.personalStorage.map(_.id), List("home"))
       assertEquals(config.globalStorage.map(_.id), List("shared"))
       assertEquals(config.uiPlugins.map(_.id), List("text-preview"))
-      assert(config.personalStorage.head.path.endsWith("examples/storage/home/{user.id}"))
+      assert(config.personalStorage.head.path.exists(_.endsWith("examples/storage/home/{user.id}")))
     }
   }
 
@@ -103,7 +103,7 @@ class BackendCoreSuite extends CatsEffectSuite:
 
       writeFiles *> ConfigLoader.load(configPath).guarantee(clearProperty).map { config =>
         assertEquals(config.server.port, 8081)
-        assertEquals(config.personalStorage.head.path, root.resolve("home/{user.id}").toString)
+        assertEquals(config.personalStorage.head.path, Some(root.resolve("home/{user.id}").toString))
         assertEquals(config.uiPlugins.map(_.id), List("text-preview"))
       }
     }
@@ -149,7 +149,7 @@ class BackendCoreSuite extends CatsEffectSuite:
   test("registers filesystem provider capabilities") {
     val config = testConfig(Paths.get("/tmp/cagnard-test"))
     val registry = StorageRegistry.fromConfig(config).toOption.get
-    val root = ResolvedStorageRoot("home", "Home", "personal", "local", "local-admin", "unix", readOnly = false, Paths.get("/tmp/cagnard-test"))
+    val root = filesystemRoot(Paths.get("/tmp/cagnard-test"))
     val capabilityNames = registry.provider("local").toOption.get.capabilities(root).map(capability => capability.name -> capability.status).toMap
 
     assertEquals(capabilityNames("list"), "supported")
@@ -165,7 +165,7 @@ class BackendCoreSuite extends CatsEffectSuite:
       val child = root.resolve("note.txt")
       IO.blocking(Files.writeString(child, "hello")).flatMap { _ =>
         IO.fromEither(StorageRegistry.fromConfig(testConfig(root))).map { registry =>
-          val storageRoot = ResolvedStorageRoot("home", "Home", "personal", "local", "local-admin", "unix", readOnly = false, root)
+          val storageRoot = filesystemRoot(root)
           val provider = registry.provider("local").toOption.get
           val entries = provider.list(storageRoot, "").toOption.get
 
@@ -338,7 +338,7 @@ class BackendCoreSuite extends CatsEffectSuite:
   test("performs filesystem mutation success paths") {
     tempDirectory.use { root =>
       IO.fromEither(StorageRegistry.fromConfig(testConfig(root))).map { registry =>
-        val storageRoot = ResolvedStorageRoot("home", "Home", "personal", "local", "local-admin", "unix", readOnly = false, root)
+        val storageRoot = filesystemRoot(root)
         val provider = registry.provider("local").toOption.get
 
         val uploaded = provider.upload(storageRoot, "docs/note.txt", "hello".getBytes, overwrite = false).toOption.get
@@ -368,7 +368,7 @@ class BackendCoreSuite extends CatsEffectSuite:
   test("rejects path traversal attempts") {
     tempDirectory.use { root =>
       IO.fromEither(StorageRegistry.fromConfig(testConfig(root))).map { registry =>
-        val storageRoot = ResolvedStorageRoot("home", "Home", "personal", "local", "local-admin", "unix", readOnly = false, root)
+        val storageRoot = filesystemRoot(root)
         val provider = registry.provider("local").toOption.get
 
         val result = provider.upload(storageRoot, "../escape.txt", "bad".getBytes, overwrite = false)
@@ -409,7 +409,7 @@ class BackendCoreSuite extends CatsEffectSuite:
   test("rejects overwrite conflicts without approval") {
     tempDirectory.use { root =>
       IO.fromEither(StorageRegistry.fromConfig(testConfig(root))).map { registry =>
-        val storageRoot = ResolvedStorageRoot("home", "Home", "personal", "local", "local-admin", "unix", readOnly = false, root)
+        val storageRoot = filesystemRoot(root)
         val provider = registry.provider("local").toOption.get
 
         assert(provider.upload(storageRoot, "note.txt", "one".getBytes, overwrite = false).isRight)
@@ -440,10 +440,10 @@ class BackendCoreSuite extends CatsEffectSuite:
       server = ServerConfig("127.0.0.1", 8080),
       auth = AuthConfig(Some("development"), configuredUsersEnabled = true, defaultUser = Some("alice"), None, None, oidcProviders = Nil),
       users = List(ConfiguredUser("alice", "Alice", List("user"), List("engineering"), Map.empty, None)),
-      providers = List(ProviderConfig("local", "filesystem", "unix", "Local filesystem")),
-      accounts = List(StorageAccountConfig("local-admin", "local", "Local", enabled = true, readOnly = readOnly, "local-process")),
-      personalStorage = List(StorageRootConfig("home", "Home", "local", "local-admin", root.toString, Some(List("alice")), None, None)),
-      globalStorage = List(StorageRootConfig("shared", "Global", "local", "local-admin", root.toString, None, Some(List("user")), None)),
+      providers = List(ProviderConfig("local", "filesystem", "unix", "Local filesystem", None)),
+      accounts = List(StorageAccountConfig("local-admin", "local", "Local", enabled = true, readOnly = readOnly, "local-process", None)),
+      personalStorage = List(StorageRootConfig("home", Some("Home"), "local", "local-admin", Some(root.toString), None, Some(List("alice")), None, None)),
+      globalStorage = List(StorageRootConfig("shared", Some("Global"), "local", "local-admin", Some(root.toString), None, None, Some(List("user")), None)),
       uiPlugins = List(UiPluginConfig("text-preview", "Text preview", "preview", "1", enabled = true, Some(List("text/plain")), Some(List(".txt")), Some(List("read")), 10))
     )
 
@@ -486,6 +486,9 @@ class BackendCoreSuite extends CatsEffectSuite:
 
   private val demoVerifier =
     "pbkdf2-sha256:120000:Y2FnbmFyZC1kZW1vLXN0YXRpYy11c2VyLXNhbHQ:fUdgpOu_Z3MHhgdWzUku12tWnSH5s9BhfjJVv1fiIms"
+
+  private def filesystemRoot(root: Path): ResolvedStorageRoot =
+    ResolvedStorageRoot("home", "Home", "personal", "local", "local-admin", "unix", readOnly = false, FilesystemRootTarget(root), Map.empty)
 
   private def exampleConfigPath: Path =
     val rootRelative = Paths.get("config/cagnard.example.conf")

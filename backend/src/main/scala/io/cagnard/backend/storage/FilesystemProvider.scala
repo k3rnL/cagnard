@@ -143,7 +143,8 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
       for
         source <- resolve(root, sourcePath)
         target <- resolve(root, targetPath)
-        _ <- Either.cond(source != root.basePath.toAbsolutePath.normalize(), (), "Cannot move storage root")
+        base <- filesystemBase(root)
+        _ <- Either.cond(source != base.toAbsolutePath.normalize(), (), "Cannot move storage root")
         _ <- Either.cond(Files.exists(source), (), s"Path does not exist: $sourcePath")
         _ <- ensureTargetWritable(target, overwrite)
         moved <- Try {
@@ -156,16 +157,20 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
     }
 
   private def resolve(root: ResolvedStorageRoot, relative: String): Either[String, Path] =
-    val base = root.basePath.toAbsolutePath.normalize()
-    val clean = Option(relative).getOrElse("").stripPrefix("/")
-    val target = base.resolve(clean).normalize()
-    validateInside(root, target)
+    filesystemBase(root).flatMap { basePath =>
+      val base = basePath.toAbsolutePath.normalize()
+      val clean = Option(relative).getOrElse("").stripPrefix("/")
+      val target = base.resolve(clean).normalize()
+      validateInside(root, target)
+    }
 
   private def validateInside(root: ResolvedStorageRoot, target: Path): Either[String, Path] =
-    val base = root.basePath.toAbsolutePath.normalize()
-    val normalized = target.toAbsolutePath.normalize()
-    if normalized.startsWith(base) then Right(normalized)
-    else Left("Path escapes configured storage root")
+    filesystemBase(root).flatMap { basePath =>
+      val base = basePath.toAbsolutePath.normalize()
+      val normalized = target.toAbsolutePath.normalize()
+      if normalized.startsWith(base) then Right(normalized)
+      else Left("Path escapes configured storage root")
+    }
 
   private def ensureWritable(root: ResolvedStorageRoot): Either[String, Unit] =
     Either.cond(!root.readOnly, (), "Storage root is read-only")
@@ -193,7 +198,7 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
     Try(Option(Files.probeContentType(target))).toOption.flatten
 
   private def entry(root: ResolvedStorageRoot, target: Path): StorageEntry =
-    val base = root.basePath.toAbsolutePath.normalize()
+    val base = filesystemBase(root).toOption.get.toAbsolutePath.normalize()
     val absolute = target.toAbsolutePath.normalize()
     val relative = Try(base.relativize(absolute).toString).getOrElse("")
     val normalized = relative.replace('\\', '/')
@@ -217,3 +222,8 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
       capabilities = capabilities(root),
       providerSpecific = Map("filesystem.path" -> absolute.toString)
     )
+
+  private def filesystemBase(root: ResolvedStorageRoot): Either[String, Path] =
+    root.target match
+      case FilesystemRootTarget(basePath) => Right(basePath)
+      case _ => Left("Storage root is not a filesystem root")

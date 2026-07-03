@@ -12,8 +12,15 @@ case class ResolvedStorageRoot(
     accountId: String,
     providerFamily: String,
     readOnly: Boolean,
-    basePath: Path
+    target: StorageRootTarget,
+    settings: Map[String, String]
 )
+
+sealed trait StorageRootTarget
+
+case class FilesystemRootTarget(basePath: Path) extends StorageRootTarget
+
+case class ObjectStoreRootTarget(bucket: String, prefix: String) extends StorageRootTarget
 
 case class ProviderDescriptor(
     id: String,
@@ -64,6 +71,30 @@ object StorageCapabilities:
         delete.copy(status = "unsupported", description = Some("Delete is disabled for read-only roots"))
       )
       else List(upload, createFolder, rename, copy, move, delete)
+    List(list, stat, download, preview, search) ++ mutations
+
+  def s3(readOnly: Boolean, directory: Boolean = false): List[CapabilityStatus] =
+    val objectStoreRename = rename.copy(status = "degraded", description = Some("S3 rename is implemented as copy then delete for objects"))
+    val objectStoreMove = move.copy(status = "degraded", description = Some("S3 move is implemented as copy then delete for objects"))
+    val directoryUnsupported = Some("Recursive prefix mutation is not implemented for S3 directory-like entries")
+    val mutations =
+      if readOnly then List(
+        upload.copy(status = "unsupported", description = Some("Upload is disabled for read-only roots")),
+        createFolder.copy(status = "unsupported", description = Some("Create folder is disabled for read-only roots")),
+        rename.copy(status = "unsupported", description = Some("Rename is disabled for read-only roots")),
+        copy.copy(status = "unsupported", description = Some("Copy is disabled for read-only roots")),
+        move.copy(status = "unsupported", description = Some("Move is disabled for read-only roots")),
+        delete.copy(status = "unsupported", description = Some("Delete is disabled for read-only roots"))
+      )
+      else if directory then List(
+        upload,
+        createFolder,
+        rename.copy(status = "unsupported", description = directoryUnsupported),
+        copy.copy(status = "unsupported", description = directoryUnsupported),
+        move.copy(status = "unsupported", description = directoryUnsupported),
+        delete.copy(status = "unsupported", description = directoryUnsupported)
+      )
+      else List(upload, createFolder, objectStoreRename, copy, objectStoreMove, delete)
     List(list, stat, download, preview, search) ++ mutations
 
 object EmptyMetadata:

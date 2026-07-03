@@ -62,7 +62,7 @@ Use ConfigMaps only for non-secret settings. Provider credentials, OIDC client s
 
 ## Relative Paths
 
-Storage root paths declared in configuration are resolved relative to the configuration file location when they are not absolute. This keeps example and deployment bundles relocatable.
+Filesystem storage root paths declared in configuration are resolved relative to the configuration file location when they are not absolute. Object-store roots such as S3 use provider-specific settings like `bucket` and `prefix`; those values are not rewritten as local filesystem paths.
 
 ## Authentication Modes
 
@@ -104,6 +104,33 @@ The demo verifier in `config/cagnard.example.conf` accepts `alice` / `cagnard`. 
 - `secureCookies`: whether to add the `Secure` cookie attribute.
 
 Deployments should externalize `signingSecret` and credential verifiers through HOCON substitutions, mounted secret files, Kubernetes Secrets, or another external secret system.
+
+## S3-Compatible Storage
+
+S3-compatible providers use `providers[].type = s3`. Provider, account, and root settings are supplied through HOCON `settings` maps so the core config model remains plugin-oriented.
+
+Provider settings:
+
+- `region`: required AWS-compatible region value.
+- `endpoint`: optional custom endpoint for MinIO, R2, Wasabi, or other S3-compatible providers.
+- `pathStyleAccess`: set `true` for providers that require path-style bucket addressing.
+- `sslEnabled`: controls the default scheme when `endpoint` omits `http://` or `https://`.
+- `trustAllCertificates`: local/insecure escape hatch for development endpoints with untrusted certificates.
+- `maxBufferedObjectBytes`: upload/download in-memory object limit, default `67108864` bytes.
+
+Account credential modes:
+
+- `static`: `accessKeyId`, `secretAccessKey`, and optional `sessionToken`.
+- `default-chain`: use the runtime AWS/JVM default credential provider chain.
+- `profile`: use `profile` from compatible AWS config/credential files.
+
+Root settings:
+
+- `bucket`: required S3 bucket name.
+- `prefix`: optional root prefix. Browser paths are scoped under this prefix.
+- `label`: optional root display name. If omitted, bucket roots display the bucket name.
+
+See `config/cagnard.s3.example.conf` for a safe snippet using environment substitutions instead of checked-in secrets.
 
 ## Current Sections
 
