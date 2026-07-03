@@ -8,7 +8,7 @@ The backend configuration is intentionally external. Container and Helm deployme
 
 **Goals:**
 
-- Provide repeatable Mocker builds for the backend and frontend.
+- Provide repeatable Docker builds for the backend and frontend.
 - Provide a Helm chart that can deploy Cagnard with external HOCON configuration and Kubernetes-managed secrets.
 - Add GitHub Actions workflows that run backend/frontend checks and publish images when configured.
 - Keep deployment defaults useful for local clusters while exposing production settings through Helm values.
@@ -44,11 +44,11 @@ The Helm chart will create backend and frontend workloads, services, optional in
 
 Keeping this in Helm avoids a custom deployment script and gives operators a familiar interface for Kubernetes environments.
 
-### Use Mocker for image builds
+### Use Docker for CI and publishing, Mocker for local validation
 
-Image definitions will use Dockerfile-compatible `Containerfile` inputs, but local and CI commands will use `mocker build` and `mocker push`. This fits the user's preferred container runtime while still producing standard OCI-compatible images.
+Image definitions will use Dockerfile-compatible `Containerfile` inputs. CI and publishing commands will use `docker build`, `docker login`, and `docker push` because GitHub-hosted runners support Docker reliably. Local macOS validation can use `mocker build` against the same Containerfiles.
 
-The alternative was to keep Docker CLI commands because they are ubiquitous in Linux CI. Mocker is preferred here, so CI will target macOS 26 Apple Silicon runners where Apple Containerization and Mocker can run.
+The alternative was to use Mocker in CI as well, but GitHub-hosted macOS runners do not expose the virtualization required by Mocker builds. Docker is therefore the correct CI and release tool, while Mocker stays a local developer check.
 
 ### GitHub Actions split validation and publishing
 
@@ -56,7 +56,7 @@ CI will have a validation workflow for pull requests and pushes that runs:
 
 - backend tests
 - frontend typecheck/build
-- Mocker build checks
+- Docker build checks
 - Helm chart lint/template checks
 
 A publishing workflow will build and push container images to a configured registry on tags or manual dispatch. Publishing must be configurable because the repository may not yet have a public registry strategy.
@@ -75,12 +75,12 @@ The change will add deployment documentation and CI/release documentation, then 
 
 ## Migration Plan
 
-1. Add Mocker build files for backend and frontend without changing local development commands.
+1. Add Docker-compatible Containerfiles for backend and frontend without changing local development commands.
 2. Add Helm chart with local defaults and external configuration hooks.
 3. Add GitHub Actions validation workflow.
 4. Add optional image publishing workflow with documented registry inputs and required permissions.
-5. Update README and feature docs with Mocker, Helm, and CI usage.
-6. Verify backend tests, frontend build, Mocker builds, Helm lint/template, and OpenSpec validation.
+5. Update README and feature docs with Docker, Mocker local validation, Helm, and CI usage.
+6. Verify backend tests, frontend build, Docker builds, local Mocker builds, Helm lint/template, and OpenSpec validation.
 
 Rollback is straightforward: remove the packaging, chart, workflow, and documentation files. Runtime API behavior and existing local development commands are not intended to change.
 

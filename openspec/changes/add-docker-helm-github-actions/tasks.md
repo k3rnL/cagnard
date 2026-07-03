@@ -21,7 +21,7 @@
 - [x] 3.1 Add a validation workflow for pull requests and default-branch pushes.
 - [x] 3.2 Run backend tests in the validation workflow.
 - [x] 3.3 Run frontend typecheck and production build in the validation workflow.
-- [x] 3.4 Run Mocker build checks for backend and frontend images in the validation workflow.
+- [x] 3.4 Run Docker build checks for backend and frontend images in the validation workflow.
 - [x] 3.5 Run Helm lint/template checks in the validation workflow.
 - [x] 3.6 Add an image publishing workflow for tags or manual dispatch with configurable registry, repository, and image tags.
 - [x] 3.7 Ensure publishing fails without exposing registry credentials or secret values.
@@ -30,7 +30,7 @@
 
 - [x] 4.1 Add deployment packaging feature documentation and link it from the docs index.
 - [x] 4.2 Add CI/release automation feature documentation and link it from the docs index.
-- [x] 4.3 Update backend configuration documentation with Mocker and Helm configuration mounting guidance.
+- [x] 4.3 Update backend configuration documentation with Docker and Helm configuration mounting guidance.
 - [x] 4.4 Update README with Mocker, Helm, and GitHub Actions entry points.
 - [x] 4.5 Document known limitations and registry/chart publishing assumptions.
 

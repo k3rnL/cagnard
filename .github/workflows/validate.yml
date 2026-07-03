@@ -39,7 +39,7 @@ permissions:
 jobs:
   validate:
     name: Validate application and deployment artifacts
-    runs-on: macos-26
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
@@ -77,19 +77,11 @@ jobs:
       - name: Build frontend
         run: pnpm --filter @cagnard/frontend build
 
-      - name: Install Mocker
-        run: |
-          brew install container
-          brew tap us/tap
-          brew install us/tap/mocker
-          container system start --enable-kernel-install
-          mocker version
-
       - name: Build backend image
-        run: mocker build -f Containerfile.backend -t cagnard-backend:ci .
+        run: docker build -f Containerfile.backend -t cagnard-backend:ci .
 
       - name: Build frontend image
-        run: mocker build -f frontend/Containerfile -t cagnard-frontend:ci .
+        run: docker build -f frontend/Containerfile -t cagnard-frontend:ci .
 
       - name: Set up Helm
         uses: azure/setup-helm@v4

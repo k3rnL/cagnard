@@ -41,7 +41,7 @@ Or pass the path as the first backend argument when running the application outs
 The backend image accepts the same `CAGNARD_CONFIG` environment variable:
 
 ```bash
-mocker run --rm \
+docker run --rm \
   -e CAGNARD_CONFIG=/etc/cagnard/cagnard.conf \
   -v /path/to/cagnard.conf:/etc/cagnard/cagnard.conf:ro \
   cagnard-backend:local

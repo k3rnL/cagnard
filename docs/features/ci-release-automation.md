@@ -21,8 +21,8 @@ It runs:
 - backend tests with `sbt backend/test`
 - frontend typecheck with `pnpm --filter @cagnard/frontend typecheck`
 - frontend production build with `pnpm --filter @cagnard/frontend build`
-- backend Mocker image build
-- frontend Mocker image build
+- backend Docker image build
+- frontend Docker image build
 - Helm lint and template rendering
 
 The workflow uses Node.js 22 because the repository declares `pnpm@11.7.0`, which requires Node.js 22.13 or newer.
@@ -33,8 +33,8 @@ Local equivalents:
 sbt backend/test
 pnpm --filter @cagnard/frontend typecheck
 pnpm --filter @cagnard/frontend build
-mocker build -f Containerfile.backend -t cagnard-backend:ci .
-mocker build -f frontend/Containerfile -t cagnard-frontend:ci .
+docker build -f Containerfile.backend -t cagnard-backend:ci .
+docker build -f frontend/Containerfile -t cagnard-frontend:ci .
 helm lint deploy/helm/cagnard
 helm template cagnard deploy/helm/cagnard
 ```
@@ -59,9 +59,7 @@ For another registry, configure workflow dispatch inputs and repository secrets:
 - `REGISTRY_USERNAME`
 - `REGISTRY_TOKEN`
 
-The workflow does not print registry credentials or secret values.
-
-Both workflows install Apple's `container` runtime, install Mocker from `us/tap/mocker`, and start the runtime with `container system start --enable-kernel-install` so macOS runners do not wait for an interactive kernel-install prompt.
+The workflow uses Docker login/build/push and does not print registry credentials or secret values.
 
 ## Tagging
 
@@ -73,4 +71,3 @@ For manual dispatch, `image_tag` can override the tag. If it is omitted, the wor
 
 - Images are published, but Helm chart publishing is not implemented yet.
 - The workflow does not currently generate SBOMs, provenance attestations, or signed images.
-- The validation and publishing workflows run on `macos-26` because Mocker requires macOS 26+, Apple Silicon, and Apple's `container` CLI.

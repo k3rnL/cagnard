@@ -26,7 +26,7 @@ permissions:
 jobs:
   publish:
     name: Build and publish images
-    runs-on: macos-26
+    runs-on: ubuntu-latest
 
     env:
       REGISTRY: ${{ inputs.registry || 'ghcr.io' }}
@@ -37,27 +37,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install Mocker
-        run: |
-          brew install container
-          brew tap us/tap
-          brew install us/tap/mocker
-          container system start --enable-kernel-install
-          mocker version
-
       - name: Log in to registry
         env:
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME || github.actor }}
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN || github.token }}
         run: |
-          printf '%s' "$REGISTRY_TOKEN" | mocker login "$REGISTRY" --username "$REGISTRY_USERNAME" --password-stdin
+          printf '%s' "$REGISTRY_TOKEN" | docker login "$REGISTRY" --username "$REGISTRY_USERNAME" --password-stdin
 
       - name: Build and push backend image
         run: |
-          mocker build -f Containerfile.backend -t "$REGISTRY/$IMAGE_NAMESPACE/cagnard-backend:$IMAGE_TAG" .
-          mocker push "$REGISTRY/$IMAGE_NAMESPACE/cagnard-backend:$IMAGE_TAG"
+          docker build -f Containerfile.backend -t "$REGISTRY/$IMAGE_NAMESPACE/cagnard-backend:$IMAGE_TAG" .
+          docker push "$REGISTRY/$IMAGE_NAMESPACE/cagnard-backend:$IMAGE_TAG"
 
       - name: Build and push frontend image
         run: |
-          mocker build -f frontend/Containerfile -t "$REGISTRY/$IMAGE_NAMESPACE/cagnard-frontend:$IMAGE_TAG" .
-          mocker push "$REGISTRY/$IMAGE_NAMESPACE/cagnard-frontend:$IMAGE_TAG"
+          docker build -f frontend/Containerfile -t "$REGISTRY/$IMAGE_NAMESPACE/cagnard-frontend:$IMAGE_TAG" .
+          docker push "$REGISTRY/$IMAGE_NAMESPACE/cagnard-frontend:$IMAGE_TAG"

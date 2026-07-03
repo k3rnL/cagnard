@@ -9,7 +9,42 @@ Cagnard ships as two deployable container images:
 
 The frontend uses relative `/api` calls. In container and Kubernetes deployments, `/api` can reach the backend through either the frontend nginx proxy or an ingress path routed directly to the backend service.
 
-## Mocker
+## Docker
+
+Build the backend image from the repository root:
+
+```bash
+docker build -f Containerfile.backend -t cagnard-backend:local .
+```
+
+Build the frontend image:
+
+```bash
+docker build -f frontend/Containerfile -t cagnard-frontend:local .
+```
+
+The backend image includes the example config and example filesystem content for local demos. Production deployments should mount their own HOCON config and set `CAGNARD_CONFIG`.
+
+Example backend run with a mounted config:
+
+```bash
+docker run --rm \
+  -p 8080:8080 \
+  -e CAGNARD_CONFIG=/etc/cagnard/cagnard.conf \
+  -v "$PWD/config/cagnard.example.conf:/etc/cagnard/cagnard.conf:ro" \
+  cagnard-backend:local
+```
+
+Example frontend run with an API upstream:
+
+```bash
+docker run --rm \
+  -p 5173:8080 \
+  -e CAGNARD_API_UPSTREAM=http://<backend-reachable-host>:8080 \
+  cagnard-frontend:local
+```
+
+## Local Mocker Validation
 
 Mocker requires Apple's `container` runtime on macOS:
 
@@ -32,28 +67,7 @@ Build the frontend image:
 mocker build -f frontend/Containerfile -t cagnard-frontend:local .
 ```
 
-Mocker builds Dockerfile-compatible `Containerfile` inputs and produces OCI-compatible images using Apple's Containerization runtime.
-
-The backend image includes the example config and example filesystem content for local demos. Production deployments should mount their own HOCON config and set `CAGNARD_CONFIG`.
-
-Example backend run with a mounted config:
-
-```bash
-mocker run --rm \
-  -p 8080:8080 \
-  -e CAGNARD_CONFIG=/etc/cagnard/cagnard.conf \
-  -v "$PWD/config/cagnard.example.conf:/etc/cagnard/cagnard.conf:ro" \
-  cagnard-backend:local
-```
-
-Example frontend run with an API upstream:
-
-```bash
-mocker run --rm \
-  -p 5173:8080 \
-  -e CAGNARD_API_UPSTREAM=http://<backend-reachable-host>:8080 \
-  cagnard-frontend:local
-```
+Mocker builds the same Dockerfile-compatible `Containerfile` inputs and is used only for local macOS validation. CI, publishing, and general deployment documentation use Docker.
 
 ## Helm
 

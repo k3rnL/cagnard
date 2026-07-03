@@ -1,10 +1,10 @@
 ## Why
 
-Cagnard currently runs well as a local prototype, but it lacks a repeatable way to build, publish, and deploy the application. Mocker, Helm, and GitHub Actions are needed so the stateless backend and Refine frontend can be tested and operated consistently outside a developer workstation.
+Cagnard currently runs well as a local prototype, but it lacks a repeatable way to build, publish, and deploy the application. Docker, Helm, and GitHub Actions are needed so the stateless backend and Refine frontend can be tested and operated consistently outside a developer workstation. Mocker remains useful for local macOS image validation.
 
 ## What Changes
 
-- Add Mocker-based OCI image packaging for the Cagnard application, including production build steps for the Scala backend and React frontend.
+- Add Docker-compatible OCI image packaging for the Cagnard application, including production build steps for the Scala backend and React frontend.
 - Add a Helm chart for Kubernetes deployments with configurable image, ingress/service settings, resource settings, and mounted HOCON configuration.
 - Add GitHub Actions workflows for build/test validation and container image publishing.
 - Document local image builds, chart usage, required configuration, and deployment limitations.
@@ -15,7 +15,7 @@ Cagnard currently runs well as a local prototype, but it lacks a repeatable way 
 
 ### New Capabilities
 
-- `deployment-packaging`: Mocker-built image and Helm chart behavior for packaging and deploying Cagnard.
+- `deployment-packaging`: Docker-built image and Helm chart behavior for packaging and deploying Cagnard, with local Mocker validation support.
 - `ci-release-automation`: GitHub Actions behavior for validating changes and publishing deployable artifacts.
 
 ### Modified Capabilities

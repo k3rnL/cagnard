@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Backend container image
-Cagnard SHALL provide a Mocker build for the backend runtime that starts the Scala HTTP service without requiring developer tooling in the final runtime image.
+Cagnard SHALL provide a Docker-compatible build for the backend runtime that starts the Scala HTTP service without requiring developer tooling in the final runtime image.
 
 #### Scenario: Build backend image
 - **WHEN** an operator builds the backend image from the repository
@@ -12,7 +12,7 @@ Cagnard SHALL provide a Mocker build for the backend runtime that starts the Sca
 - **THEN** Cagnard SHALL load runtime configuration from that mounted file
 
 ### Requirement: Frontend container image
-Cagnard SHALL provide a Mocker build for the frontend that serves the production React application as static assets.
+Cagnard SHALL provide a Docker-compatible build for the frontend that serves the production React application as static assets.
 
 #### Scenario: Build frontend image
 - **WHEN** an operator builds the frontend image from the repository
@@ -52,7 +52,7 @@ Cagnard SHALL expose and configure health checks suitable for container and Kube
 - **THEN** the frontend workload SHALL use an HTTP readiness probe that confirms the static application can be served
 
 ### Requirement: Packaging documentation
-Cagnard SHALL document local image builds, Helm installation, configuration mounting, and deployment limitations.
+Cagnard SHALL document Docker image builds, local Mocker validation, Helm installation, configuration mounting, and deployment limitations.
 
 #### Scenario: Read deployment documentation
 - **WHEN** an operator reads the deployment documentation

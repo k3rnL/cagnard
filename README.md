@@ -19,7 +19,7 @@ frontend/      Refine React application
 config/        Example stateless backend configuration
 docs/          Maintained feature and operator documentation
 examples/      Local filesystem content used by the example config
-deploy/        Mocker, Helm, and deployment automation artifacts
+deploy/        Container, Helm, and deployment automation artifacts
 openspec/      OpenSpec change artifacts and specs
 ```
 
@@ -64,9 +64,22 @@ pnpm dev
 
 The Vite dev server proxies `/api` to `http://127.0.0.1:8080`.
 
-## Mocker
+## Docker
 
-Mocker requires Apple's `container` runtime. On macOS, install and start it before building images:
+Build local images from the repository root:
+
+```bash
+docker build -f Containerfile.backend -t cagnard-backend:local .
+docker build -f frontend/Containerfile -t cagnard-frontend:local .
+```
+
+The backend image accepts `CAGNARD_CONFIG` for mounted HOCON configuration. The frontend image serves the production build and proxies `/api` to `CAGNARD_API_UPSTREAM`.
+
+## Local Mocker Validation
+
+Mocker is used for local image validation on macOS. CI and publishing use Docker.
+
+Mocker requires Apple's `container` runtime. Install and start it before local Mocker builds:
 
 ```bash
 brew install container
@@ -82,8 +95,6 @@ mocker build -f Containerfile.backend -t cagnard-backend:local .
 mocker build -f frontend/Containerfile -t cagnard-frontend:local .
 ```
 
-The backend image accepts `CAGNARD_CONFIG` for mounted HOCON configuration. The frontend image serves the production build and proxies `/api` to `CAGNARD_API_UPSTREAM`.
-
 ## Helm
 
 The chart lives in `deploy/helm/cagnard`.
@@ -97,7 +108,7 @@ Use `deploy/helm/cagnard/examples/external-config-values.yaml` as the starting p
 
 ## GitHub Actions
 
-The validation workflow runs backend tests, frontend checks, Mocker builds, and Helm rendering. The publishing workflow can push backend and frontend images to GHCR or another configured registry.
+The validation workflow runs backend tests, frontend checks, Docker image builds, and Helm rendering on hosted runners. The publishing workflow uses Docker to push backend and frontend images to GHCR or another configured registry.
 
 See [docs/features/deployment-packaging.md](docs/features/deployment-packaging.md) and [docs/features/ci-release-automation.md](docs/features/ci-release-automation.md).
 

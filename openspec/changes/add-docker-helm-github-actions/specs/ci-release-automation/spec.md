@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Pull request validation workflow
-Cagnard SHALL provide a GitHub Actions workflow that validates backend, frontend, Mocker, and Helm changes before merge.
+Cagnard SHALL provide a GitHub Actions workflow that validates backend, frontend, Docker image, and Helm changes before merge.
 
 #### Scenario: Validate pull request
 - **WHEN** a pull request updates application, packaging, chart, or workflow files
-- **THEN** GitHub Actions SHALL run backend tests, frontend typecheck/build, Mocker build checks, and Helm chart validation
+- **THEN** GitHub Actions SHALL run backend tests, frontend typecheck/build, Docker image build checks, and Helm chart validation
 
 #### Scenario: Report failed validation
 - **WHEN** a validation step fails
@@ -23,7 +23,7 @@ Cagnard SHALL provide a GitHub Actions workflow that can publish backend and fro
 
 #### Scenario: Publish tagged images
 - **WHEN** a release tag or manual publishing event is triggered with registry access configured
-- **THEN** the workflow SHALL build and push both backend and frontend images with deterministic tags
+- **THEN** the workflow SHALL use Docker to build and push both backend and frontend images with deterministic tags
 
 #### Scenario: Missing registry credentials
 - **WHEN** required registry credentials or permissions are unavailable
