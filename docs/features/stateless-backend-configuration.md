@@ -14,6 +14,8 @@ Key runtime inputs:
 
 - `CAGNARD_CONFIG` can point to a HOCON file.
 - The first backend argument can also provide a config path.
+- `auth.mode` selects `static`, `development`, or future `external` identity resolution.
+- `auth.session.signingSecret` is required when static login issues signed sessions.
 - Relative storage root paths resolve against the config file directory.
 - Container deployments can mount HOCON config and set `CAGNARD_CONFIG` without rebuilding the image.
 - Helm deployments can render non-secret config as a ConfigMap or mount existing Secret/volume sources.
@@ -21,6 +23,8 @@ Key runtime inputs:
 ## Operational Notes
 
 - Invalid HOCON or invalid typed configuration fails startup.
+- Static mode rejects protected requests without a valid signed session and does not fall back to `auth.defaultUser`.
+- Development mode preserves the previous configured-user header/default-user behavior for local tests.
 - Required runtime state must come from configuration, external identity providers, local process permissions, or future external secret providers.
 - No schema migration or local database bootstrap is required.
 - Secrets should remain in environment variables, mounted files, Kubernetes Secrets, or external secret systems, not baked into images.

@@ -13,11 +13,20 @@ object JsonCodecs:
   given Decoder[AuthConfig] = deriveDecoder
   given Encoder[AuthConfig] = deriveEncoder
 
+  given Decoder[SessionConfig] = deriveDecoder
+  given Encoder[SessionConfig] = deriveEncoder
+
+  given Decoder[StaticProviderConfig] = deriveDecoder
+  given Encoder[StaticProviderConfig] = deriveEncoder
+
   given Decoder[OidcProviderConfig] = deriveDecoder
   given Encoder[OidcProviderConfig] = deriveEncoder
 
   given Decoder[ConfiguredUser] = deriveDecoder
   given Encoder[ConfiguredUser] = deriveEncoder
+
+  given Decoder[StaticUserCredentialConfig] = deriveDecoder
+  given Encoder[StaticUserCredentialConfig] = deriveEncoder
 
   given Decoder[ProviderConfig] = deriveDecoder
   given Encoder[ProviderConfig] = deriveEncoder

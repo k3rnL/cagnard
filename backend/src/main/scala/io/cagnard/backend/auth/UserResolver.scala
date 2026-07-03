@@ -7,13 +7,49 @@ import io.circe.parser.parse
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 
-case class RequestIdentity(configuredUserHeader: Option[String], authorizationHeader: Option[String])
-case class ResolvedUser(profile: UserProfile, authMode: String)
-
 class UserResolver(config: CagnardConfig):
   private val configuredUsers = config.users.map(user => user.id -> user).toMap
+  private val staticProvider = StaticUserAuthProvider(config)
+  private val sessions = SessionService(config)
+  private val authMode = config.auth.mode.getOrElse("development")
+
+  def providers: List[AuthProviderMetadata] =
+    authMode match
+      case "static" => staticProvider.metadata.toList
+      case "development" => Nil
+      case "external" => Nil
+      case _ => Nil
+
+  def loginStatic(username: String, password: String): Either[ApiError, (ResolvedUser, String)] =
+    if authMode != "static" then Left(ApiError("authentication_disabled", "Static login is not enabled"))
+    else
+      staticProvider.authenticate(StaticLoginCredentials(username, password)).left.map(toApiError).map { principal =>
+        (ResolvedUser(principal.profile, principal.authMode), sessions.issue(principal))
+      }
 
   def resolve(identity: RequestIdentity): Either[ApiError, ResolvedUser] =
+    authMode match
+      case "static" => resolveSession(identity)
+      case "development" => resolveDevelopment(identity)
+      case "external" => resolveBearer(identity.authorizationHeader).getOrElse(Left(ApiError("unauthorized", "No bearer identity resolved")))
+      case other => Left(ApiError("invalid_auth_mode", s"Unsupported auth mode '$other'"))
+
+  def sessionCookie(token: String): String = sessions.cookie(token)
+
+  def clearSessionCookie: String = sessions.clearCookie
+
+  private def resolveSession(identity: RequestIdentity): Either[ApiError, ResolvedUser] =
+    val token = bearerToken(identity.authorizationHeader).orElse(identity.cookies.get(sessions.cookieName))
+    token
+      .toRight(ApiError("unauthorized", "Authentication is required"))
+      .flatMap(sessions.verify(_).left.map(toApiError))
+      .flatMap { claims =>
+        if claims.providerId != staticProvider.providerId then Left(ApiError("invalid_session", "Session provider is not enabled"))
+        else staticProvider.principalForSubject(claims.subject).left.map(toApiError)
+      }
+      .map(principal => ResolvedUser(principal.profile, principal.authMode))
+
+  private def resolveDevelopment(identity: RequestIdentity): Either[ApiError, ResolvedUser] =
     identity.configuredUserHeader
       .filter(_.nonEmpty)
       .map(resolveConfigured)
@@ -36,11 +72,13 @@ class UserResolver(config: CagnardConfig):
         .toRight(ApiError("unknown_user", s"Configured user '$userId' was not found"))
 
   private def resolveBearer(header: Option[String]): Option[Either[ApiError, ResolvedUser]] =
+    bearerToken(header).map(parseJwtClaims)
+
+  private def bearerToken(header: Option[String]): Option[String] =
     header
       .filter(_.startsWith("Bearer "))
       .map(_.stripPrefix("Bearer ").trim)
       .filter(_.nonEmpty)
-      .map(parseJwtClaims)
 
   private def parseJwtClaims(token: String): Either[ApiError, ResolvedUser] =
     val parts = token.split("\\.")
@@ -60,3 +98,6 @@ class UserResolver(config: CagnardConfig):
           val claims = cursor.keys.toList.flatten.flatMap(key => cursor.get[String](key).toOption.map(key -> _)).toMap
           Right(ResolvedUser(UserProfile(id, displayName, roles, groups, claims), "oidc-placeholder"))
       }
+
+  private def toApiError(failure: AuthFailure): ApiError =
+    ApiError(failure.code, failure.message)

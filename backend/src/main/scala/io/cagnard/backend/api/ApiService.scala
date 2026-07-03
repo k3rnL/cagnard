@@ -17,16 +17,30 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
   def session(identity: RequestIdentity): IO[Either[ApiError, SessionResponse]] =
     IO.pure {
       userResolver.resolve(identity).map { resolved =>
-        val personal = access.personalRoots(resolved.profile)
-        val global = access.globalRoots(resolved.profile)
-        SessionResponse(
-          user = resolved.profile,
-          authMode = resolved.authMode,
-          personalEnabled = personal.nonEmpty,
-          globalEnabled = global.nonEmpty
-        )
+        sessionFor(resolved)
       }
     }
+
+  def authProviders: IO[Either[ApiError, AuthProvidersResponse]] =
+    IO.pure(Right(AuthProvidersResponse(userResolver.providers)))
+
+  def login(request: LoginRequest): IO[Either[ApiError, LoginResult]] =
+    IO.pure {
+      val username = request.username.map(_.trim).filter(_.nonEmpty)
+      val password = request.password.filter(_.nonEmpty)
+      val providerEnabled = userResolver.providers.exists(_.id == request.providerId)
+
+      (providerEnabled, username, password) match
+        case (false, _, _) => Left(ApiError("authentication_failed", "Invalid username or password"))
+        case (true, Some(user), Some(pass)) =>
+          userResolver.loginStatic(user, pass).map { case (resolved, token) =>
+            LoginResult(LoginResponse(sessionFor(resolved)), userResolver.sessionCookie(token))
+          }
+        case _ => Left(ApiError("authentication_failed", "Invalid username or password"))
+    }
+
+  def logout: IO[LogoutResult] =
+    IO.pure(LogoutResult(LogoutResponse(success = true), userResolver.clearSessionCookie))
 
   def navigation(identity: RequestIdentity): IO[Either[ApiError, NavigationResponse]] =
     IO.pure {
@@ -195,6 +209,16 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
       else "storage_operation_failed"
     ApiError(code, message)
 
+  private def sessionFor(resolved: io.cagnard.backend.auth.ResolvedUser): SessionResponse =
+    val personal = access.personalRoots(resolved.profile)
+    val global = access.globalRoots(resolved.profile)
+    SessionResponse(
+      user = resolved.profile,
+      authMode = resolved.authMode,
+      personalEnabled = personal.nonEmpty,
+      globalEnabled = global.nonEmpty
+    )
+
   extension [A, B](values: List[A])
     private def traverse(f: A => Either[ApiError, B]): Either[ApiError, List[B]] =
       values.foldRight[Either[ApiError, List[B]]](Right(Nil)) { (value, acc) =>
@@ -203,3 +227,7 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
           tail <- acc
         yield head :: tail
       }
+
+case class LoginResult(response: LoginResponse, setCookie: String)
+
+case class LogoutResult(response: LogoutResponse, setCookie: String)

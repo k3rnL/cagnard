@@ -114,10 +114,11 @@ See [docs/features/deployment-packaging.md](docs/features/deployment-packaging.m
 
 ## Example User
 
-The example configuration enables a simple configured user:
+The example configuration enables static login for a configured demo user:
 
 ```text
-X-Cagnard-User: alice
+User: alice
+Password: cagnard
 ```
 
-Requests without this header fall back to the configured default user for local development.
+Static login issues a signed stateless browser session. Development identity headers are still supported only when `auth.mode = development` is explicitly configured.

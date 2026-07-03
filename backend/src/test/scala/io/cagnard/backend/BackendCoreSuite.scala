@@ -1,13 +1,26 @@
 package io.cagnard.backend
 
 import cats.effect.IO
-import io.cagnard.backend.api.{ApiRoutes, ApiService, DeleteEntryRequest, UserProfile}
+import io.cagnard.backend.api.{
+  ApiError,
+  ApiRoutes,
+  ApiService,
+  AuthProvidersResponse,
+  DeleteEntryRequest,
+  LoginRequest,
+  LoginResponse,
+  LogoutResponse,
+  SessionResponse,
+  UserProfile
+}
+import io.cagnard.backend.api.ApiModels.given
 import io.cagnard.backend.auth.{AccessService, RequestIdentity}
 import io.cagnard.backend.config.*
 import io.cagnard.backend.storage.{ResolvedStorageRoot, StorageRegistry}
 import com.typesafe.config.ConfigFactory
 import munit.CatsEffectSuite
-import org.http4s.{Header, Method, Request, Status, Uri}
+import org.http4s.{Header, Method, Request, Response, Status, Uri}
+import org.http4s.circe.CirceEntityCodec.given
 import org.typelevel.ci.CIString
 
 import java.nio.file.{Files, Path, Paths}
@@ -188,6 +201,140 @@ class BackendCoreSuite extends CatsEffectSuite:
     }
   }
 
+  test("discovers static login provider") {
+    tempDirectory.use { root =>
+      val config = staticConfig(root)
+      appFor(config).flatMap { app =>
+        app.run(Request[IO](Method.GET, Uri.unsafeFromString("/api/auth/providers"))).flatMap { response =>
+          response.as[AuthProvidersResponse].map { body =>
+            assertEquals(response.status, Status.Ok)
+            assertEquals(body.providers.map(_.id), List("static"))
+            assertEquals(body.providers.head.kind, "static")
+            assertEquals(body.providers.head.fields.map(_.name), List("username", "password"))
+          }
+        }
+      }
+    }
+  }
+
+  test("logs in static user and issues stateless session cookie") {
+    tempDirectory.use { root =>
+      val config = staticConfig(root)
+      appFor(config).flatMap { app =>
+        val request = loginRequest("alice", "cagnard")
+
+        app.run(request).flatMap { response =>
+          val cookie = setCookie(response)
+          response.as[LoginResponse].map { body =>
+            assertEquals(response.status, Status.Ok)
+            assertEquals(body.session.user.id, "alice")
+            assertEquals(body.session.authMode, "static")
+            assert(cookie.startsWith("CAGNARD_SESSION="))
+            assert(cookie.contains("HttpOnly"))
+            assert(cookie.contains("SameSite=Lax"))
+          }
+        }
+      }
+    }
+  }
+
+  test("returns same public failure for unknown static user and invalid password") {
+    tempDirectory.use { root =>
+      val config = staticConfig(root)
+      appFor(config).flatMap { app =>
+        def failedLogin(username: String, password: String): IO[(Status, ApiError)] =
+          app.run(loginRequest(username, password)).flatMap { response =>
+            response.as[ApiError].map(error => response.status -> error)
+          }
+
+        for
+          unknown <- failedLogin("unknown", "cagnard")
+          invalid <- failedLogin("alice", "wrong")
+        yield
+          assertEquals(unknown._1, Status.Unauthorized)
+          assertEquals(invalid._1, Status.Unauthorized)
+          assertEquals(unknown._2.code, "authentication_failed")
+          assertEquals(invalid._2.code, "authentication_failed")
+          assertEquals(unknown._2.message, invalid._2.message)
+      }
+    }
+  }
+
+  test("resolves static session from browser cookie") {
+    tempDirectory.use { root =>
+      val config = staticConfig(root)
+      appFor(config).flatMap { app =>
+        app.run(loginRequest("alice", "cagnard")).flatMap { loginResponse =>
+          val cookie = cookiePair(setCookie(loginResponse))
+          loginResponse.as[LoginResponse].flatMap { _ =>
+            app.run(Request[IO](Method.GET, Uri.unsafeFromString("/api/session")).putHeaders(Header.Raw(CIString("Cookie"), cookie))).flatMap { response =>
+              response.as[SessionResponse].map { body =>
+                assertEquals(response.status, Status.Ok)
+                assertEquals(body.user.id, "alice")
+                assertEquals(body.authMode, "static")
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  test("logout clears static session cookie") {
+    tempDirectory.use { root =>
+      val config = staticConfig(root)
+      appFor(config).flatMap { app =>
+        app.run(Request[IO](Method.POST, Uri.unsafeFromString("/api/auth/logout"))).flatMap { response =>
+          val cookie = setCookie(response)
+          response.as[LogoutResponse].map { body =>
+            assertEquals(response.status, Status.Ok)
+            assertEquals(body.success, true)
+            assert(cookie.startsWith("CAGNARD_SESSION="))
+            assert(cookie.contains("Max-Age=0"))
+          }
+        }
+      }
+    }
+  }
+
+  test("requires static session for protected routes") {
+    tempDirectory.use { root =>
+      val config = staticConfig(root)
+      appFor(config).flatMap { app =>
+        app.run(Request[IO](Method.GET, Uri.unsafeFromString("/api/storage/navigation"))).flatMap { response =>
+          response.as[ApiError].map { body =>
+            assertEquals(response.status, Status.Unauthorized)
+            assertEquals(body.code, "unauthorized")
+          }
+        }
+      }
+    }
+  }
+
+  test("keeps development identity header and default-user compatibility") {
+    tempDirectory.use { root =>
+      val config = testConfig(root)
+      appFor(config).flatMap { app =>
+        val headerRequest =
+          Request[IO](Method.GET, Uri.unsafeFromString("/api/session")).putHeaders(Header.Raw(CIString("X-Cagnard-User"), "alice"))
+        val defaultRequest = Request[IO](Method.GET, Uri.unsafeFromString("/api/session"))
+
+        for
+          headerResponse <- app.run(headerRequest)
+          headerBody <- headerResponse.as[SessionResponse]
+          defaultResponse <- app.run(defaultRequest)
+          defaultBody <- defaultResponse.as[SessionResponse]
+        yield
+          assertEquals(headerResponse.status, Status.Ok)
+          assertEquals(headerBody.user.id, "alice")
+          assertEquals(headerBody.authMode, "configured-user")
+          assertEquals(defaultResponse.status, Status.Ok)
+          assertEquals(defaultBody.user.id, "alice")
+          assertEquals(defaultBody.authMode, "configured-user")
+      }
+    }
+  }
+
   test("performs filesystem mutation success paths") {
     tempDirectory.use { root =>
       IO.fromEither(StorageRegistry.fromConfig(testConfig(root))).map { registry =>
@@ -286,19 +433,59 @@ class BackendCoreSuite extends CatsEffectSuite:
         finally stream.close()
       Files.deleteIfExists(path)
 
-  private val identity = RequestIdentity(Some("alice"), None)
+  private val identity = RequestIdentity(Some("alice"), None, Map.empty)
 
   private def testConfig(root: Path, readOnly: Boolean = false): CagnardConfig =
     CagnardConfig(
       server = ServerConfig("127.0.0.1", 8080),
-      auth = AuthConfig(configuredUsersEnabled = true, defaultUser = Some("alice"), oidcProviders = Nil),
-      users = List(ConfiguredUser("alice", "Alice", List("user"), List("engineering"), Map.empty)),
+      auth = AuthConfig(Some("development"), configuredUsersEnabled = true, defaultUser = Some("alice"), None, None, oidcProviders = Nil),
+      users = List(ConfiguredUser("alice", "Alice", List("user"), List("engineering"), Map.empty, None)),
       providers = List(ProviderConfig("local", "filesystem", "unix", "Local filesystem")),
       accounts = List(StorageAccountConfig("local-admin", "local", "Local", enabled = true, readOnly = readOnly, "local-process")),
       personalStorage = List(StorageRootConfig("home", "Home", "local", "local-admin", root.toString, Some(List("alice")), None, None)),
       globalStorage = List(StorageRootConfig("shared", "Global", "local", "local-admin", root.toString, None, Some(List("user")), None)),
       uiPlugins = List(UiPluginConfig("text-preview", "Text preview", "preview", "1", enabled = true, Some(List("text/plain")), Some(List(".txt")), Some(List("read")), 10))
     )
+
+  private def staticConfig(root: Path): CagnardConfig =
+    testConfig(root).copy(
+      auth = AuthConfig(
+        Some("static"),
+        configuredUsersEnabled = true,
+        defaultUser = None,
+        session = Some(SessionConfig(Some("test-static-session-signing-secret"), Some(28800L), Some("CAGNARD_SESSION"), Some(false))),
+        staticProvider = Some(StaticProviderConfig(Some("static"), Some("Cagnard account"), Some(true))),
+        oidcProviders = Nil
+      ),
+      users = List(
+        ConfiguredUser(
+          "alice",
+          "Alice",
+          List("user"),
+          List("engineering"),
+          Map.empty,
+          Some(StaticUserCredentialConfig(demoVerifier))
+        )
+      )
+    )
+
+  private def appFor(config: CagnardConfig) =
+    IO.fromEither(StorageRegistry.fromConfig(config)).map { registry =>
+      ApiRoutes(ApiService(config, registry)).routes.orNotFound
+    }
+
+  private def loginRequest(username: String, password: String): Request[IO] =
+    Request[IO](Method.POST, Uri.unsafeFromString("/api/auth/login"))
+      .withEntity(LoginRequest("static", Some(username), Some(password)))
+
+  private def setCookie(response: Response[IO]): String =
+    response.headers.get(CIString("Set-Cookie")).map(_.head.value).getOrElse("")
+
+  private def cookiePair(setCookie: String): String =
+    setCookie.split(";", 2).head
+
+  private val demoVerifier =
+    "pbkdf2-sha256:120000:Y2FnbmFyZC1kZW1vLXN0YXRpYy11c2VyLXNhbHQ:fUdgpOu_Z3MHhgdWzUku12tWnSH5s9BhfjJVv1fiIms"
 
   private def exampleConfigPath: Path =
     val rootRelative = Paths.get("config/cagnard.example.conf")

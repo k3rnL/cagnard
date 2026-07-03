@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { cagnardApi } from "./client";
+import { cagnardApi, isUnauthorizedError } from "./client";
 import type {
+  AuthProviderMetadata,
   EntryListResponse,
   NavigationResponse,
   NavigationRoot,
@@ -16,6 +17,8 @@ export type EntrySortDirection = "asc" | "desc";
 
 export interface CagnardDataState {
   session?: SessionResponse;
+  authProviders: AuthProviderMetadata[];
+  authenticated: boolean;
   navigation?: NavigationResponse;
   selectedRoot?: NavigationRoot;
   currentPath: string;
@@ -33,8 +36,12 @@ export interface CagnardDataState {
   previewContent?: string;
   previewLoading: boolean;
   operationMessage?: string;
+  loginLoading: boolean;
+  loginError?: string;
   loading: boolean;
   error?: string;
+  login: (providerId: string, username: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
   selectRoot: (root: NavigationRoot) => void;
   selectEntry: (entry: StorageEntry, mode?: EntrySelectionMode) => void;
   selectAllEntries: () => void;
@@ -56,6 +63,7 @@ export interface CagnardDataState {
 
 export function useCagnardData(): CagnardDataState {
   const [session, setSession] = useState<SessionResponse>();
+  const [authProviders, setAuthProviders] = useState<AuthProviderMetadata[]>([]);
   const [navigation, setNavigation] = useState<NavigationResponse>();
   const [selectedRoot, setSelectedRoot] = useState<NavigationRoot>();
   const [currentPath, setCurrentPath] = useState("");
@@ -70,6 +78,8 @@ export function useCagnardData(): CagnardDataState {
   const [previewContent, setPreviewContent] = useState<string>();
   const [previewLoading, setPreviewLoading] = useState(false);
   const [operationMessage, setOperationMessage] = useState<string>();
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [refreshTick, setRefreshTick] = useState(0);
@@ -105,33 +115,73 @@ export function useCagnardData(): CagnardDataState {
     setLastSelectedEntryId(undefined);
   }, []);
 
+  const resetAuthenticatedState = useCallback(() => {
+    setSession(undefined);
+    setNavigation(undefined);
+    setSelectedRoot(undefined);
+    setCurrentPath("");
+    setEntryResponse(undefined);
+    setUiPlugins([]);
+    setPreviewContent(undefined);
+    setOperationMessage(undefined);
+    clearSelection();
+  }, [clearSelection]);
+
+  const handleUnauthorized = useCallback(
+    (caught: unknown): boolean => {
+      if (!isUnauthorizedError(caught)) return false;
+      resetAuthenticatedState();
+      setError(undefined);
+      return true;
+    },
+    [resetAuthenticatedState]
+  );
+
+  const loadApplication = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [nextSession, nextNavigation, plugins] = await Promise.all([
+        cagnardApi.session(),
+        cagnardApi.navigation(),
+        cagnardApi.uiPlugins()
+      ]);
+      setSession(nextSession);
+      setNavigation(nextNavigation);
+      setUiPlugins(plugins.plugins);
+      setSelectedRoot((existing) => existing ?? firstRoot(nextNavigation));
+      setError(undefined);
+    } catch (caught) {
+      if (!handleUnauthorized(caught)) {
+        const message = caught instanceof Error ? caught.message : String(caught);
+        setError(message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [handleUnauthorized]);
+
   useEffect(() => {
     let active = true;
-    setLoading(true);
 
-    Promise.all([cagnardApi.session(), cagnardApi.navigation(), cagnardApi.uiPlugins()])
-      .then(([nextSession, nextNavigation, plugins]) => {
+    cagnardApi
+      .authProviders()
+      .then((response) => {
         if (!active) return;
-        setSession(nextSession);
-        setNavigation(nextNavigation);
-        setUiPlugins(plugins.plugins);
-        setSelectedRoot((existing) => existing ?? firstRoot(nextNavigation));
-        setError(undefined);
+        setAuthProviders(response.providers);
       })
       .catch((caught: Error) => {
         if (active) setError(caught.message);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
       });
+
+    void loadApplication();
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [loadApplication]);
 
   useEffect(() => {
-    if (!selectedRoot) return;
+    if (!session || !selectedRoot) return;
     let active = true;
     setLoading(true);
 
@@ -145,7 +195,8 @@ export function useCagnardData(): CagnardDataState {
         setError(undefined);
       })
       .catch((caught: Error) => {
-        if (active) setError(caught.message);
+        if (!active) return;
+        if (!handleUnauthorized(caught)) setError(caught.message);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -154,7 +205,7 @@ export function useCagnardData(): CagnardDataState {
     return () => {
       active = false;
     };
-  }, [clearSelection, selectedRoot, currentPath, refreshTick]);
+  }, [clearSelection, currentPath, handleUnauthorized, selectedRoot, session, refreshTick]);
 
   useEffect(() => {
     setSelectedEntryIds((ids) => {
@@ -179,7 +230,9 @@ export function useCagnardData(): CagnardDataState {
         if (active) setPreviewContent(preview.content);
       })
       .catch((caught: Error) => {
-        if (active) setPreviewContent(`Preview unavailable: ${caught.message}`);
+        if (!active) return;
+        if (handleUnauthorized(caught)) return;
+        setPreviewContent(`Preview unavailable: ${caught.message}`);
       })
       .finally(() => {
         if (active) setPreviewLoading(false);
@@ -188,7 +241,7 @@ export function useCagnardData(): CagnardDataState {
     return () => {
       active = false;
     };
-  }, [selectedRoot, selectedEntry]);
+  }, [handleUnauthorized, selectedRoot, selectedEntry]);
 
   const selectRoot = useCallback((root: NavigationRoot) => {
     setSelectedRoot(root);
@@ -268,13 +321,42 @@ export function useCagnardData(): CagnardDataState {
         setError(undefined);
         setRefreshTick((value) => value + 1);
       } catch (caught) {
+        if (handleUnauthorized(caught)) return;
         const message = caught instanceof Error ? caught.message : String(caught);
         setError(message);
         setOperationMessage(undefined);
       }
     },
-    []
+    [handleUnauthorized]
   );
+
+  const login = useCallback(
+    async (providerId: string, username: string, password: string) => {
+      setLoginLoading(true);
+      try {
+        const result = await cagnardApi.login(providerId, username, password);
+        setSession(result.session);
+        setLoginError(undefined);
+        await loadApplication();
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : String(caught);
+        setLoginError(message);
+        resetAuthenticatedState();
+      } finally {
+        setLoginLoading(false);
+      }
+    },
+    [loadApplication, resetAuthenticatedState]
+  );
+
+  const logout = useCallback(async () => {
+    try {
+      await cagnardApi.logout();
+    } finally {
+      resetAuthenticatedState();
+      setLoginError(undefined);
+    }
+  }, [resetAuthenticatedState]);
 
   const requireRoot = useCallback(() => {
     if (!selectedRoot) throw new Error("No storage root selected");
@@ -399,15 +481,18 @@ export function useCagnardData(): CagnardDataState {
       setOperationMessage(files.length === 1 ? `Downloaded ${files[0].name}` : `Downloaded ${files.length} files`);
       setError(undefined);
     } catch (caught) {
+      if (handleUnauthorized(caught)) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [requireRoot, requireSelection]);
+  }, [handleUnauthorized, requireRoot, requireSelection]);
 
   const effectivePath = entryResponse?.path ?? currentPath;
 
   return useMemo(
     () => ({
       session,
+      authProviders,
+      authenticated: Boolean(session),
       navigation,
       selectedRoot,
       currentPath: effectivePath,
@@ -425,8 +510,12 @@ export function useCagnardData(): CagnardDataState {
       previewContent,
       previewLoading,
       operationMessage,
+      loginLoading,
+      loginError,
       loading,
       error,
+      login,
+      logout,
       selectRoot,
       selectEntry,
       selectAllEntries,
@@ -446,6 +535,7 @@ export function useCagnardData(): CagnardDataState {
       downloadSelected
     }),
     [
+      authProviders,
       copySelected,
       createFolder,
       deleteSelected,
@@ -455,7 +545,11 @@ export function useCagnardData(): CagnardDataState {
       error,
       filterQuery,
       goUp,
+      login,
+      loginError,
+      loginLoading,
       loading,
+      logout,
       moveSelected,
       navigateToPath,
       navigation,

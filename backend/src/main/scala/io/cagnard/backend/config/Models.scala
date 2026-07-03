@@ -14,9 +14,25 @@ case class CagnardConfig(
 case class ServerConfig(host: String, port: Int)
 
 case class AuthConfig(
+    mode: Option[String],
     configuredUsersEnabled: Boolean,
     defaultUser: Option[String],
+    session: Option[SessionConfig],
+    staticProvider: Option[StaticProviderConfig],
     oidcProviders: List[OidcProviderConfig]
+)
+
+case class SessionConfig(
+    signingSecret: Option[String],
+    ttlSeconds: Option[Long],
+    cookieName: Option[String],
+    secureCookies: Option[Boolean]
+)
+
+case class StaticProviderConfig(
+    id: Option[String],
+    label: Option[String],
+    enabled: Option[Boolean]
 )
 
 case class OidcProviderConfig(
@@ -31,7 +47,12 @@ case class ConfiguredUser(
     displayName: String,
     roles: List[String],
     groups: List[String],
-    claims: Map[String, String]
+    claims: Map[String, String],
+    credential: Option[StaticUserCredentialConfig]
+)
+
+case class StaticUserCredentialConfig(
+    verifier: String
 )
 
 case class ProviderConfig(

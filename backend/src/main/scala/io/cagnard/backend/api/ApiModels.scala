@@ -2,6 +2,7 @@ package io.cagnard.backend.api
 
 import io.circe.{Decoder, Encoder}
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
+import io.cagnard.backend.auth.{AuthProviderField, AuthProviderMetadata}
 
 case class ApiError(code: String, message: String)
 
@@ -21,6 +22,14 @@ case class SessionResponse(
     personalEnabled: Boolean,
     globalEnabled: Boolean
 )
+
+case class AuthProvidersResponse(providers: List[AuthProviderMetadata])
+
+case class LoginRequest(providerId: String, username: Option[String], password: Option[String])
+
+case class LoginResponse(session: SessionResponse)
+
+case class LogoutResponse(success: Boolean)
 
 case class CapabilityStatus(name: String, status: String, description: Option[String])
 
@@ -102,6 +111,24 @@ object ApiModels:
 
   given Encoder[SessionResponse] = deriveEncoder
   given Decoder[SessionResponse] = deriveDecoder
+
+  given Encoder[AuthProviderField] = deriveEncoder
+  given Decoder[AuthProviderField] = deriveDecoder
+
+  given Encoder[AuthProviderMetadata] = deriveEncoder
+  given Decoder[AuthProviderMetadata] = deriveDecoder
+
+  given Encoder[AuthProvidersResponse] = deriveEncoder
+  given Decoder[AuthProvidersResponse] = deriveDecoder
+
+  given Encoder[LoginRequest] = deriveEncoder
+  given Decoder[LoginRequest] = deriveDecoder
+
+  given Encoder[LoginResponse] = deriveEncoder
+  given Decoder[LoginResponse] = deriveDecoder
+
+  given Encoder[LogoutResponse] = deriveEncoder
+  given Decoder[LogoutResponse] = deriveDecoder
 
   given Encoder[CapabilityStatus] = deriveEncoder
   given Decoder[CapabilityStatus] = deriveDecoder

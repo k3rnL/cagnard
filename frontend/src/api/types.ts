@@ -18,6 +18,34 @@ export interface SessionResponse {
   globalEnabled: boolean;
 }
 
+export interface AuthProviderField {
+  name: string;
+  label: string;
+  kind: "text" | "password" | string;
+  required: boolean;
+}
+
+export interface AuthProviderMetadata {
+  id: string;
+  label: string;
+  kind: "static" | "oidc" | string;
+  loginUrl?: string;
+  fields: AuthProviderField[];
+  capabilities: string[];
+}
+
+export interface AuthProvidersResponse {
+  providers: AuthProviderMetadata[];
+}
+
+export interface LoginResponse {
+  session: SessionResponse;
+}
+
+export interface LogoutResponse {
+  success: boolean;
+}
+
 export interface CapabilityStatus {
   name: string;
   status: "supported" | "unsupported" | "degraded" | "planned" | string;

@@ -23,6 +23,23 @@ case class ApiRoutes(service: ApiService) extends Http4sDsl[IO]:
       case request @ GET -> Root / "api" / "session" =>
         respond(service.session(identity(request)))
 
+      case GET -> Root / "api" / "auth" / "providers" =>
+        respond(service.authProviders)
+
+      case request @ POST -> Root / "api" / "auth" / "login" =>
+        request.as[LoginRequest].flatMap { body =>
+          service.login(body).flatMap {
+            case Right(result) =>
+              Ok(result.response).map(_.putHeaders(Header.Raw(CIString("Set-Cookie"), result.setCookie)))
+            case Left(error) => errorResponse(error)
+          }
+        }
+
+      case POST -> Root / "api" / "auth" / "logout" =>
+        service.logout.flatMap { result =>
+          Ok(result.response).map(_.putHeaders(Header.Raw(CIString("Set-Cookie"), result.setCookie)))
+        }
+
       case request @ GET -> Root / "api" / "storage" / "navigation" =>
         respond(service.navigation(identity(request)))
 
@@ -43,7 +60,7 @@ case class ApiRoutes(service: ApiService) extends Http4sDsl[IO]:
                 Header.Raw(CIString("Content-Disposition"), s"""attachment; filename="${safeFileName(content.fileName)}"""")
               )
             )
-          case Left(error) => BadRequest(error)
+          case Left(error) => errorResponse(error)
         }
 
       case request @ PUT -> Root / "api" / "storage" / "content" :? TunnelQuery(tunnel) +& RootIdQuery(rootId) +& PathQuery(path) +& OverwriteQuery(overwrite) =>
@@ -76,13 +93,31 @@ case class ApiRoutes(service: ApiService) extends Http4sDsl[IO]:
   private def respond[A](result: IO[Either[ApiError, A]])(using io.circe.Encoder[A]) =
     result.flatMap {
       case Right(value) => Ok(value)
-      case Left(error) => BadRequest(error)
+      case Left(error) => errorResponse(error)
     }
+
+  private def errorResponse(error: ApiError) =
+    if authErrorCodes.contains(error.code) then IO.pure(Response[IO](status = Status.Unauthorized).withEntity(error))
+    else BadRequest(error)
+
+  private val authErrorCodes =
+    Set("unauthorized", "authentication_failed", "authentication_disabled", "invalid_session", "session_expired", "invalid_token", "untrusted_issuer")
 
   private def identity(request: Request[IO]): RequestIdentity =
     val user = request.headers.get(CIString("X-Cagnard-User")).map(_.head.value)
     val auth = request.headers.get(CIString("Authorization")).map(_.head.value)
-    RequestIdentity(user, auth)
+    val cookies = request.headers.headers.filter(_.name == CIString("Cookie")).flatMap(header => parseCookies(header.value)).toMap
+    RequestIdentity(user, auth, cookies)
+
+  private def parseCookies(raw: String): List[(String, String)] =
+    raw
+      .split(";")
+      .toList
+      .flatMap { part =>
+        part.trim.split("=", 2).toList match
+          case key :: value :: Nil if key.nonEmpty => Some(key -> value)
+          case _ => None
+      }
 
   private def safeFileName(name: String): String =
     name.replace("\"", "").replace("\r", "").replace("\n", "")

@@ -1,5 +1,7 @@
 import type {
+  AuthProvidersResponse,
   EntryListResponse,
+  LoginResponse,
   NavigationResponse,
   OperationResponse,
   PreviewResponse,
@@ -7,20 +9,31 @@ import type {
   UiPluginsResponse
 } from "./types";
 
-const defaultHeaders = {
-  "X-Cagnard-User": "alice"
-};
-
 interface ApiResponseBody {
   message?: string;
+  code?: string;
   [key: string]: unknown;
+}
+
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string
+  ) {
+    super(message);
+  }
+}
+
+export function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 401;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
+    credentials: "same-origin",
     headers: {
-      ...defaultHeaders,
       ...(init?.headers ?? {})
     }
   });
@@ -28,7 +41,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const message = body?.message ?? `Request failed with ${response.status}`;
-    throw new Error(message);
+    throw new ApiRequestError(message, response.status, body?.code);
   }
 
   return body as T;
@@ -59,6 +72,17 @@ function operation<T extends Record<string, unknown>>(url: string, body: T) {
 }
 
 export const cagnardApi = {
+  authProviders: () => fetchJson<AuthProvidersResponse>("/api/auth/providers"),
+  login: (providerId: string, username: string, password: string) =>
+    fetchJson<LoginResponse>("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerId, username, password })
+    }),
+  logout: () =>
+    fetchJson<{ success: boolean }>("/api/auth/logout", {
+      method: "POST"
+    }),
   session: () => fetchJson<SessionResponse>("/api/session"),
   navigation: () => fetchJson<NavigationResponse>("/api/storage/navigation"),
   entries: (tunnel: string, rootId: string, path = "") =>
@@ -75,11 +99,11 @@ export const cagnardApi = {
     }),
   download: async (tunnel: string, rootId: string, path: string) => {
     const response = await fetch(`/api/storage/content?${storageParams(tunnel, rootId, path)}`, {
-      headers: defaultHeaders
+      credentials: "same-origin"
     });
     if (!response.ok) {
       const body = await parseOptionalJson(response);
-      throw new Error(body?.message ?? `Download failed with ${response.status}`);
+      throw new ApiRequestError(body?.message ?? `Download failed with ${response.status}`, response.status, body?.code);
     }
     return response.blob();
   },

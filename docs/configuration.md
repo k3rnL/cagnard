@@ -64,10 +64,51 @@ Use ConfigMaps only for non-secret settings. Provider credentials, OIDC client s
 
 Storage root paths declared in configuration are resolved relative to the configuration file location when they are not absolute. This keeps example and deployment bundles relocatable.
 
+## Authentication Modes
+
+`auth.mode` controls how protected API requests resolve the current user:
+
+- `static`: users authenticate through `/api/auth/login`; the backend issues a signed stateless browser session.
+- `development`: local-only compatibility mode that accepts `X-Cagnard-User`, bearer placeholder tokens, or `auth.defaultUser`.
+- `external`: reserved for future OIDC/SSO providers.
+
+The example config uses `static`. In that mode `auth.configuredUsersEnabled` must be `true`, `auth.defaultUser` is ignored, every configured user needs `users[].credential.verifier`, and `auth.session.signingSecret` must be set.
+
+## Static Login
+
+Static users are declared under `users`. Passwords are not configured in plaintext. Each user provides verifier material:
+
+```hocon
+users = [
+  {
+    id = alice
+    displayName = "Alice Example"
+    roles = [user, admin]
+    groups = [engineering]
+    credential {
+      verifier = "pbkdf2-sha256:..."
+    }
+  }
+]
+```
+
+The demo verifier in `config/cagnard.example.conf` accepts `alice` / `cagnard`. It is intentionally only for local use.
+
+## Session Settings
+
+`auth.session` configures stateless browser sessions:
+
+- `signingSecret`: HMAC signing secret for session tokens.
+- `ttlSeconds`: token and cookie lifetime.
+- `cookieName`: browser cookie name, defaulting to `CAGNARD_SESSION`.
+- `secureCookies`: whether to add the `Secure` cookie attribute.
+
+Deployments should externalize `signingSecret` and credential verifiers through HOCON substitutions, mounted secret files, Kubernetes Secrets, or another external secret system.
+
 ## Current Sections
 
 - `server`: bind host and port.
-- `auth`: configured-user mode and OIDC provider declarations.
+- `auth`: authentication mode, static login provider settings, session settings, and future OIDC provider declarations.
 - `users`: local configured users for simple deployments.
 - `providers`: storage provider plugin declarations.
 - `accounts`: provider account declarations.

@@ -24,9 +24,12 @@ Important fields:
 
 ## Operational Notes
 
-- Current local development uses configured users with the `X-Cagnard-User` header.
-- External OIDC authentication is specified as the preferred model.
+- Current local development uses static login by default in the example config.
+- `X-Cagnard-User` is available only when `auth.mode = development`.
+- Static user password verifier material and session signing secrets are sensitive configuration.
 - Credential material should be externalized through environment variables, mounted files, external secret providers, or delegated identity.
+- Authentication failures return the same public category for unknown users and invalid passwords.
+- Storage plugins and UI plugins receive normalized user/profile data, not password verifier material.
 
 ## Known Limitations
 
