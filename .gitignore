@@ -26,3 +26,4 @@ data/
 
 # Local sample/user documents
 examples/storage/**/*.pdf
+.idea
