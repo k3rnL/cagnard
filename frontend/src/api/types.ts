@@ -83,6 +83,9 @@ export interface EntryMetadata {
   retention?: string | null;
   encryption?: string | null;
   unavailable: string[];
+  fileCategory?: string | null;
+  fileIcon?: string | null;
+  mimeTypeSource?: string | null;
 }
 
 export interface StorageEntry {
@@ -123,6 +126,13 @@ export interface UiPluginManifest {
   extensions: string[];
   permissions: string[];
   priority: number;
+  categories?: string[];
+  mode?: string;
+  editMode?: string;
+  readStrategy?: string;
+  saveStrategy?: string;
+  maxSizeBytes?: number;
+  requiredCapabilities?: string[];
 }
 
 export interface UiPluginsResponse {

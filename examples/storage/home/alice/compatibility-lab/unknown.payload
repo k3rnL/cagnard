@@ -1,0 +1,3 @@
+CAGNARD_PAYLOAD_FIXTURE
+
+This file intentionally uses an unknown extension. It should exercise the unsupported-file fallback while download, metadata, copy, move, rename, and delete remain available according to provider capabilities.

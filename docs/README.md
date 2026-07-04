@@ -7,6 +7,7 @@ Feature documentation is organized by spec area:
 - [Stateless backend configuration](features/stateless-backend-configuration.md)
 - [User login flow](features/user-login-flow.md)
 - [Storage browser](features/storage-browser.md)
+- [File compatibility](features/file-compatibility.md)
 - [Storage plugin system](features/storage-plugin-system.md)
 - [Secure account management](features/secure-account-management.md)
 - [User storage access model](features/user-storage-access-model.md)

@@ -57,7 +57,10 @@ case class EntryMetadata(
     version: Option[String],
     retention: Option[String],
     encryption: Option[String],
-    unavailable: List[String]
+    unavailable: List[String],
+    fileCategory: Option[String] = None,
+    fileIcon: Option[String] = None,
+    mimeTypeSource: Option[String] = None
 )
 
 case class StorageEntry(
@@ -94,7 +97,14 @@ case class UiPluginManifest(
     mimeTypes: List[String],
     extensions: List[String],
     permissions: List[String],
-    priority: Int
+    priority: Int,
+    categories: List[String] = Nil,
+    mode: String = "viewer",
+    editMode: String = "none",
+    readStrategy: String = "bounded",
+    saveStrategy: String = "none",
+    maxSizeBytes: Option[Long] = None,
+    requiredCapabilities: List[String] = Nil
 )
 
 case class UiPluginsResponse(plugins: List[UiPluginManifest])

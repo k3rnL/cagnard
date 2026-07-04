@@ -206,6 +206,7 @@ class S3StorageProvider private[storage] (
 
   private def fileEntry(root: ResolvedStorageRoot, target: ObjectStoreRootTarget, metadata: S3ObjectMetadata): StorageEntry =
     val relative = relativeKey(target, metadata.key)
+    val classification = FileTypeCatalog.classify(relative, metadata.contentType)
     StorageEntry(
       id = s"${root.tunnel}:${root.id}:$relative",
       name = fileName(relative),
@@ -213,14 +214,17 @@ class S3StorageProvider private[storage] (
       kind = "file",
       metadata = EntryMetadata(
         size = metadata.size,
-        mimeType = metadata.contentType,
+        mimeType = classification.mimeType.orElse(metadata.contentType),
         owner = None,
         permissions = None,
         modifiedTime = metadata.lastModified.map(_.toString),
         version = metadata.versionId,
         retention = metadata.retention,
         encryption = metadata.encryption,
-        unavailable = unavailableMetadata(metadata)
+        unavailable = unavailableMetadata(metadata),
+        fileCategory = Some(classification.category),
+        fileIcon = Some(classification.icon),
+        mimeTypeSource = Some(classification.source)
       ),
       capabilities = StorageCapabilities.s3(root.readOnly),
       providerSpecific = (Map(
@@ -291,17 +295,10 @@ class S3StorageProvider private[storage] (
     key.endsWith("/")
 
   private def isTextLike(path: String, mimeType: Option[String]): Boolean =
-    val lowerMime = mimeType.getOrElse("").toLowerCase
-    val lowerName = path.toLowerCase
-    lowerMime.startsWith("text/") || lowerName.endsWith(".txt") || lowerName.endsWith(".md") || lowerName.endsWith(".json") || lowerName.endsWith(".csv")
+    FileTypeCatalog.isTextLike(path, mimeType)
 
   private def contentType(path: String): Option[String] =
-    val lower = path.toLowerCase
-    if lower.endsWith(".txt") then Some("text/plain")
-    else if lower.endsWith(".md") then Some("text/markdown")
-    else if lower.endsWith(".json") then Some("application/json")
-    else if lower.endsWith(".csv") then Some("text/csv")
-    else None
+    FileTypeCatalog.fallbackMimeType(path, None)
 
   private def unavailableMetadata(metadata: S3ObjectMetadata): List[String] =
     List(

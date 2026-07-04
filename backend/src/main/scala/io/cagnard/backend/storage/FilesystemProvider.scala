@@ -190,12 +190,11 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
     if parent.isEmpty then name else s"$parent/$name"
 
   private def isTextLike(target: Path): Boolean =
-    val mt = mimeType(target).getOrElse("").toLowerCase
-    val name = target.getFileName.toString.toLowerCase
-    mt.startsWith("text/") || name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".json") || name.endsWith(".csv")
+    FileTypeCatalog.isTextLike(target.getFileName.toString, mimeType(target))
 
   private def mimeType(target: Path): Option[String] =
-    Try(Option(Files.probeContentType(target))).toOption.flatten
+    val detected = Try(Option(Files.probeContentType(target))).toOption.flatten
+    FileTypeCatalog.fallbackMimeType(target.getFileName.toString, detected)
 
   private def entry(root: ResolvedStorageRoot, target: Path): StorageEntry =
     val base = filesystemBase(root).toOption.get.toAbsolutePath.normalize()
@@ -218,7 +217,7 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
       name = name,
       path = normalized,
       kind = kind,
-      metadata = EmptyMetadata(size, detectedMimeType, owner, permissions, modifiedTime),
+      metadata = EmptyMetadata(size, detectedMimeType, owner, permissions, modifiedTime, name),
       capabilities = capabilities(root),
       providerSpecific = Map("filesystem.path" -> absolute.toString)
     )

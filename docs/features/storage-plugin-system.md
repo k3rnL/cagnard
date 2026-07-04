@@ -10,8 +10,10 @@ The Unix filesystem provider supports:
 
 - list and stat
 - raw-byte download
+- full and bounded content reads
 - upload
 - bounded text preview
+- direct overwrite/write-back where root policy allows it
 - create folder
 - rename
 - delete file or empty directory
@@ -28,7 +30,9 @@ The S3-compatible provider supports:
 - bucket and optional prefix roots
 - list and stat
 - raw-byte download and upload with a configurable buffered object limit
+- full and bounded content reads within the buffered object limit
 - bounded text preview
+- direct overwrite/write-back where root policy allows it
 - folder markers for directory-like prefixes
 - copy and delete objects
 - rename and move as degraded copy-then-delete object operations
@@ -74,6 +78,9 @@ providers = [
 - If an S3 root label is omitted, the bucket name is used as the display label.
 - Filesystem operations run with the backend process permissions.
 - Provider capabilities determine which browser actions are available.
+- Content access capabilities distinguish `full-read`, `bounded-read`, `range-read`, and `stream-read`.
+- Current providers expose `full-read` and `bounded-read`; `range-read` and `stream-read` are planned.
+- Write-back is represented through `overwrite` and is disabled for read-only roots.
 - S3 upload/download currently buffers object bytes and defaults to a 64 MiB limit.
 - MinIO-compatible integration tests are opt-in through `CAGNARD_S3_INTEGRATION=true` and S3-specific environment variables.
 
@@ -81,4 +88,4 @@ providers = [
 
 - Google, Azure, WebDAV, and SFTP providers are planned but not implemented.
 - Directory copy is not implemented for the Unix provider.
-- S3 multipart upload, streaming transfer, recursive prefix mutation, IAM/policy management, and bucket administration are future work.
+- S3 multipart upload, range reads, streaming transfer, recursive prefix mutation, IAM/policy management, and bucket administration are future work.

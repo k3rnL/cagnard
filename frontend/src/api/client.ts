@@ -71,6 +71,14 @@ function operation<T extends Record<string, unknown>>(url: string, body: T) {
   });
 }
 
+function putStorageContent(tunnel: string, rootId: string, path: string, body: BodyInit, contentType: string, overwrite = false) {
+  return fetchJson<OperationResponse>(`/api/storage/content?${storageParams(tunnel, rootId, path, { overwrite: String(overwrite) })}`, {
+    method: "PUT",
+    headers: { "Content-Type": contentType || "application/octet-stream" },
+    body
+  });
+}
+
 export const cagnardApi = {
   authProviders: () => fetchJson<AuthProvidersResponse>("/api/auth/providers"),
   login: (providerId: string, username: string, password: string) =>
@@ -92,11 +100,8 @@ export const cagnardApi = {
   preview: (tunnel: string, rootId: string, path: string) =>
     fetchJson<PreviewResponse>(`/api/storage/preview?${storageParams(tunnel, rootId, path)}`),
   upload: (tunnel: string, rootId: string, path: string, file: File, overwrite = false) =>
-    fetchJson<OperationResponse>(`/api/storage/content?${storageParams(tunnel, rootId, path, { overwrite: String(overwrite) })}`, {
-      method: "PUT",
-      headers: { "Content-Type": file.type || "application/octet-stream" },
-      body: file
-    }),
+    putStorageContent(tunnel, rootId, path, file, file.type || "application/octet-stream", overwrite),
+  uploadContent: putStorageContent,
   download: async (tunnel: string, rootId: string, path: string) => {
     const response = await fetch(`/api/storage/content?${storageParams(tunnel, rootId, path)}`, {
       credentials: "same-origin"

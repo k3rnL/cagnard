@@ -1,6 +1,6 @@
 ## Purpose
 
-Defines the provider-neutral browser experience, navigation, metadata, preview, and storage actions.
+Defines the provider-neutral browser experience, navigation, metadata, explicit file opening, and storage actions.
 
 ## Requirements
 
@@ -67,19 +67,27 @@ Cagnard SHALL show breadcrumb navigation for the current path and allow returnin
 - **WHEN** the user activates the root breadcrumb
 - **THEN** Cagnard SHALL list the storage root path
 
+#### Scenario: Label root breadcrumb
+- **WHEN** the active storage root has a display label or nice name
+- **THEN** Cagnard SHALL use that label for the root breadcrumb instead of a generic root label
+
 ### Requirement: Capability-driven browser actions
-Cagnard SHALL enable search, preview, download, upload, create folder, rename, copy, move, and delete actions only when the selected provider, account, and storage entry expose the required capabilities.
+Cagnard SHALL enable search, open, download, upload, create file, create folder, rename, copy, move, and delete actions only when the selected provider, account, storage entry, and registered UI capabilities expose the required capabilities.
 
 #### Scenario: Enable available action
-- **WHEN** a selected storage entry supports download and preview
-- **THEN** Cagnard SHALL offer download and preview actions for that entry
+- **WHEN** a selected storage entry supports download and a compatible opener is available
+- **THEN** Cagnard SHALL offer download and open actions for that entry
 
 #### Scenario: Disable unavailable action
 - **WHEN** a selected storage entry does not support delete
 - **THEN** Cagnard SHALL show delete as unavailable or omit it according to the UI policy
 
 ### Requirement: Basic file actions
-Cagnard SHALL support download, upload, create folder, rename, delete, copy, and move actions for the active storage root when the root and selected entries expose the required capabilities.
+Cagnard SHALL support download, upload, create file, create folder, rename, delete, copy, and move actions for the active storage root when the root and selected entries expose the required capabilities.
+
+#### Scenario: Create file
+- **WHEN** the user creates a file in the current directory
+- **THEN** Cagnard SHALL create the file and refresh the listing
 
 #### Scenario: Create folder
 - **WHEN** the user creates a folder in the current directory
@@ -131,26 +139,45 @@ Cagnard SHALL allow the user to filter and sort the entries currently loaded for
 - **THEN** Cagnard SHALL restrict the displayed entries to matching loaded entries and show the filtered count
 
 #### Scenario: Sort by metadata column
-- **WHEN** the user sorts by name, type, size, modified time, or MIME type
+- **WHEN** the user sorts by name, type, size, modified time, MIME type, or file category
 - **THEN** Cagnard SHALL reorder the current listing by that column while preserving selection semantics
 
-### Requirement: File preview
-Cagnard SHALL preview supported files and objects based on normalized metadata, content type, size limits, provider download or preview capabilities, and registered UI preview plugins.
+### Requirement: File open behavior
+Cagnard SHALL open supported files and objects through an explicit user action based on normalized metadata, content type, file category, size limits, storage capabilities, and registered file opener plugins.
 
-#### Scenario: Preview supported MIME type
-- **WHEN** the user previews an entry with a supported MIME type and accessible content
-- **THEN** Cagnard SHALL render an appropriate preview without requiring the user to download the file manually
+#### Scenario: Open supported MIME type
+- **WHEN** the user opens an entry with a supported MIME type and accessible content
+- **THEN** Cagnard SHALL render the file in an appropriate in-app opener without requiring the user to download it manually
 
-#### Scenario: Refuse unsafe or unsupported preview
-- **WHEN** the entry is too large, has an unsupported MIME type, or lacks a safe preview capability
-- **THEN** Cagnard SHALL decline inline preview and offer available alternative actions
+#### Scenario: Refuse unsafe or unsupported open
+- **WHEN** the entry is too large, has an unsupported type, or lacks required storage capabilities
+- **THEN** Cagnard SHALL decline in-app opening and offer available alternative actions
 
-#### Scenario: Preview supported text file
-- **WHEN** the selected file is a supported text file within the preview size limit
-- **THEN** Cagnard SHALL display the text content in the preview panel
+#### Scenario: Open supported text file
+- **WHEN** the selected file is a supported text-like file within the opener size limit
+- **THEN** Cagnard SHALL display the content in a text-capable opener rather than the browse metadata panel
+
+#### Scenario: Replace list with full opener
+- **WHEN** the user opens a file through the main open action
+- **THEN** Cagnard SHALL replace the file list with the opener surface while preserving breadcrumbs and applicable action controls
+
+#### Scenario: Inline quick open
+- **WHEN** the user activates quick view on a file row
+- **THEN** Cagnard SHALL insert the opener surface inline between that file row and the next entry without leaving the current directory listing
+
+### Requirement: Adaptive browser metadata surface
+Cagnard SHALL show normalized metadata without making the file listing unusable at medium or small viewport widths.
+
+#### Scenario: Show side metadata on wide screen
+- **WHEN** the browser has enough horizontal space for the listing and metadata
+- **THEN** Cagnard MAY show metadata as a side panel next to the file list
+
+#### Scenario: Show metadata drawer on constrained screen
+- **WHEN** the viewport is too narrow for a useful file list and side metadata panel
+- **THEN** Cagnard SHALL expose metadata through a toggleable drawer or equivalent overlay instead of placing it below the list
 
 ### Requirement: Metadata comparison
-Cagnard SHALL provide a normalized metadata view for size, MIME type, owner, permissions, modified time, version, retention, and encryption state across providers.
+Cagnard SHALL provide a normalized metadata view for size, MIME type, file category, owner, permissions, modified time, version, retention, and encryption state across providers.
 
 #### Scenario: Compare normalized metadata
 - **WHEN** the user selects entries from different providers
@@ -163,6 +190,28 @@ Cagnard SHALL provide a normalized metadata view for size, MIME type, owner, per
 #### Scenario: Compare modified time
 - **WHEN** the provider supplies a modified timestamp for an entry
 - **THEN** Cagnard SHALL display the timestamp as normalized metadata and allow sorting by it in the browser listing
+
+### Requirement: File type display
+Cagnard SHALL display file type and icon metadata in browser listings and file metadata surfaces when the information can be classified safely.
+
+#### Scenario: Show classified file type
+- **WHEN** a listed entry has a known MIME type, extension, or category
+- **THEN** Cagnard SHALL show the corresponding type label or icon without provider-specific UI logic
+
+#### Scenario: Show unknown file type
+- **WHEN** a listed entry cannot be classified
+- **THEN** Cagnard SHALL show a generic unknown or binary file representation while preserving available actions
+
+### Requirement: Grouped command bar
+Cagnard SHALL keep primary browser actions directly clickable and group related secondary actions without forcing toolbar wrapping in normal desktop and tablet layouts.
+
+#### Scenario: Primary action remains clickable
+- **WHEN** a command has related secondary actions
+- **THEN** Cagnard SHALL keep the primary action available as a direct button and expose secondary actions through a grouped menu or equivalent control
+
+#### Scenario: Remove redundant up action
+- **WHEN** breadcrumb navigation is available
+- **THEN** Cagnard MAY omit a separate up action from the primary toolbar
 
 ### Requirement: Provider-neutral primary UI
 Cagnard SHALL keep the primary browser workflow provider-neutral while allowing contextual access to provider-specific features.

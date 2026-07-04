@@ -10,10 +10,28 @@ import type {
   StorageEntry,
   UiPluginManifest
 } from "./types";
+import { classifyEntry } from "../plugins/fileTypeCatalog";
+import { canWriteBack, openerBlockedReason, resolveFileOpener } from "../plugins/fileOpeners";
+import type { FileOpenerMatch, OpenerView } from "../plugins/fileOpeners";
 
 export type EntrySelectionMode = "replace" | "toggle" | "range";
-export type EntrySortField = "name" | "kind" | "size" | "modifiedTime" | "mimeType";
+export type EntrySortField = "name" | "kind" | "fileCategory" | "size" | "modifiedTime" | "mimeType";
 export type EntrySortDirection = "asc" | "desc";
+export type OpenedFileViewMode = "archive" | "media" | "pdf" | "rendered" | "source" | "table" | "tree";
+export type OpenedFilePlacement = "page" | "inline";
+
+export interface OpenedFileState {
+  entry: StorageEntry;
+  match?: FileOpenerMatch;
+  placement: OpenedFilePlacement;
+  loading: boolean;
+  error?: string;
+  content?: string;
+  editedContent?: string;
+  blobUrl?: string;
+  viewMode: OpenedFileViewMode;
+  dirty: boolean;
+}
 
 export interface CagnardDataState {
   session?: SessionResponse;
@@ -33,8 +51,7 @@ export interface CagnardDataState {
   selectedEntryIds: string[];
   selectionCount: number;
   uiPlugins: UiPluginManifest[];
-  previewContent?: string;
-  previewLoading: boolean;
+  openedFile?: OpenedFileState;
   operationMessage?: string;
   loginLoading: boolean;
   loginError?: string;
@@ -48,10 +65,20 @@ export interface CagnardDataState {
   clearSelection: () => void;
   setFilterQuery: (query: string) => void;
   setSort: (field: EntrySortField) => void;
+  openEntry: (entry: StorageEntry) => Promise<void>;
+  openInlineEntry: (entry: StorageEntry) => Promise<void>;
+  openSelected: () => Promise<void>;
+  closeOpenedFile: () => void;
+  setOpenedFileViewMode: (mode: OpenedFileViewMode) => void;
+  updateOpenedFileContent: (content: string) => void;
+  prettifyOpenedJson: () => void;
+  minifyOpenedJson: () => void;
+  saveOpenedFile: () => Promise<void>;
   openDirectory: (entry: StorageEntry) => void;
   navigateToPath: (path: string) => void;
   goUp: () => void;
   refresh: () => void;
+  createFile: () => Promise<void>;
   createFolder: () => Promise<void>;
   renameSelected: () => Promise<void>;
   deleteSelected: () => Promise<void>;
@@ -75,8 +102,7 @@ export function useCagnardData(): CagnardDataState {
   const [activeEntryId, setActiveEntryId] = useState<string>();
   const [lastSelectedEntryId, setLastSelectedEntryId] = useState<string>();
   const [uiPlugins, setUiPlugins] = useState<UiPluginManifest[]>([]);
-  const [previewContent, setPreviewContent] = useState<string>();
-  const [previewLoading, setPreviewLoading] = useState(false);
+  const [openedFile, setOpenedFile] = useState<OpenedFileState>();
   const [operationMessage, setOperationMessage] = useState<string>();
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string>();
@@ -122,7 +148,7 @@ export function useCagnardData(): CagnardDataState {
     setCurrentPath("");
     setEntryResponse(undefined);
     setUiPlugins([]);
-    setPreviewContent(undefined);
+    setOpenedFile(undefined);
     setOperationMessage(undefined);
     clearSelection();
   }, [clearSelection]);
@@ -191,7 +217,6 @@ export function useCagnardData(): CagnardDataState {
         if (!active) return;
         setEntryResponse(nextEntries);
         clearSelection();
-        setPreviewContent(undefined);
         setError(undefined);
       })
       .catch((caught: Error) => {
@@ -217,38 +242,17 @@ export function useCagnardData(): CagnardDataState {
   }, [filteredEntryIds]);
 
   useEffect(() => {
-    if (!selectedRoot || !selectedEntry || selectedEntry.kind !== "file") {
-      setPreviewContent(undefined);
-      return;
-    }
-
-    let active = true;
-    setPreviewLoading(true);
-    cagnardApi
-      .preview(selectedRoot.tunnel, selectedRoot.id, selectedEntry.path)
-      .then((preview) => {
-        if (active) setPreviewContent(preview.content);
-      })
-      .catch((caught: Error) => {
-        if (!active) return;
-        if (handleUnauthorized(caught)) return;
-        setPreviewContent(`Preview unavailable: ${caught.message}`);
-      })
-      .finally(() => {
-        if (active) setPreviewLoading(false);
-      });
-
     return () => {
-      active = false;
+      if (openedFile?.blobUrl) URL.revokeObjectURL(openedFile.blobUrl);
     };
-  }, [handleUnauthorized, selectedRoot, selectedEntry]);
+  }, [openedFile?.blobUrl]);
 
   const selectRoot = useCallback((root: NavigationRoot) => {
     setSelectedRoot(root);
     setCurrentPath("");
     setFilterQueryState("");
     setOperationMessage(undefined);
-    setPreviewContent(undefined);
+    setOpenedFile(undefined);
     setSelectedEntryIds([]);
     setActiveEntryId(undefined);
     setLastSelectedEntryId(undefined);
@@ -290,19 +294,191 @@ export function useCagnardData(): CagnardDataState {
     });
   }, []);
 
+  const requireRoot = useCallback(() => {
+    if (!selectedRoot) throw new Error("No storage root selected");
+    return selectedRoot;
+  }, [selectedRoot]);
+
+  const requireSelection = useCallback(() => {
+    if (selectedEntries.length === 0) throw new Error("No entries selected");
+    return selectedEntries;
+  }, [selectedEntries]);
+
+  const requireSingleSelected = useCallback(() => {
+    if (selectedEntries.length !== 1) throw new Error("Select exactly one entry");
+    return selectedEntries[0];
+  }, [selectedEntries]);
+
+  const openFile = useCallback(
+    async (entry: StorageEntry, placement: OpenedFilePlacement) => {
+      const root = requireRoot();
+      const match = resolveFileOpener(entry, uiPlugins);
+      if (!match) {
+        setOpenedFile({
+          entry,
+          placement,
+          loading: false,
+          error: openerBlockedReason(entry, uiPlugins),
+          viewMode: "source",
+          dirty: false
+        });
+        return;
+      }
+
+      const viewMode = defaultViewMode(match.opener.view);
+      setOpenedFile({ entry, match, placement, loading: match.opener.readStrategy !== "metadata", viewMode, dirty: false });
+      setError(undefined);
+      setOperationMessage(undefined);
+
+      if (match.opener.readStrategy === "metadata") {
+        setOpenedFile({ entry, match, placement, loading: false, viewMode, dirty: false });
+        return;
+      }
+
+      try {
+        if (match.opener.readStrategy === "bounded") {
+          const preview = await cagnardApi.preview(root.tunnel, root.id, entry.path);
+          setOpenedFile({
+            entry,
+            match,
+            placement,
+            loading: false,
+            content: preview.content,
+            editedContent: preview.content,
+            viewMode,
+            dirty: false
+          });
+          return;
+        }
+
+        const blob = await cagnardApi.download(root.tunnel, root.id, entry.path);
+        const blobUrl = URL.createObjectURL(blob);
+        setOpenedFile({ entry, match, placement, loading: false, blobUrl, viewMode, dirty: false });
+      } catch (caught) {
+        if (handleUnauthorized(caught)) return;
+        setOpenedFile({
+          entry,
+          match,
+          placement,
+          loading: false,
+          error: caught instanceof Error ? caught.message : String(caught),
+          viewMode,
+          dirty: false
+        });
+      }
+    },
+    [handleUnauthorized, requireRoot, uiPlugins]
+  );
+
+  const openEntry = useCallback(
+    async (entry: StorageEntry) => {
+      if (entry.kind === "directory") {
+        setOpenedFile(undefined);
+        setCurrentPath(entry.path);
+        setFilterQueryState("");
+        return;
+      }
+
+      await openFile(entry, "page");
+    },
+    [openFile]
+  );
+
+  const openInlineEntry = useCallback(
+    async (entry: StorageEntry) => {
+      if (entry.kind === "directory") {
+        setOpenedFile(undefined);
+        setCurrentPath(entry.path);
+        setFilterQueryState("");
+        return;
+      }
+
+      await openFile(entry, "inline");
+    },
+    [openFile]
+  );
+
+  const openSelected = useCallback(async () => {
+    const entry = requireSingleSelected();
+    await openEntry(entry);
+  }, [openEntry, requireSingleSelected]);
+
+  const closeOpenedFile = useCallback(() => {
+    setOpenedFile(undefined);
+  }, []);
+
+  const setOpenedFileViewMode = useCallback((mode: OpenedFileViewMode) => {
+    setOpenedFile((current) => (current ? { ...current, viewMode: mode } : current));
+  }, []);
+
+  const updateOpenedFileContent = useCallback((content: string) => {
+    setOpenedFile((current) => (current ? { ...current, editedContent: content, dirty: content !== (current.content ?? "") } : current));
+  }, []);
+
+  const prettifyOpenedJson = useCallback(() => {
+    setOpenedFile((current) => {
+      if (!current) return current;
+      try {
+        const nextContent = `${JSON.stringify(JSON.parse(current.editedContent ?? current.content ?? ""), null, 2)}\n`;
+        return { ...current, editedContent: nextContent, dirty: nextContent !== (current.content ?? ""), error: undefined, viewMode: "source" };
+      } catch (caught) {
+        return { ...current, error: caught instanceof Error ? caught.message : String(caught) };
+      }
+    });
+  }, []);
+
+  const minifyOpenedJson = useCallback(() => {
+    setOpenedFile((current) => {
+      if (!current) return current;
+      try {
+        const nextContent = JSON.stringify(JSON.parse(current.editedContent ?? current.content ?? ""));
+        return { ...current, editedContent: nextContent, dirty: nextContent !== (current.content ?? ""), error: undefined, viewMode: "source" };
+      } catch (caught) {
+        return { ...current, error: caught instanceof Error ? caught.message : String(caught) };
+      }
+    });
+  }, []);
+
+  const saveOpenedFile = useCallback(async () => {
+    const root = requireRoot();
+    const current = openedFile;
+    if (!current?.match) throw new Error("No opened file to save");
+    if (!canWriteBack(current.entry, root.readOnly)) {
+      setOpenedFile({ ...current, error: "This storage entry does not support write-back." });
+      return;
+    }
+
+    const content = current.editedContent ?? current.content;
+    if (content === undefined) return;
+
+    try {
+      const contentType = current.entry.metadata.mimeType ?? current.match.classification.mimeType ?? "text/plain";
+      await cagnardApi.uploadContent(root.tunnel, root.id, current.entry.path, new Blob([content], { type: contentType }), contentType, true);
+      setOpenedFile({ ...current, content, editedContent: content, dirty: false, error: undefined });
+      setOperationMessage(`Saved ${current.entry.name}`);
+      setRefreshTick((value) => value + 1);
+    } catch (caught) {
+      if (handleUnauthorized(caught)) return;
+      setOpenedFile({ ...current, error: caught instanceof Error ? caught.message : String(caught) });
+    }
+  }, [handleUnauthorized, openedFile, requireRoot]);
+
   const openDirectory = useCallback((entry: StorageEntry) => {
     if (entry.kind === "directory") {
+      setOpenedFile(undefined);
       setCurrentPath(entry.path);
       setFilterQueryState("");
     }
   }, []);
 
   const navigateToPath = useCallback((path: string) => {
+    setOpenedFile(undefined);
     setCurrentPath(path);
     setFilterQueryState("");
   }, []);
 
   const goUp = useCallback(() => {
+    setOpenedFile(undefined);
     setCurrentPath((path) => {
       if (!path) return "";
       const parts = path.split("/").filter(Boolean);
@@ -358,20 +534,13 @@ export function useCagnardData(): CagnardDataState {
     }
   }, [resetAuthenticatedState]);
 
-  const requireRoot = useCallback(() => {
-    if (!selectedRoot) throw new Error("No storage root selected");
-    return selectedRoot;
-  }, [selectedRoot]);
-
-  const requireSelection = useCallback(() => {
-    if (selectedEntries.length === 0) throw new Error("No entries selected");
-    return selectedEntries;
-  }, [selectedEntries]);
-
-  const requireSingleSelected = useCallback(() => {
-    if (selectedEntries.length !== 1) throw new Error("Select exactly one entry");
-    return selectedEntries[0];
-  }, [selectedEntries]);
+  const createFile = useCallback(async () => {
+    const root = requireRoot();
+    const name = window.prompt("File name", "untitled.txt");
+    if (!name) return;
+    const target = currentPath ? `${currentPath}/${name}` : name;
+    await mutate(() => cagnardApi.uploadContent(root.tunnel, root.id, target, new Blob([""], { type: "text/plain" }), "text/plain", false));
+  }, [currentPath, mutate, requireRoot]);
 
   const createFolder = useCallback(async () => {
     const root = requireRoot();
@@ -507,8 +676,7 @@ export function useCagnardData(): CagnardDataState {
       selectedEntryIds,
       selectionCount: selectedEntries.length,
       uiPlugins,
-      previewContent,
-      previewLoading,
+      openedFile,
       operationMessage,
       loginLoading,
       loginError,
@@ -522,10 +690,20 @@ export function useCagnardData(): CagnardDataState {
       clearSelection,
       setFilterQuery,
       setSort,
+      openEntry,
+      openInlineEntry,
+      openSelected,
+      closeOpenedFile,
+      setOpenedFileViewMode,
+      updateOpenedFileContent,
+      prettifyOpenedJson,
+      minifyOpenedJson,
+      saveOpenedFile,
       openDirectory,
       navigateToPath,
       goUp,
       refresh,
+      createFile,
       createFolder,
       renameSelected,
       deleteSelected,
@@ -537,6 +715,7 @@ export function useCagnardData(): CagnardDataState {
     [
       authProviders,
       copySelected,
+      createFile,
       createFolder,
       deleteSelected,
       downloadSelected,
@@ -555,8 +734,10 @@ export function useCagnardData(): CagnardDataState {
       navigation,
       openDirectory,
       operationMessage,
-      previewContent,
-      previewLoading,
+      openedFile,
+      openEntry,
+      openInlineEntry,
+      openSelected,
       refresh,
       renameSelected,
       clearSelection,
@@ -568,10 +749,16 @@ export function useCagnardData(): CagnardDataState {
       selectedEntryIds,
       selectedRoot,
       setFilterQuery,
+      setOpenedFileViewMode,
       session,
       sourceEntries.length,
       sortDirection,
       sortField,
+      closeOpenedFile,
+      updateOpenedFileContent,
+      prettifyOpenedJson,
+      minifyOpenedJson,
+      saveOpenedFile,
       setSort,
       uiPlugins,
       uploadFile
@@ -624,11 +811,15 @@ function buildNextSelection(
 }
 
 function entrySearchHaystack(entry: StorageEntry): string {
+  const classification = classifyEntry(entry);
   return [
     entry.name,
     entry.path,
     entry.kind,
+    classification.category,
+    classification.label,
     entry.metadata.mimeType,
+    entry.metadata.fileCategory,
     entry.metadata.owner,
     entry.metadata.permissions,
     entry.metadata.modifiedTime,
@@ -684,6 +875,8 @@ function missingValue(entry: StorageEntry, field: EntrySortField): boolean {
       return !entry.metadata.modifiedTime;
     case "mimeType":
       return !entry.metadata.mimeType;
+    case "fileCategory":
+      return !classifyEntry(entry).category;
     default:
       return false;
   }
@@ -699,9 +892,31 @@ function compareByField(left: StorageEntry, right: StorageEntry, field: EntrySor
       return compareTime(left.metadata.modifiedTime, right.metadata.modifiedTime);
     case "mimeType":
       return compareText(left.metadata.mimeType ?? "", right.metadata.mimeType ?? "");
+    case "fileCategory":
+      return compareText(classifyEntry(left).label, classifyEntry(right).label);
     case "name":
     default:
       return compareText(left.name, right.name);
+  }
+}
+
+function defaultViewMode(view: OpenerView): OpenedFileViewMode {
+  switch (view) {
+    case "archive":
+      return "archive";
+    case "csv":
+      return "table";
+    case "json":
+      return "tree";
+    case "markdown":
+      return "rendered";
+    case "media":
+      return "media";
+    case "pdf":
+      return "pdf";
+    case "text":
+    default:
+      return "source";
   }
 }
 

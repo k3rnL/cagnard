@@ -66,6 +66,8 @@ class S3StorageProviderSuite extends FunSuite:
 
     assertEquals(entry.metadata.size, Some(10L))
     assertEquals(entry.metadata.mimeType, Some("text/plain"))
+    assertEquals(entry.metadata.fileCategory, Some("text"))
+    assertEquals(entry.metadata.fileIcon, Some("file-text"))
     assertEquals(entry.metadata.version, Some("v1"))
     assertEquals(entry.metadata.encryption, Some("AES256"))
     assertEquals(entry.metadata.retention, Some("GOVERNANCE"))
@@ -108,6 +110,9 @@ class S3StorageProviderSuite extends FunSuite:
 
     assertEquals(capabilities("rename"), "degraded")
     assertEquals(capabilities("move"), "degraded")
+    assertEquals(capabilities("open"), "supported")
+    assertEquals(capabilities("bounded-read"), "supported")
+    assertEquals(capabilities("stream-read"), "planned")
   }
 
   test("runs opt-in S3-compatible integration smoke test") {

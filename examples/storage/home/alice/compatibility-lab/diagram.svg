@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
+  <title id="title">Cagnard file opener flow</title>
+  <desc id="desc">A simple diagram showing file metadata flowing into opener selection and rendering.</desc>
+  <rect width="640" height="360" fill="#fbfbf8"/>
+  <rect x="44" y="84" width="142" height="92" rx="8" fill="#e5eee9" stroke="#255f54" stroke-width="2"/>
+  <rect x="249" y="84" width="142" height="92" rx="8" fill="#eef2ed" stroke="#60706b" stroke-width="2"/>
+  <rect x="454" y="84" width="142" height="92" rx="8" fill="#fffaf0" stroke="#7a6852" stroke-width="2"/>
+  <text x="115" y="124" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#263230">Metadata</text>
+  <text x="320" y="124" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#263230">Registry</text>
+  <text x="525" y="124" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#263230">Opener</text>
+  <path d="M186 130 H249" stroke="#255f54" stroke-width="3" fill="none"/>
+  <path d="M391 130 H454" stroke="#255f54" stroke-width="3" fill="none"/>
+  <path d="M238 122 L249 130 L238 138" stroke="#255f54" stroke-width="3" fill="none"/>
+  <path d="M443 122 L454 130 L443 138" stroke="#255f54" stroke-width="3" fill="none"/>
+  <text x="320" y="240" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#60706b">classification + capabilities + limits</text>
+</svg>

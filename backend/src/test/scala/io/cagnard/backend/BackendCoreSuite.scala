@@ -16,7 +16,7 @@ import io.cagnard.backend.api.{
 import io.cagnard.backend.api.ApiModels.given
 import io.cagnard.backend.auth.{AccessService, RequestIdentity}
 import io.cagnard.backend.config.*
-import io.cagnard.backend.storage.{FilesystemRootTarget, ResolvedStorageRoot, StorageRegistry}
+import io.cagnard.backend.storage.{FileTypeCatalog, FilesystemRootTarget, ResolvedStorageRoot, StorageRegistry}
 import com.typesafe.config.ConfigFactory
 import munit.CatsEffectSuite
 import org.http4s.{Header, Method, Request, Response, Status, Uri}
@@ -169,10 +169,34 @@ class BackendCoreSuite extends CatsEffectSuite:
 
     assertEquals(capabilityNames("list"), "supported")
     assertEquals(capabilityNames("stat"), "supported")
+    assertEquals(capabilityNames("open"), "supported")
     assertEquals(capabilityNames("preview"), "supported")
+    assertEquals(capabilityNames("bounded-read"), "supported")
+    assertEquals(capabilityNames("full-read"), "supported")
+    assertEquals(capabilityNames("range-read"), "planned")
+    assertEquals(capabilityNames("stream-read"), "planned")
+    assertEquals(capabilityNames("overwrite"), "supported")
     assertEquals(capabilityNames("delete"), "supported")
     assertEquals(capabilityNames("upload"), "supported")
     assertEquals(capabilityNames("create-folder"), "supported")
+  }
+
+  test("classifies common file types with MIME, category, and icons") {
+    val json = FileTypeCatalog.classify("payload.json", None)
+    val csv = FileTypeCatalog.classify("export.csv", None)
+    val archive = FileTypeCatalog.classify("backup.tar.gz", None)
+    val providerImage = FileTypeCatalog.classify("unknown", Some("image/png"))
+    val unknown = FileTypeCatalog.classify("payload.unknown", None)
+
+    assertEquals(json.mimeType, Some("application/json"))
+    assertEquals(json.category, "json")
+    assertEquals(json.icon, "file-json")
+    assert(json.textLike)
+    assertEquals(csv.category, "csv")
+    assertEquals(archive.category, "archive")
+    assertEquals(providerImage.category, "image")
+    assertEquals(unknown.category, "binary")
+    assertEquals(unknown.source, "unknown")
   }
 
   test("lists files through the Unix filesystem provider") {
@@ -187,6 +211,8 @@ class BackendCoreSuite extends CatsEffectSuite:
           assertEquals(entries.map(_.name), List("note.txt"))
           assertEquals(entries.head.kind, "file")
           assertEquals(entries.head.metadata.size, Some(5L))
+          assertEquals(entries.head.metadata.fileCategory, Some("text"))
+          assertEquals(entries.head.metadata.fileIcon, Some("file-text"))
           assert(entries.head.metadata.modifiedTime.nonEmpty)
         }
       }
