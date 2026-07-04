@@ -86,6 +86,9 @@ case class ApiRoutes(service: ApiService) extends Http4sDsl[IO]:
       case request @ POST -> Root / "api" / "storage" / "move" =>
         request.as[MoveEntryRequest].flatMap(body => respond(service.moveEntry(identity(request), body)))
 
+      case request @ POST -> Root / "api" / "storage" / "transfer" =>
+        request.as[TransferRequest].flatMap(body => respond(service.transferEntries(identity(request), body)))
+
       case request @ GET -> Root / "api" / "plugins" / "ui" =>
         respond(service.uiPlugins(identity(request)))
     }

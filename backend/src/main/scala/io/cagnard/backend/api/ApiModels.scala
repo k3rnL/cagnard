@@ -89,6 +89,30 @@ case class CopyEntryRequest(tunnel: String, rootId: String, sourcePath: String, 
 
 case class MoveEntryRequest(tunnel: String, rootId: String, sourcePath: String, targetPath: String, overwrite: Boolean)
 
+case class TransferSourceRequest(intent: String, tunnel: String, rootId: String, path: String)
+
+case class TransferDestinationRequest(tunnel: String, rootId: String, path: String)
+
+case class TransferRequest(
+    sources: List[TransferSourceRequest],
+    destination: TransferDestinationRequest,
+    conflictPolicy: String
+)
+
+case class TransferItemResult(
+    intent: String,
+    sourceTunnel: String,
+    sourceRootId: String,
+    sourcePath: String,
+    targetPath: Option[String],
+    status: String,
+    message: String,
+    entry: Option[StorageEntry],
+    children: List[TransferItemResult] = Nil
+)
+
+case class TransferResponse(success: Boolean, message: String, results: List[TransferItemResult])
+
 case class UiPluginManifest(
     id: String,
     label: String,
@@ -181,6 +205,19 @@ object ApiModels:
 
   given Encoder[MoveEntryRequest] = deriveEncoder
   given Decoder[MoveEntryRequest] = deriveDecoder
+
+  given Encoder[TransferSourceRequest] = deriveEncoder
+  given Decoder[TransferSourceRequest] = deriveDecoder
+
+  given Encoder[TransferDestinationRequest] = deriveEncoder
+  given Decoder[TransferDestinationRequest] = deriveDecoder
+
+  given Encoder[TransferRequest] = deriveEncoder
+  given Decoder[TransferRequest] = deriveDecoder
+
+  given Encoder[TransferItemResult] = deriveEncoder
+
+  given Encoder[TransferResponse] = deriveEncoder
 
   given Encoder[UiPluginManifest] = deriveEncoder
   given Decoder[UiPluginManifest] = deriveDecoder

@@ -110,6 +110,46 @@ export interface OperationResponse {
   entry?: StorageEntry;
 }
 
+export type TransferIntent = "copy" | "move";
+export type TransferConflictPolicy = "fail" | "skip" | "keep-both" | "replace";
+
+export interface TransferSourceRequest {
+  intent: TransferIntent;
+  tunnel: "personal" | "global";
+  rootId: string;
+  path: string;
+}
+
+export interface TransferDestinationRequest {
+  tunnel: "personal" | "global";
+  rootId: string;
+  path: string;
+}
+
+export interface TransferRequest {
+  sources: TransferSourceRequest[];
+  destination: TransferDestinationRequest;
+  conflictPolicy: TransferConflictPolicy;
+}
+
+export interface TransferItemResult {
+  intent: TransferIntent;
+  sourceTunnel: string;
+  sourceRootId: string;
+  sourcePath: string;
+  targetPath?: string;
+  status: "copied" | "moved" | "skipped" | "conflict" | "failed" | "partial" | string;
+  message: string;
+  entry?: StorageEntry;
+  children: TransferItemResult[];
+}
+
+export interface TransferResponse {
+  success: boolean;
+  message: string;
+  results: TransferItemResult[];
+}
+
 export interface PreviewResponse {
   path: string;
   mimeType?: string;

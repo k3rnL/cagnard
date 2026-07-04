@@ -11,6 +11,9 @@ import io.cagnard.backend.api.{
   LoginResponse,
   LogoutResponse,
   SessionResponse,
+  TransferDestinationRequest,
+  TransferRequest,
+  TransferSourceRequest,
   UserProfile
 }
 import io.cagnard.backend.api.ApiModels.given
@@ -461,6 +464,131 @@ class BackendCoreSuite extends CatsEffectSuite:
     }
   }
 
+  test("transfers files within the same root with standard conflict policies") {
+    tempDirectory.use { root =>
+      IO.blocking {
+        Files.createDirectories(root.resolve("source"))
+        Files.createDirectories(root.resolve("target"))
+        Files.writeString(root.resolve("source/note.txt"), "one")
+        Files.writeString(root.resolve("source/move.txt"), "move me")
+        Files.writeString(root.resolve("target/note.txt"), "existing")
+      } *> serviceFor(testConfig(root)).flatMap { service =>
+        val copyRequest = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "source/note.txt")),
+          destination = TransferDestinationRequest("personal", "home", "target"),
+          conflictPolicy = "fail"
+        )
+        val moveRequest = TransferRequest(
+          sources = List(TransferSourceRequest("move", "personal", "home", "source/move.txt")),
+          destination = TransferDestinationRequest("personal", "home", "target"),
+          conflictPolicy = "fail"
+        )
+
+        for
+          conflict <- service.transferEntries(identity, copyRequest)
+          keepBoth <- service.transferEntries(identity, copyRequest.copy(conflictPolicy = "keep-both"))
+          replace <- service.transferEntries(identity, copyRequest.copy(conflictPolicy = "replace"))
+          moved <- service.transferEntries(identity, moveRequest)
+        yield
+          val conflictResponse = conflict.toOption.get
+          val keepBothResponse = keepBoth.toOption.get
+          val replaceResponse = replace.toOption.get
+          val movedResponse = moved.toOption.get
+
+          assertEquals(conflictResponse.success, false)
+          assertEquals(conflictResponse.results.head.status, "conflict")
+          assertEquals(keepBothResponse.success, true)
+          assertEquals(keepBothResponse.results.head.targetPath, Some("target/note copy.txt"))
+          assertEquals(Files.readString(root.resolve("target/note copy.txt")), "one")
+          assertEquals(replaceResponse.success, true)
+          assertEquals(Files.readString(root.resolve("target/note.txt")), "one")
+          assertEquals(movedResponse.results.head.status, "moved")
+          assertEquals(Files.readString(root.resolve("target/move.txt")), "move me")
+          assert(!Files.exists(root.resolve("source/move.txt")))
+      }
+    }
+  }
+
+  test("transfers recursive directories between provider-neutral filesystem roots") {
+    tempDirectory.use { root =>
+      val sourceHome = root.resolve("source").resolve("alice")
+      val destination = root.resolve("destination")
+      IO.blocking {
+        Files.createDirectories(sourceHome.resolve("docs/nested"))
+        Files.createDirectories(sourceHome.resolve("move-me"))
+        Files.createDirectories(destination)
+        Files.writeString(sourceHome.resolve("docs/root.txt"), "root")
+        Files.writeString(sourceHome.resolve("docs/nested/child.txt"), "child")
+        Files.writeString(sourceHome.resolve("move-me/child.txt"), "move child")
+      } *> serviceFor(twoFilesystemProviderConfig(root)).flatMap { service =>
+        val copyRequest = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "docs")),
+          destination = TransferDestinationRequest("global", "shared", "incoming"),
+          conflictPolicy = "fail"
+        )
+        val blockedSelfCopy = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "docs")),
+          destination = TransferDestinationRequest("personal", "home", "docs"),
+          conflictPolicy = "fail"
+        )
+        val moveRequest = TransferRequest(
+          sources = List(TransferSourceRequest("move", "personal", "home", "move-me")),
+          destination = TransferDestinationRequest("global", "shared", "moved"),
+          conflictPolicy = "fail"
+        )
+
+        for
+          copied <- service.transferEntries(identity, copyRequest)
+          blocked <- service.transferEntries(identity, blockedSelfCopy)
+          moved <- service.transferEntries(identity, moveRequest)
+        yield
+          val copiedResponse = copied.toOption.get
+          val blockedResponse = blocked.toOption.get
+          val movedResponse = moved.toOption.get
+
+          assertEquals(copiedResponse.success, true)
+          assertEquals(copiedResponse.results.head.status, "copied")
+          assertEquals(Files.readString(destination.resolve("incoming/docs/root.txt")), "root")
+          assertEquals(Files.readString(destination.resolve("incoming/docs/nested/child.txt")), "child")
+
+          assertEquals(blockedResponse.success, false)
+          assertEquals(blockedResponse.results.head.status, "failed")
+          assert(blockedResponse.results.head.message.contains("into itself"))
+
+          assertEquals(movedResponse.success, true)
+          assertEquals(movedResponse.results.head.status, "moved")
+          assertEquals(Files.readString(destination.resolve("moved/move-me/child.txt")), "move child")
+          assert(!Files.exists(sourceHome.resolve("move-me")))
+      }
+    }
+  }
+
+  test("enforces configured buffered transfer limits before uploading") {
+    tempDirectory.use { root =>
+      val sourceHome = root.resolve("source").resolve("alice")
+      val destination = root.resolve("destination")
+      IO.blocking {
+        Files.createDirectories(sourceHome)
+        Files.createDirectories(destination)
+        Files.writeString(sourceHome.resolve("oversized.txt"), "12345")
+      } *> serviceFor(twoFilesystemProviderConfig(root, destinationBufferedLimit = Some(4L))).flatMap { service =>
+        val request = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "oversized.txt")),
+          destination = TransferDestinationRequest("global", "shared", ""),
+          conflictPolicy = "fail"
+        )
+
+        service.transferEntries(identity, request).map { result =>
+          val response = result.toOption.get
+          assertEquals(response.success, false)
+          assertEquals(response.results.head.status, "failed")
+          assert(response.results.head.message.contains("buffered transfer limit"))
+          assert(!Files.exists(destination.resolve("oversized.txt")))
+        }
+      }
+    }
+  }
+
   private def tempDirectory =
     cats.effect.Resource.make(IO.blocking(Files.createTempDirectory("cagnard-test"))) { path =>
       IO.blocking(deleteRecursively(path)).void
@@ -509,6 +637,54 @@ class BackendCoreSuite extends CatsEffectSuite:
         )
       )
     )
+
+  private def twoFilesystemProviderConfig(root: Path, destinationBufferedLimit: Option[Long] = None): CagnardConfig =
+    val base = testConfig(root)
+    base.copy(
+      providers = List(
+        ProviderConfig("local-source", "filesystem", "unix", "Local source filesystem", None),
+        ProviderConfig(
+          "local-destination",
+          "filesystem",
+          "unix",
+          "Local destination filesystem",
+          destinationBufferedLimit.map(limit => Map("maxBufferedObjectBytes" -> limit.toString))
+        )
+      ),
+      accounts = List(
+        StorageAccountConfig("source-account", "local-source", "Local source", enabled = true, readOnly = false, "local-process", None),
+        StorageAccountConfig("destination-account", "local-destination", "Local destination", enabled = true, readOnly = false, "local-process", None)
+      ),
+      personalStorage = List(
+        StorageRootConfig(
+          "home",
+          Some("Home"),
+          "local-source",
+          "source-account",
+          Some(root.resolve("source/{user.id}").toString),
+          None,
+          Some(List("alice")),
+          None,
+          None
+        )
+      ),
+      globalStorage = List(
+        StorageRootConfig(
+          "shared",
+          Some("Global"),
+          "local-destination",
+          "destination-account",
+          Some(root.resolve("destination").toString),
+          None,
+          None,
+          Some(List("user")),
+          None
+        )
+      )
+    )
+
+  private def serviceFor(config: CagnardConfig): IO[ApiService] =
+    IO.fromEither(StorageRegistry.fromConfig(config)).map(registry => ApiService(config, registry))
 
   private def appFor(config: CagnardConfig) =
     IO.fromEither(StorageRegistry.fromConfig(config)).map { registry =>

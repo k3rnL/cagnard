@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cagnardApi, isUnauthorizedError } from "./client";
 import type {
@@ -8,6 +8,8 @@ import type {
   NavigationRoot,
   SessionResponse,
   StorageEntry,
+  TransferConflictPolicy,
+  TransferItemResult,
   UiPluginManifest
 } from "./types";
 import { classifyEntry } from "../plugins/fileTypeCatalog";
@@ -33,6 +35,75 @@ export interface OpenedFileState {
   dirty: boolean;
 }
 
+export type BrowserModalResult = string | boolean | ConflictModalResult | undefined;
+
+export interface ConflictModalResult {
+  policy: TransferConflictPolicy;
+  applyToAll: boolean;
+}
+
+export type BrowserModalState =
+  | {
+      id: number;
+      kind: "text";
+      title: string;
+      label: string;
+      defaultValue?: string;
+      confirmLabel: string;
+      placeholder?: string;
+      validate?: (value: string) => string | undefined;
+    }
+  | {
+      id: number;
+      kind: "confirm";
+      title: string;
+      message: string;
+      confirmLabel: string;
+      danger?: boolean;
+    }
+  | {
+      id: number;
+      kind: "message";
+      title: string;
+      message: string;
+      confirmLabel?: string;
+      danger?: boolean;
+    }
+  | {
+      id: number;
+      kind: "conflict";
+      title: string;
+      message: string;
+      canReplace: boolean;
+      canKeepBoth: boolean;
+    };
+
+export type BrowserModalDraft =
+  | Omit<Extract<BrowserModalState, { kind: "text" }>, "id">
+  | Omit<Extract<BrowserModalState, { kind: "confirm" }>, "id">
+  | Omit<Extract<BrowserModalState, { kind: "message" }>, "id">
+  | Omit<Extract<BrowserModalState, { kind: "conflict" }>, "id">;
+
+export type PasteboardIntent = "copy" | "move";
+
+export interface PasteboardItem {
+  id: string;
+  intent: PasteboardIntent;
+  selected: boolean;
+  addedAt: number;
+  source: {
+    tunnel: "personal" | "global";
+    rootId: string;
+    rootLabel: string;
+    providerFamily: string;
+    providerId: string;
+    accountId: string;
+    readOnly: boolean;
+    path: string;
+  };
+  entry: StorageEntry;
+}
+
 export interface CagnardDataState {
   session?: SessionResponse;
   authProviders: AuthProviderMetadata[];
@@ -52,6 +123,10 @@ export interface CagnardDataState {
   selectionCount: number;
   uiPlugins: UiPluginManifest[];
   openedFile?: OpenedFileState;
+  modal?: BrowserModalState;
+  pasteboardItems: PasteboardItem[];
+  pasteboardSelectedCount: number;
+  pasteboardBusy: boolean;
   operationMessage?: string;
   loginLoading: boolean;
   loginError?: string;
@@ -84,6 +159,13 @@ export interface CagnardDataState {
   deleteSelected: () => Promise<void>;
   copySelected: () => Promise<void>;
   moveSelected: () => Promise<void>;
+  removePasteboardItem: (id: string) => void;
+  clearPasteboard: () => void;
+  togglePasteboardItem: (id: string) => void;
+  pasteboardTransfer: (intent?: PasteboardIntent) => Promise<void>;
+  cancelModal: () => void;
+  submitModal: (value: BrowserModalResult) => void;
+  showMessage: (title: string, message: string, danger?: boolean) => Promise<void>;
   uploadFile: (file: File) => Promise<void>;
   downloadSelected: () => Promise<void>;
 }
@@ -103,12 +185,26 @@ export function useCagnardData(): CagnardDataState {
   const [lastSelectedEntryId, setLastSelectedEntryId] = useState<string>();
   const [uiPlugins, setUiPlugins] = useState<UiPluginManifest[]>([]);
   const [openedFile, setOpenedFile] = useState<OpenedFileState>();
+  const [modal, setModal] = useState<BrowserModalState>();
+  const [pasteboardItems, setPasteboardItems] = useState<PasteboardItem[]>([]);
+  const [pasteboardBusy, setPasteboardBusy] = useState(false);
   const [operationMessage, setOperationMessage] = useState<string>();
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [refreshTick, setRefreshTick] = useState(0);
+  const modalSequence = useRef(0);
+  const modalResolver = useRef<((value: BrowserModalResult) => void) | undefined>();
+  const pasteboardChannel = useRef<BroadcastChannel | undefined>();
+  const pasteboardItemsRef = useRef<PasteboardItem[]>([]);
+  const pasteboardBroadcastReady = useRef(false);
+  const suppressPasteboardBroadcast = useRef(false);
+
+  const pasteboardSelectedCount = useMemo(
+    () => pasteboardItems.filter((item) => item.selected).length,
+    [pasteboardItems]
+  );
 
   const sourceEntries = useMemo(() => entryResponse?.entries ?? [], [entryResponse]);
   const normalizedFilter = filterQuery.trim().toLowerCase();
@@ -135,6 +231,32 @@ export function useCagnardData(): CagnardDataState {
     return selectedEntries[0];
   }, [activeEntryId, entriesById, selectedEntries]);
 
+  useEffect(() => {
+    pasteboardItemsRef.current = pasteboardItems;
+  }, [pasteboardItems]);
+
+  const openModal = useCallback((nextModal: BrowserModalDraft) => {
+    modalResolver.current?.(undefined);
+    const id = modalSequence.current + 1;
+    modalSequence.current = id;
+    setModal({ ...nextModal, id } as BrowserModalState);
+    return new Promise<BrowserModalResult>((resolve) => {
+      modalResolver.current = resolve;
+    });
+  }, []);
+
+  const submitModal = useCallback((value: BrowserModalResult) => {
+    modalResolver.current?.(value);
+    modalResolver.current = undefined;
+    setModal(undefined);
+  }, []);
+
+  const cancelModal = useCallback(() => {
+    modalResolver.current?.(undefined);
+    modalResolver.current = undefined;
+    setModal(undefined);
+  }, []);
+
   const clearSelection = useCallback(() => {
     setSelectedEntryIds([]);
     setActiveEntryId(undefined);
@@ -149,6 +271,10 @@ export function useCagnardData(): CagnardDataState {
     setEntryResponse(undefined);
     setUiPlugins([]);
     setOpenedFile(undefined);
+    modalResolver.current?.(undefined);
+    modalResolver.current = undefined;
+    setModal(undefined);
+    setPasteboardItems([]);
     setOperationMessage(undefined);
     clearSelection();
   }, [clearSelection]);
@@ -205,6 +331,47 @@ export function useCagnardData(): CagnardDataState {
       active = false;
     };
   }, [loadApplication]);
+
+  useEffect(() => {
+    if (!session?.user.id || typeof BroadcastChannel === "undefined") return;
+
+    const channel = new BroadcastChannel(`cagnard-pasteboard:${session.user.id}`);
+    pasteboardChannel.current = channel;
+    pasteboardBroadcastReady.current = false;
+
+    channel.onmessage = (event: MessageEvent<{ type: string; items?: PasteboardItem[] }>) => {
+      if (event.data?.type === "request") {
+        channel.postMessage({ type: "update", items: pasteboardItemsRef.current });
+        return;
+      }
+
+      if (event.data?.type === "update" && Array.isArray(event.data.items)) {
+        suppressPasteboardBroadcast.current = true;
+        setPasteboardItems(event.data.items);
+      }
+    };
+
+    channel.postMessage({ type: "request" });
+
+    return () => {
+      channel.close();
+      if (pasteboardChannel.current === channel) pasteboardChannel.current = undefined;
+    };
+  }, [session?.user.id]);
+
+  useEffect(() => {
+    if (!session?.user.id) return;
+    if (!pasteboardBroadcastReady.current) {
+      pasteboardBroadcastReady.current = true;
+      suppressPasteboardBroadcast.current = false;
+      return;
+    }
+    if (suppressPasteboardBroadcast.current) {
+      suppressPasteboardBroadcast.current = false;
+      return;
+    }
+    pasteboardChannel.current?.postMessage({ type: "update", items: pasteboardItems });
+  }, [pasteboardItems, session?.user.id]);
 
   useEffect(() => {
     if (!session || !selectedRoot) return;
@@ -534,91 +701,221 @@ export function useCagnardData(): CagnardDataState {
     }
   }, [resetAuthenticatedState]);
 
+  const askText = useCallback(
+    async ({
+      title,
+      label,
+      defaultValue,
+      confirmLabel,
+      placeholder
+    }: {
+      title: string;
+      label: string;
+      defaultValue?: string;
+      confirmLabel: string;
+      placeholder?: string;
+    }) => {
+      const result = await openModal({
+        kind: "text",
+        title,
+        label,
+        defaultValue,
+        confirmLabel,
+        placeholder,
+        validate: validateEntryName
+      });
+      return typeof result === "string" ? result.trim() : undefined;
+    },
+    [openModal]
+  );
+
+  const askConfirm = useCallback(
+    async ({ title, message, confirmLabel, danger = false }: { title: string; message: string; confirmLabel: string; danger?: boolean }) => {
+      const result = await openModal({ kind: "confirm", title, message, confirmLabel, danger });
+      return result === true;
+    },
+    [openModal]
+  );
+
+  const askConflictPolicy = useCallback(
+    async (message: string) => {
+      const result = await openModal({
+        kind: "conflict",
+        title: "Resolve name conflict",
+        message,
+        canReplace: true,
+        canKeepBoth: true
+      });
+      return typeof result === "object" ? result : undefined;
+    },
+    [openModal]
+  );
+
+  const showMessage = useCallback(
+    async (title: string, message: string, danger = false) => {
+      await openModal({ kind: "message", title, message, danger, confirmLabel: "OK" });
+    },
+    [openModal]
+  );
+
   const createFile = useCallback(async () => {
     const root = requireRoot();
-    const name = window.prompt("File name", "untitled.txt");
+    const name = await askText({ title: "New file", label: "File name", defaultValue: "untitled.txt", confirmLabel: "Create" });
     if (!name) return;
     const target = currentPath ? `${currentPath}/${name}` : name;
     await mutate(() => cagnardApi.uploadContent(root.tunnel, root.id, target, new Blob([""], { type: "text/plain" }), "text/plain", false));
-  }, [currentPath, mutate, requireRoot]);
+  }, [askText, currentPath, mutate, requireRoot]);
 
   const createFolder = useCallback(async () => {
     const root = requireRoot();
-    const name = window.prompt("Folder name");
+    const name = await askText({ title: "New folder", label: "Folder name", confirmLabel: "Create" });
     if (!name) return;
     await mutate(() => cagnardApi.createFolder(root.tunnel, root.id, currentPath, name));
-  }, [currentPath, mutate, requireRoot]);
+  }, [askText, currentPath, mutate, requireRoot]);
 
   const renameSelected = useCallback(async () => {
     const root = requireRoot();
     const entry = requireSingleSelected();
-    const name = window.prompt("New name", entry.name);
+    const name = await askText({ title: "Rename", label: "New name", defaultValue: entry.name, confirmLabel: "Rename" });
     if (!name || name === entry.name) return;
     await mutate(() => cagnardApi.rename(root.tunnel, root.id, entry.path, name));
-  }, [mutate, requireRoot, requireSingleSelected]);
+  }, [askText, mutate, requireRoot, requireSingleSelected]);
 
   const deleteSelected = useCallback(async () => {
     const root = requireRoot();
     const entriesToDelete = requireSelection();
     const label = entriesToDelete.length === 1 ? entriesToDelete[0].name : `${entriesToDelete.length} entries`;
-    if (!window.confirm(`Delete ${label}?`)) return;
+    const confirmed = await askConfirm({
+      title: "Delete selected entries",
+      message: `Delete ${label}? This cannot be undone from Cagnard.`,
+      confirmLabel: "Delete",
+      danger: true
+    });
+    if (!confirmed) return;
     await mutate(async () => {
       for (const entry of entriesToDelete) {
         await cagnardApi.delete(root.tunnel, root.id, entry.path, true);
       }
       return { message: `Deleted ${label}` };
     });
-  }, [mutate, requireRoot, requireSelection]);
+  }, [askConfirm, mutate, requireRoot, requireSelection]);
+
+  const addSelectionToPasteboard = useCallback((intent: PasteboardIntent) => {
+    const root = requireRoot();
+    if (intent === "move" && root.readOnly) {
+      setError("Cannot move from a read-only storage root.");
+      return;
+    }
+    const entriesToStage = requireSelection();
+    const now = Date.now();
+    const staged = entriesToStage.map((entry, index): PasteboardItem => ({
+      id: `${intent}:${root.tunnel}:${root.id}:${entry.path}:${now}:${index}`,
+      intent,
+      selected: true,
+      addedAt: now + index,
+      source: {
+        tunnel: root.tunnel,
+        rootId: root.id,
+        rootLabel: root.label,
+        providerFamily: root.providerFamily,
+        providerId: root.providerId,
+        accountId: root.accountId,
+        readOnly: root.readOnly,
+        path: entry.path
+      },
+      entry
+    }));
+
+    setPasteboardItems((current) => {
+      const stagedKeys = new Set(staged.map(pasteboardKey));
+      return [...current.filter((item) => !stagedKeys.has(pasteboardKey(item))), ...staged];
+    });
+    setOperationMessage(`${entriesToStage.length} ${entriesToStage.length === 1 ? "entry" : "entries"} added to pasteboard`);
+    setError(undefined);
+  }, [requireRoot, requireSelection]);
 
   const copySelected = useCallback(async () => {
-    const root = requireRoot();
-    const entriesToCopy = requireSelection();
-    if (entriesToCopy.some((entry) => entry.kind !== "file")) {
-      setError("Copy currently supports files only.");
-      setOperationMessage(undefined);
-      return;
-    }
-
-    if (entriesToCopy.length === 1) {
-      const entry = entriesToCopy[0];
-      const target = window.prompt("Copy to path", siblingPath(entry.path, `${entry.name}.copy`));
-      if (!target) return;
-      await mutate(() => cagnardApi.copy(root.tunnel, root.id, entry.path, target, false));
-      return;
-    }
-
-    const targetDirectory = window.prompt("Copy selected files to folder path", currentPath);
-    if (targetDirectory === null) return;
-    const targetBase = normalizeDirectoryPath(targetDirectory);
-    await mutate(async () => {
-      for (const entry of entriesToCopy) {
-        await cagnardApi.copy(root.tunnel, root.id, entry.path, joinPath(targetBase, entry.name), false);
-      }
-      return { message: `Copied ${entriesToCopy.length} files` };
-    });
-  }, [currentPath, mutate, requireRoot, requireSelection]);
+    addSelectionToPasteboard("copy");
+  }, [addSelectionToPasteboard]);
 
   const moveSelected = useCallback(async () => {
+    addSelectionToPasteboard("move");
+  }, [addSelectionToPasteboard]);
+
+  const removePasteboardItem = useCallback((id: string) => {
+    setPasteboardItems((current) => current.filter((item) => item.id !== id));
+  }, []);
+
+  const clearPasteboard = useCallback(() => {
+    setPasteboardItems([]);
+  }, []);
+
+  const togglePasteboardItem = useCallback((id: string) => {
+    setPasteboardItems((current) => current.map((item) => item.id === id ? { ...item, selected: !item.selected } : item));
+  }, []);
+
+  const pasteboardTransfer = useCallback(async (intent: PasteboardIntent = "copy") => {
     const root = requireRoot();
-    const entriesToMove = requireSelection();
-    if (entriesToMove.length === 1) {
-      const entry = entriesToMove[0];
-      const target = window.prompt("Move to path", entry.path);
-      if (!target || target === entry.path) return;
-      await mutate(() => cagnardApi.move(root.tunnel, root.id, entry.path, target, false));
+    if (root.readOnly) {
+      setError("Cannot paste into a read-only storage root.");
+      return;
+    }
+    const selectedItems = pasteboardItems.filter((item) => item.selected);
+    if (selectedItems.length === 0) {
+      setError("Select at least one pasteboard item to paste.");
+      return;
+    }
+    if (intent === "move" && selectedItems.some((item) => item.source.readOnly)) {
+      setError("Cannot move entries from a read-only storage root.");
       return;
     }
 
-    const targetDirectory = window.prompt("Move selected entries to folder path", currentPath);
-    if (targetDirectory === null) return;
-    const targetBase = normalizeDirectoryPath(targetDirectory);
-    await mutate(async () => {
-      for (const entry of entriesToMove) {
-        await cagnardApi.move(root.tunnel, root.id, entry.path, joinPath(targetBase, entry.name), false);
+    const executeTransfer = (conflictPolicy: "fail" | "skip" | "keep-both" | "replace") =>
+      cagnardApi.transfer({
+        conflictPolicy,
+        destination: { tunnel: root.tunnel, rootId: root.id, path: currentPath },
+        sources: selectedItems.map((item) => ({
+          intent,
+          tunnel: item.source.tunnel,
+          rootId: item.source.rootId,
+          path: item.source.path
+        }))
+      });
+
+    setPasteboardBusy(true);
+    try {
+      let response = await executeTransfer("fail");
+      if (hasTransferConflict(response.results)) {
+        const conflict = firstTransferConflict(response.results);
+        const choice = await askConflictPolicy(conflict?.message ?? "A destination item already exists.");
+        if (!choice) {
+          setOperationMessage(undefined);
+          setError("Paste cancelled.");
+          return;
+        }
+        response = await executeTransfer(choice.policy);
       }
-      return { message: `Moved ${entriesToMove.length} entries` };
-    });
-  }, [currentPath, mutate, requireRoot, requireSelection]);
+
+      const successfulMoveKeys = new Set(
+        response.results
+          .filter((result) => result.intent === "move" && result.status === "moved")
+          .map((result) => `${result.sourceTunnel}:${result.sourceRootId}:${result.sourcePath}`)
+      );
+      if (successfulMoveKeys.size > 0) {
+        setPasteboardItems((current) => current.filter((item) => !successfulMoveKeys.has(pasteboardSourceKey(item))));
+      }
+
+      setOperationMessage(response.message);
+      setError(response.success ? undefined : transferErrorSummary(response.results));
+      setRefreshTick((value) => value + 1);
+    } catch (caught) {
+      if (handleUnauthorized(caught)) return;
+      setError(caught instanceof Error ? caught.message : String(caught));
+      setOperationMessage(undefined);
+    } finally {
+      setPasteboardBusy(false);
+    }
+  }, [askConflictPolicy, currentPath, handleUnauthorized, pasteboardItems, requireRoot]);
 
   const uploadFile = useCallback(
     async (file: File) => {
@@ -677,6 +974,10 @@ export function useCagnardData(): CagnardDataState {
       selectionCount: selectedEntries.length,
       uiPlugins,
       openedFile,
+      modal,
+      pasteboardItems,
+      pasteboardSelectedCount,
+      pasteboardBusy,
       operationMessage,
       loginLoading,
       loginError,
@@ -709,11 +1010,19 @@ export function useCagnardData(): CagnardDataState {
       deleteSelected,
       copySelected,
       moveSelected,
+      removePasteboardItem,
+      clearPasteboard,
+      togglePasteboardItem,
+      pasteboardTransfer,
+      cancelModal,
+      submitModal,
+      showMessage,
       uploadFile,
       downloadSelected
     }),
     [
       authProviders,
+      cancelModal,
       copySelected,
       createFile,
       createFolder,
@@ -735,12 +1044,19 @@ export function useCagnardData(): CagnardDataState {
       openDirectory,
       operationMessage,
       openedFile,
+      modal,
+      pasteboardBusy,
+      pasteboardItems,
+      pasteboardSelectedCount,
       openEntry,
       openInlineEntry,
       openSelected,
+      pasteboardTransfer,
       refresh,
       renameSelected,
+      removePasteboardItem,
       clearSelection,
+      clearPasteboard,
       selectEntry,
       selectAllEntries,
       selectRoot,
@@ -750,10 +1066,13 @@ export function useCagnardData(): CagnardDataState {
       selectedRoot,
       setFilterQuery,
       setOpenedFileViewMode,
+      submitModal,
       session,
+      showMessage,
       sourceEntries.length,
       sortDirection,
       sortField,
+      togglePasteboardItem,
       closeOpenedFile,
       updateOpenedFileContent,
       prettifyOpenedJson,
@@ -779,12 +1098,6 @@ function breadcrumbs(path: string): Array<{ label: string; path: string }> {
       path: parts.slice(0, index + 1).join("/")
     }))
   ];
-}
-
-function siblingPath(path: string, name: string): string {
-  const parts = path.split("/").filter(Boolean);
-  const parent = parts.slice(0, -1).join("/");
-  return parent ? `${parent}/${name}` : name;
 }
 
 function buildNextSelection(
@@ -832,17 +1145,6 @@ function entrySearchHaystack(entry: StorageEntry): string {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
-}
-
-function joinPath(directory: string, name: string): string {
-  return directory ? `${directory}/${name}` : name;
-}
-
-function normalizeDirectoryPath(path: string): string {
-  return path
-    .split("/")
-    .filter(Boolean)
-    .join("/");
 }
 
 function arraysEqual(first: string[], second: string[]): boolean {
@@ -936,4 +1238,43 @@ function compareTime(left?: string | null, right?: string | null): number {
   if (!left) return 1;
   if (!right) return -1;
   return new Date(left).getTime() - new Date(right).getTime();
+}
+
+function validateEntryName(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return "Name is required.";
+  if (trimmed.includes("/") || trimmed.includes("\\")) return "Name cannot contain path separators.";
+  if (trimmed === "." || trimmed === "..") return "Name is not allowed.";
+  return undefined;
+}
+
+function pasteboardKey(item: PasteboardItem): string {
+  return `${item.intent}:${item.source.tunnel}:${item.source.rootId}:${item.source.path}`;
+}
+
+function pasteboardSourceKey(item: PasteboardItem): string {
+  return `${item.source.tunnel}:${item.source.rootId}:${item.source.path}`;
+}
+
+function hasTransferConflict(results: TransferItemResult[]): boolean {
+  return results.some((result) => result.status === "conflict" || hasTransferConflict(result.children ?? []));
+}
+
+function firstTransferConflict(results: TransferItemResult[]): TransferItemResult | undefined {
+  for (const result of results) {
+    if (result.status === "conflict") return result;
+    const child = firstTransferConflict(result.children ?? []);
+    if (child) return child;
+  }
+  return undefined;
+}
+
+function transferErrorSummary(results: TransferItemResult[]): string | undefined {
+  const failures = flattenTransferResults(results).filter((result) => !["copied", "moved", "skipped"].includes(result.status));
+  if (failures.length === 0) return undefined;
+  return failures.slice(0, 3).map((result) => result.message).join(" ");
+}
+
+function flattenTransferResults(results: TransferItemResult[]): TransferItemResult[] {
+  return results.flatMap((result) => [result, ...flattenTransferResults(result.children ?? [])]);
 }

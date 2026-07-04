@@ -49,6 +49,7 @@ case class TextPreview(path: String, mimeType: Option[String], content: String, 
 
 object StorageCapabilities:
   val list = CapabilityStatus("list", "supported", Some("List children for a storage location"))
+  val recursiveList = CapabilityStatus("recursive-list", "supported", Some("List directory trees for recursive transfer planning"))
   val stat = CapabilityStatus("stat", "supported", Some("Read normalized metadata for a storage entry"))
   val open = CapabilityStatus("open", "supported", Some("Open file content through a compatible file opener"))
   val download = CapabilityStatus("download", "supported", Some("Read file content from the provider"))
@@ -62,6 +63,7 @@ object StorageCapabilities:
   val rename = CapabilityStatus("rename", "supported", Some("Rename a file or directory"))
   val copy = CapabilityStatus("copy", "supported", Some("Copy a file inside the storage root"))
   val move = CapabilityStatus("move", "supported", Some("Move a file or directory inside the storage root"))
+  val transfer = CapabilityStatus("transfer", "supported", Some("Participate in provider-neutral pasteboard transfer"))
   val delete = CapabilityStatus("delete", "supported", Some("Delete a file or empty directory"))
   val search = CapabilityStatus("search", "degraded", Some("Search can fall back to scoped listing in a later implementation"))
   val preview = CapabilityStatus("preview", "supported", Some("Legacy bounded text preview API remains available for text openers"))
@@ -78,7 +80,7 @@ object StorageCapabilities:
         delete.copy(status = "unsupported", description = Some("Delete is disabled for read-only roots"))
       )
       else List(upload, overwrite, createFolder, rename, copy, move, delete)
-    List(list, stat, open, download, fullRead, boundedRead, rangeRead, streamRead, preview, search) ++ mutations
+    List(list, recursiveList, stat, open, download, fullRead, boundedRead, rangeRead, streamRead, preview, search, transfer) ++ mutations
 
   def s3(readOnly: Boolean, directory: Boolean = false): List[CapabilityStatus] =
     val objectStoreRename = rename.copy(status = "degraded", description = Some("S3 rename is implemented as copy then delete for objects"))
@@ -104,7 +106,7 @@ object StorageCapabilities:
         delete.copy(status = "unsupported", description = directoryUnsupported)
       )
       else List(upload, overwrite, createFolder, objectStoreRename, copy, objectStoreMove, delete)
-    List(list, stat, open, download, fullRead, boundedRead, rangeRead, streamRead, preview, search) ++ mutations
+    List(list, recursiveList, stat, open, download, fullRead, boundedRead, rangeRead, streamRead, preview, search, transfer) ++ mutations
 
 object EmptyMetadata:
   val unavailableFields: List[String] = List("version", "retention", "encryption")

@@ -6,6 +6,8 @@ import type {
   OperationResponse,
   PreviewResponse,
   SessionResponse,
+  TransferRequest,
+  TransferResponse,
   UiPluginsResponse
 } from "./types";
 
@@ -122,5 +124,11 @@ export const cagnardApi = {
     operation("/api/storage/copy", { tunnel, rootId, sourcePath, targetPath, overwrite }),
   move: (tunnel: string, rootId: string, sourcePath: string, targetPath: string, overwrite = false) =>
     operation("/api/storage/move", { tunnel, rootId, sourcePath, targetPath, overwrite }),
+  transfer: (request: TransferRequest) =>
+    fetchJson<TransferResponse>("/api/storage/transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    }),
   uiPlugins: () => fetchJson<UiPluginsResponse>("/api/plugins/ui")
 };

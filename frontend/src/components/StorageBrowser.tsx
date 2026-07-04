@@ -1,12 +1,14 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent, RefObject } from "react";
 import type { ReactNode } from "react";
 import {
   ArrowUpDown,
   Braces,
   ChevronDown,
   ChevronRight,
-  Copy,
+  Clipboard,
+  ClipboardPaste,
+  CopyPlus,
   Download,
   Eye,
   File,
@@ -57,7 +59,6 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
   const hasSelection = state.selectionCount > 0;
   const singleSelection = state.selectionCount === 1;
   const fileSelectionCount = state.selectedEntries.filter((entry) => entry.kind === "file").length;
-  const canCopySelection = hasSelection && state.selectedEntries.every((entry) => entry.kind === "file");
   const visibleSelectedCount = state.entries.filter((entry) => selectedIdSet.has(entry.id)).length;
   const allVisibleSelected = state.entries.length > 0 && visibleSelectedCount === state.entries.length;
   const partiallyVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
@@ -84,23 +85,22 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
             items={[{ icon: <RefreshCw size={16} />, label: "Refresh", onClick: state.refresh }]}
           />
           <ActionMenuGroup
-            primary={{ icon: <FilePlus size={17} />, label: "New file", onClick: state.createFile, disabled: !canMutate }}
+            primary={{ icon: <FolderPlus size={17} />, label: "New folder", onClick: state.createFolder, disabled: !canMutate }}
             items={[
-              { icon: <FolderPlus size={16} />, label: "New folder", onClick: state.createFolder, disabled: !canMutate },
-              { icon: <Upload size={16} />, label: "Upload", onClick: () => uploadInput.current?.click(), disabled: !canMutate }
+              { icon: <FilePlus size={16} />, label: "New file", onClick: state.createFile, disabled: !canMutate }
             ]}
           />
           <ActionMenuGroup
             primary={{ icon: <Download size={17} />, label: "Download", onClick: state.downloadSelected, disabled: fileSelectionCount === 0 }}
             items={[
-              { icon: <Copy size={16} />, label: "Copy", onClick: state.copySelected, disabled: !canCopySelection || !canMutate },
-              { icon: <MoveRight size={16} />, label: "Move", onClick: state.moveSelected, disabled: !hasSelection || !canMutate }
+              { icon: <Upload size={16} />, label: "Upload", onClick: () => uploadInput.current?.click(), disabled: !canMutate }
             ]}
           />
           <ActionMenuGroup
             primary={{ icon: <Pencil size={17} />, label: "Rename", onClick: state.renameSelected, disabled: !singleSelection || !canMutate }}
             items={[{ icon: <Trash2 size={16} />, label: "Delete", onClick: state.deleteSelected, disabled: !hasSelection || !canMutate, danger: true }]}
           />
+          <PasteboardControl state={state} />
           <input
             ref={uploadInput}
             className="visually-hidden"
@@ -252,6 +252,7 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
       </section>
       </>
       )}
+      <BrowserActionModal state={state} />
     </main>
   );
 }
@@ -265,17 +266,62 @@ interface ActionDefinition {
 }
 
 function ActionMenuGroup({ primary, items }: { primary: ActionDefinition; items: ActionDefinition[] }) {
-  const menuRef = useRef<HTMLDetailsElement>(null);
+  const menu = useHoverDropdown<HTMLDivElement>();
+
+  return (
+    <div className="action-menu-group" ref={menu.ref} onMouseEnter={menu.openOnHover} onMouseLeave={menu.closeOnLeave}>
+      <ActionButton {...primary} primary />
+      <div className="action-menu">
+        <button
+          aria-expanded={menu.open}
+          aria-haspopup="menu"
+          aria-label={`${primary.label} options`}
+          className="action-menu-trigger"
+          onClick={menu.togglePinned}
+          title={`${primary.label} options`}
+          type="button"
+        >
+          <ChevronDown size={15} />
+        </button>
+        {menu.open ? (
+          <div className="action-menu-content" role="menu">
+            {items.map((item) => (
+              <MenuActionButton action={item} key={item.label} onClose={menu.close} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function useHoverDropdown<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const closeTimer = useRef<number>();
+  const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
+
+  const clearCloseTimer = () => {
+    if (closeTimer.current === undefined) return;
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = undefined;
+  };
+
+  const close = () => {
+    clearCloseTimer();
+    setOpen(false);
+    setPinned(false);
+  };
 
   useEffect(() => {
     const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!menuRef.current?.open) return;
-      if (event.target instanceof Node && menuRef.current.contains(event.target)) return;
-      menuRef.current.open = false;
+      if (!open) return;
+      if (event.target instanceof Node && ref.current?.contains(event.target)) return;
+      close();
     };
 
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape" && menuRef.current?.open) menuRef.current.open = false;
+      if (event.key === "Escape" && open) close();
     };
 
     document.addEventListener("pointerdown", closeOnOutsideClick);
@@ -283,24 +329,38 @@ function ActionMenuGroup({ primary, items }: { primary: ActionDefinition; items:
     return () => {
       document.removeEventListener("pointerdown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
+      clearCloseTimer();
     };
-  }, []);
+  }, [open]);
 
-  return (
-    <div className="action-menu-group">
-      <ActionButton {...primary} primary />
-      <details className="action-menu" ref={menuRef}>
-        <summary aria-label={`${primary.label} options`} title={`${primary.label} options`}>
-          <ChevronDown size={15} />
-        </summary>
-        <div className="action-menu-content">
-          {items.map((item) => (
-            <MenuActionButton action={item} key={item.label} />
-          ))}
-        </div>
-      </details>
-    </div>
-  );
+  return {
+    ref,
+    open,
+    close,
+    openOnHover: () => {
+      clearCloseTimer();
+      setOpen(true);
+    },
+    closeOnLeave: () => {
+      if (pinned) return;
+      clearCloseTimer();
+      closeTimer.current = window.setTimeout(() => {
+        setOpen(false);
+        closeTimer.current = undefined;
+      }, 140);
+    },
+    togglePinned: (event: MouseEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      clearCloseTimer();
+      if (open && pinned) {
+        close();
+        return;
+      }
+      setOpen(true);
+      setPinned(true);
+    }
+  };
 }
 
 function ActionButton({
@@ -327,16 +387,17 @@ function ActionButton({
   );
 }
 
-function MenuActionButton({ action }: { action: ActionDefinition }) {
+function MenuActionButton({ action, onClose }: { action: ActionDefinition; onClose?: () => void }) {
   const className = action.danger ? "menu-action danger" : "menu-action";
 
   return (
     <button
       className={className}
       disabled={action.disabled}
+      role="menuitem"
       type="button"
-      onClick={(event) => {
-        event.currentTarget.closest("details")?.removeAttribute("open");
+      onClick={() => {
+        onClose?.();
         void action.onClick();
       }}
     >
@@ -344,6 +405,314 @@ function MenuActionButton({ action }: { action: ActionDefinition }) {
       <span>{action.label}</span>
     </button>
   );
+}
+
+function PasteboardControl({ state }: { state: CagnardDataState }) {
+  const menu = useHoverDropdown<HTMLDivElement>();
+  const hasItems = state.pasteboardItems.length > 0;
+  const hasSelection = state.selectionCount > 0;
+  const copyBlockedReason = pasteboardBlockedReason(state, "copy");
+  const moveBlockedReason = pasteboardBlockedReason(state, "move");
+
+  const copyHere = async () => {
+    await state.pasteboardTransfer("copy");
+  };
+
+  const moveHere = async () => {
+    await state.pasteboardTransfer("move");
+  };
+
+  return (
+    <div className="action-menu-group pasteboard-menu-group" ref={menu.ref} onMouseEnter={menu.openOnHover} onMouseLeave={menu.closeOnLeave}>
+      <ActionButton icon={<CopyPlus size={17} />} label="Copy" onClick={state.copySelected} disabled={!hasSelection} primary />
+      <div className="action-menu pasteboard-menu">
+        <button
+          aria-expanded={menu.open}
+          aria-haspopup="menu"
+          aria-label="Pasteboard"
+          className="action-menu-trigger pasteboard-trigger"
+          onClick={menu.togglePinned}
+          title="Pasteboard"
+          type="button"
+        >
+          <Clipboard size={16} />
+          <span>{state.pasteboardItems.length}</span>
+        </button>
+        {menu.open ? (
+          <div className="pasteboard-panel" role="menu">
+            <div className="pasteboard-heading">
+              <strong>Pasteboard</strong>
+              <span>{state.pasteboardSelectedCount} selected</span>
+            </div>
+            {!hasItems ? (
+              <p className="pasteboard-empty">No staged entries</p>
+            ) : (
+              <div className="pasteboard-items">
+                {state.pasteboardItems.map((item) => {
+                  const itemCopyBlockedReason = pasteboardItemBlockReason(item, state, "copy");
+                  return (
+                    <div className={itemCopyBlockedReason ? "pasteboard-item blocked" : "pasteboard-item"} key={item.id}>
+                      <label className="selection-cell pasteboard-selection-cell">
+                        <input
+                          type="checkbox"
+                          checked={item.selected}
+                          onChange={() => state.togglePasteboardItem(item.id)}
+                          aria-label={`Select ${item.entry.name}`}
+                        />
+                      </label>
+                      <div className="pasteboard-item-main">
+                        <strong>{item.entry.name}</strong>
+                        <span>from {item.source.rootLabel}</span>
+                        <span>{item.source.providerFamily} / {item.source.path || "/"}</span>
+                        {itemCopyBlockedReason ? <span className="pasteboard-item-warning">{itemCopyBlockedReason}</span> : null}
+                      </div>
+                      <button className="icon-button compact" type="button" onClick={() => state.removePasteboardItem(item.id)} title="Remove">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {copyBlockedReason ? <p className="pasteboard-warning">{copyBlockedReason}</p> : null}
+            <div className="pasteboard-actions">
+              <button className="primary-button subtle" type="button" onClick={state.clearPasteboard} disabled={!hasItems || state.pasteboardBusy}>
+                Clear
+              </button>
+              <div className="pasteboard-transfer-actions">
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void copyHere()}
+                  disabled={!hasItems || state.pasteboardSelectedCount === 0 || Boolean(copyBlockedReason) || state.pasteboardBusy}
+                >
+                  <ClipboardPaste size={15} />
+                  {state.pasteboardBusy ? "Pasting" : "Paste"}
+                </button>
+                <button
+                  className="primary-button subtle"
+                  type="button"
+                  onClick={() => void moveHere()}
+                  disabled={!hasItems || state.pasteboardSelectedCount === 0 || Boolean(moveBlockedReason) || state.pasteboardBusy}
+                >
+                  <MoveRight size={16} />
+                  Move here
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function pasteboardBlockedReason(state: CagnardDataState, intent: "copy" | "move"): string | undefined {
+  const destinationReason = pasteboardDestinationBlockReason(state);
+  if (destinationReason) return destinationReason;
+  return state.pasteboardItems
+    .filter((item) => item.selected)
+    .map((item) => pasteboardItemBlockReason(item, state, intent))
+    .find(Boolean);
+}
+
+function pasteboardDestinationBlockReason(state: CagnardDataState): string | undefined {
+  if (!state.selectedRoot) return "Select a destination root.";
+  if (state.selectedRoot.readOnly) return "The current destination is read-only.";
+  return undefined;
+}
+
+function pasteboardItemBlockReason(
+  item: CagnardDataState["pasteboardItems"][number],
+  state: CagnardDataState,
+  intent: "copy" | "move"
+): string | undefined {
+  const root = state.selectedRoot;
+  if (!root) return "Select a destination root.";
+  if (root.readOnly) return "The current destination is read-only.";
+  if (intent === "move" && item.source.readOnly) return "The source storage root is read-only.";
+  if (item.source.tunnel !== root.tunnel || item.source.rootId !== root.id) return undefined;
+
+  const targetPath = joinBrowserPath(state.currentPath, item.entry.name);
+  if (intent === "move" && targetPath === item.source.path) return "Source and destination are the same entry.";
+  if (item.entry.kind === "directory" && targetPath !== item.source.path && isBrowserDescendantPath(targetPath, item.source.path)) {
+    return "A folder cannot be pasted into itself.";
+  }
+
+  return undefined;
+}
+
+function joinBrowserPath(parent: string, name: string): string {
+  const cleanParent = parent.replace(/^\/+|\/+$/g, "");
+  const cleanName = name.replace(/^\/+/g, "");
+  return cleanParent ? `${cleanParent}/${cleanName}` : cleanName;
+}
+
+function isBrowserDescendantPath(path: string, ancestor: string): boolean {
+  const cleanPath = path.replace(/^\/+|\/+$/g, "");
+  const cleanAncestor = ancestor.replace(/^\/+|\/+$/g, "");
+  return cleanAncestor.length > 0 && cleanPath.startsWith(`${cleanAncestor}/`);
+}
+
+function BrowserActionModal({ state }: { state: CagnardDataState }) {
+  const modal = state.modal;
+  const [value, setValue] = useState("");
+  const [validation, setValidation] = useState<string>();
+  const primaryRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!modal) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    setValue(modal.kind === "text" ? modal.defaultValue ?? "" : "");
+    setValidation(undefined);
+    window.setTimeout(() => {
+      if (modal.kind === "text") inputRef.current?.focus();
+      else primaryRef.current?.focus();
+    }, 0);
+    return () => {
+      window.setTimeout(() => {
+        if (previousFocus?.isConnected) previousFocus.focus();
+      }, 0);
+    };
+  }, [modal?.id]);
+
+  if (!modal) return null;
+
+  const submitText = () => {
+    if (modal.kind !== "text") return;
+    const nextValidation = modal.validate?.(value);
+    if (nextValidation) {
+      setValidation(nextValidation);
+      return;
+    }
+    state.submitModal(value.trim());
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      state.cancelModal();
+      return;
+    }
+    if (event.key === "Tab") trapFocus(event);
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div className="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="browser-modal-title" onKeyDown={onKeyDown}>
+        <div className="modal-heading">
+          <h2 id="browser-modal-title">{modal.title}</h2>
+          <button className="icon-button compact" type="button" onClick={state.cancelModal} title="Close">
+            <X size={15} />
+          </button>
+        </div>
+
+        {modal.kind === "text" ? (
+          <form
+            className="modal-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitText();
+            }}
+          >
+            <label>
+              <span>{modal.label}</span>
+              <input
+                ref={inputRef}
+                value={value}
+                onChange={(event) => {
+                  setValue(event.target.value);
+                  setValidation(undefined);
+                }}
+                placeholder={modal.placeholder}
+              />
+            </label>
+            {validation ? <p className="modal-validation">{validation}</p> : null}
+            <div className="modal-actions">
+              <button className="primary-button subtle" type="button" onClick={state.cancelModal}>Cancel</button>
+              <button className="primary-button" type="submit" ref={primaryRef}>{modal.confirmLabel}</button>
+            </div>
+          </form>
+        ) : null}
+
+        {modal.kind === "confirm" ? (
+          <>
+            <p className="modal-message">{modal.message}</p>
+            <div className="modal-actions">
+              <button className="primary-button subtle" type="button" onClick={state.cancelModal}>Cancel</button>
+              <button className={modal.danger ? "primary-button danger" : "primary-button"} type="button" ref={primaryRef} onClick={() => state.submitModal(true)}>
+                {modal.confirmLabel}
+              </button>
+            </div>
+          </>
+        ) : null}
+
+        {modal.kind === "message" ? (
+          <>
+            <p className="modal-message">{modal.message}</p>
+            <div className="modal-actions">
+              <button className={modal.danger ? "primary-button danger" : "primary-button"} type="button" ref={primaryRef} onClick={() => state.submitModal(true)}>
+                {modal.confirmLabel ?? "OK"}
+              </button>
+            </div>
+          </>
+        ) : null}
+
+        {modal.kind === "conflict" ? (
+          <>
+            <p className="modal-message">{modal.message}</p>
+            <ConflictActions modal={modal} state={state} primaryRef={primaryRef} />
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ConflictActions({
+  modal,
+  state,
+  primaryRef
+}: {
+  modal: Extract<NonNullable<CagnardDataState["modal"]>, { kind: "conflict" }>;
+  state: CagnardDataState;
+  primaryRef: RefObject<HTMLButtonElement>;
+}) {
+  const submit = (policy: "skip" | "keep-both" | "replace") => state.submitModal({ policy, applyToAll: true });
+
+  return (
+    <>
+      <p className="modal-message">The selected choice applies to this paste batch.</p>
+      <div className="modal-actions conflict-actions">
+        <button className="primary-button subtle" type="button" onClick={state.cancelModal}>Cancel</button>
+        <button className="primary-button subtle" type="button" onClick={() => submit("skip")}>Skip</button>
+        {modal.canKeepBoth ? (
+          <button className="primary-button" type="button" ref={primaryRef} onClick={() => submit("keep-both")}>Keep both</button>
+        ) : null}
+        {modal.canReplace ? (
+          <button className="primary-button danger" type="button" onClick={() => submit("replace")}>Replace</button>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function trapFocus(event: KeyboardEvent<HTMLDivElement>) {
+  const focusable = Array.from(
+    event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])")
+  ).filter((element) => element.offsetParent !== null);
+  if (focusable.length === 0) return;
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function BrowserControls({

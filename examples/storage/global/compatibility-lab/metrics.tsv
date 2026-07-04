@@ -1,0 +1,5 @@
+timestamp	service	requests	errors	latency_ms
+2026-07-04T09:00:00Z	backend	128	0	42
+2026-07-04T09:05:00Z	backend	143	1	47
+2026-07-04T09:10:00Z	frontend	212	0	18
+2026-07-04T09:15:00Z	s3-provider	76	0	63

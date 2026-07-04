@@ -1,8 +1,4 @@
-## Purpose
-
-Defines provider-agnostic copy and move behavior between storage implementations.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Provider-agnostic transfer model
 Cagnard SHALL transfer files, directories, and objects between storage implementations using source and destination storage references rather than provider-specific transfer flows, including transfers initiated from the browser pasteboard.
@@ -76,17 +72,6 @@ Cagnard SHALL choose the safest available transfer strategy from provider-native
 - **WHEN** the available fallback strategy requires buffering and the object exceeds the configured transfer limit
 - **THEN** Cagnard SHALL fail the item before reading source content and report the configured limit
 
-### Requirement: Metadata preservation policy
-Cagnard SHALL preserve metadata during transfers when supported and SHALL report metadata fields that are changed, dropped, transformed, or unavailable.
-
-#### Scenario: Preserve supported metadata
-- **WHEN** both source and destination support MIME type and encryption metadata
-- **THEN** Cagnard SHALL preserve those fields or report why preservation failed
-
-#### Scenario: Report unsupported metadata preservation
-- **WHEN** the source exposes retention metadata and the destination cannot represent retention
-- **THEN** Cagnard SHALL complete only the content transfer and report the retention metadata as not preserved
-
 ### Requirement: Conflict handling
 Cagnard SHALL require an explicit conflict policy before overwriting, keeping both, renaming, skipping, or versioning an existing destination entry.
 
@@ -109,29 +94,3 @@ Cagnard SHALL require an explicit conflict policy before overwriting, keeping bo
 #### Scenario: Replace requires explicit choice
 - **WHEN** the user has not explicitly chosen Replace
 - **THEN** Cagnard SHALL NOT overwrite an existing destination entry
-
-### Requirement: Transfer progress and recovery
-Cagnard SHALL expose transfer progress, cancellation, retry, and resumability according to the capabilities of the participating providers.
-
-#### Scenario: Show transfer progress
-- **WHEN** a transfer starts
-- **THEN** Cagnard SHALL report progress using bytes, item counts, current phase, and provider-specific waiting states when available
-
-#### Scenario: Retry transient provider error
-- **WHEN** a provider reports a transient error during transfer
-- **THEN** Cagnard SHALL retry according to the transfer policy and provider rate-limit constraints
-
-#### Scenario: Cancel transfer
-- **WHEN** the user cancels an active transfer
-- **THEN** Cagnard SHALL stop further reads and writes and report any partial destination state that remains
-
-### Requirement: Transfer auditability
-Cagnard SHALL record transfer intent, source, destination, account context, selected policies, result, and provider diagnostics for audit review.
-
-#### Scenario: Audit completed transfer
-- **WHEN** a cross-provider transfer completes
-- **THEN** Cagnard SHALL record the source provider, destination provider, accounts, paths, byte counts, policies, and final result
-
-#### Scenario: Audit failed transfer
-- **WHEN** a transfer fails
-- **THEN** Cagnard SHALL record the failure phase and safe diagnostic details without exposing secrets
