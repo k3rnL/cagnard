@@ -11,19 +11,26 @@ import io.cagnard.backend.api.{
   LoginResponse,
   LogoutResponse,
   SessionResponse,
+  TransferDestinationRequest,
+  TransferJobResponse,
+  TransferRequest,
+  TransferSourceRequest,
+  StorageEntry,
   UserProfile
 }
 import io.cagnard.backend.api.ApiModels.given
 import io.cagnard.backend.auth.{AccessService, RequestIdentity}
 import io.cagnard.backend.config.*
-import io.cagnard.backend.storage.{FilesystemRootTarget, ResolvedStorageRoot, StorageRegistry}
+import io.cagnard.backend.storage.{FileTypeCatalog, FilesystemProvider, FilesystemRootTarget, FileContentInfo, ResolvedStorageRoot, StorageRegistry}
 import com.typesafe.config.ConfigFactory
 import munit.CatsEffectSuite
 import org.http4s.{Header, Method, Request, Response, Status, Uri}
 import org.http4s.circe.CirceEntityCodec.given
 import org.typelevel.ci.CIString
 
+import java.io.InputStream
 import java.nio.file.{Files, Path, Paths}
+import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 class BackendCoreSuite extends CatsEffectSuite:
@@ -169,10 +176,35 @@ class BackendCoreSuite extends CatsEffectSuite:
 
     assertEquals(capabilityNames("list"), "supported")
     assertEquals(capabilityNames("stat"), "supported")
+    assertEquals(capabilityNames("open"), "supported")
     assertEquals(capabilityNames("preview"), "supported")
+    assertEquals(capabilityNames("bounded-read"), "supported")
+    assertEquals(capabilityNames("full-read"), "supported")
+    assertEquals(capabilityNames("range-read"), "planned")
+    assertEquals(capabilityNames("stream-read"), "supported")
+    assertEquals(capabilityNames("stream-write"), "supported")
+    assertEquals(capabilityNames("overwrite"), "supported")
     assertEquals(capabilityNames("delete"), "supported")
     assertEquals(capabilityNames("upload"), "supported")
     assertEquals(capabilityNames("create-folder"), "supported")
+  }
+
+  test("classifies common file types with MIME, category, and icons") {
+    val json = FileTypeCatalog.classify("payload.json", None)
+    val csv = FileTypeCatalog.classify("export.csv", None)
+    val archive = FileTypeCatalog.classify("backup.tar.gz", None)
+    val providerImage = FileTypeCatalog.classify("unknown", Some("image/png"))
+    val unknown = FileTypeCatalog.classify("payload.unknown", None)
+
+    assertEquals(json.mimeType, Some("application/json"))
+    assertEquals(json.category, "json")
+    assertEquals(json.icon, "file-json")
+    assert(json.textLike)
+    assertEquals(csv.category, "csv")
+    assertEquals(archive.category, "archive")
+    assertEquals(providerImage.category, "image")
+    assertEquals(unknown.category, "binary")
+    assertEquals(unknown.source, "unknown")
   }
 
   test("lists files through the Unix filesystem provider") {
@@ -187,6 +219,8 @@ class BackendCoreSuite extends CatsEffectSuite:
           assertEquals(entries.map(_.name), List("note.txt"))
           assertEquals(entries.head.kind, "file")
           assertEquals(entries.head.metadata.size, Some(5L))
+          assertEquals(entries.head.metadata.fileCategory, Some("text"))
+          assertEquals(entries.head.metadata.fileIcon, Some("file-text"))
           assert(entries.head.metadata.modifiedTime.nonEmpty)
         }
       }
@@ -421,6 +455,25 @@ class BackendCoreSuite extends CatsEffectSuite:
     }
   }
 
+  test("deletes non-empty filesystem directories through the storage API") {
+    tempDirectory.use { root =>
+      IO.blocking {
+        Files.createDirectories(root.resolve("docs").resolve("nested"))
+        Files.writeString(root.resolve("docs").resolve("note.txt"), "hello")
+        Files.writeString(root.resolve("docs").resolve("nested").resolve("deep.txt"), "deep")
+      }.flatMap { _ =>
+        val config = testConfig(root)
+        IO.fromEither(StorageRegistry.fromConfig(config)).flatMap { registry =>
+          val service = ApiService(config, registry)
+          service.deleteEntry(identity, DeleteEntryRequest("personal", "home", "docs", confirmed = true)).map { result =>
+            assertEquals(result.toOption.map(_.success), Some(true))
+            assert(!Files.exists(root.resolve("docs")))
+          }
+        }
+      }
+    }
+  }
+
   test("rejects overwrite conflicts without approval") {
     tempDirectory.use { root =>
       IO.fromEither(StorageRegistry.fromConfig(testConfig(root))).map { registry =>
@@ -431,6 +484,245 @@ class BackendCoreSuite extends CatsEffectSuite:
         val conflict = provider.upload(storageRoot, "note.txt", "two".getBytes, overwrite = false)
         assertEquals(conflict.left.toOption, Some("Target already exists"))
         assertEquals(Files.readString(root.resolve("note.txt")), "one")
+      }
+    }
+  }
+
+  test("transfers files within the same root with standard conflict policies") {
+    tempDirectory.use { root =>
+      IO.blocking {
+        Files.createDirectories(root.resolve("source"))
+        Files.createDirectories(root.resolve("target"))
+        Files.writeString(root.resolve("source/note.txt"), "one")
+        Files.writeString(root.resolve("source/move.txt"), "move me")
+        Files.writeString(root.resolve("target/note.txt"), "existing")
+      } *> serviceFor(testConfig(root)).flatMap { service =>
+        val copyRequest = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "source/note.txt")),
+          destination = TransferDestinationRequest("personal", "home", "target"),
+          conflictPolicy = "fail"
+        )
+        val moveRequest = TransferRequest(
+          sources = List(TransferSourceRequest("move", "personal", "home", "source/move.txt")),
+          destination = TransferDestinationRequest("personal", "home", "target"),
+          conflictPolicy = "fail"
+        )
+
+        for
+          conflict <- service.transferEntries(identity, copyRequest)
+          keepBoth <- service.transferEntries(identity, copyRequest.copy(conflictPolicy = "keep-both"))
+          replace <- service.transferEntries(identity, copyRequest.copy(conflictPolicy = "replace"))
+          moved <- service.transferEntries(identity, moveRequest)
+        yield
+          val conflictResponse = conflict.toOption.get
+          val keepBothResponse = keepBoth.toOption.get
+          val replaceResponse = replace.toOption.get
+          val movedResponse = moved.toOption.get
+
+          assertEquals(conflictResponse.success, false)
+          assertEquals(conflictResponse.results.head.status, "conflict")
+          assertEquals(keepBothResponse.success, true)
+          assertEquals(keepBothResponse.results.head.targetPath, Some("target/note copy.txt"))
+          assertEquals(Files.readString(root.resolve("target/note copy.txt")), "one")
+          assertEquals(replaceResponse.success, true)
+          assertEquals(Files.readString(root.resolve("target/note.txt")), "one")
+          assertEquals(movedResponse.results.head.status, "moved")
+          assertEquals(Files.readString(root.resolve("target/move.txt")), "move me")
+          assert(!Files.exists(root.resolve("source/move.txt")))
+      }
+    }
+  }
+
+  test("transfers recursive directories between provider-neutral filesystem roots") {
+    tempDirectory.use { root =>
+      val sourceHome = root.resolve("source").resolve("alice")
+      val destination = root.resolve("destination")
+      IO.blocking {
+        Files.createDirectories(sourceHome.resolve("docs/nested"))
+        Files.createDirectories(sourceHome.resolve("move-me"))
+        Files.createDirectories(destination)
+        Files.writeString(sourceHome.resolve("docs/root.txt"), "root")
+        Files.writeString(sourceHome.resolve("docs/nested/child.txt"), "child")
+        Files.writeString(sourceHome.resolve("move-me/child.txt"), "move child")
+      } *> serviceFor(twoFilesystemProviderConfig(root)).flatMap { service =>
+        val copyRequest = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "docs")),
+          destination = TransferDestinationRequest("global", "shared", "incoming"),
+          conflictPolicy = "fail"
+        )
+        val blockedSelfCopy = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "docs")),
+          destination = TransferDestinationRequest("personal", "home", "docs"),
+          conflictPolicy = "fail"
+        )
+        val moveRequest = TransferRequest(
+          sources = List(TransferSourceRequest("move", "personal", "home", "move-me")),
+          destination = TransferDestinationRequest("global", "shared", "moved"),
+          conflictPolicy = "fail"
+        )
+
+        for
+          copied <- service.transferEntries(identity, copyRequest)
+          blocked <- service.transferEntries(identity, blockedSelfCopy)
+          moved <- service.transferEntries(identity, moveRequest)
+        yield
+          val copiedResponse = copied.toOption.get
+          val blockedResponse = blocked.toOption.get
+          val movedResponse = moved.toOption.get
+
+          assertEquals(copiedResponse.success, true)
+          assertEquals(copiedResponse.results.head.status, "copied")
+          assertEquals(Files.readString(destination.resolve("incoming/docs/root.txt")), "root")
+          assertEquals(Files.readString(destination.resolve("incoming/docs/nested/child.txt")), "child")
+
+          assertEquals(blockedResponse.success, false)
+          assertEquals(blockedResponse.results.head.status, "failed")
+          assert(blockedResponse.results.head.message.contains("into itself"))
+
+          assertEquals(movedResponse.success, true)
+          assertEquals(movedResponse.results.head.status, "moved")
+          assertEquals(Files.readString(destination.resolve("moved/move-me/child.txt")), "move child")
+          assert(!Files.exists(sourceHome.resolve("move-me")))
+      }
+    }
+  }
+
+  test("streams provider-neutral filesystem transfer beyond buffered fallback limit") {
+    tempDirectory.use { root =>
+      val sourceHome = root.resolve("source").resolve("alice")
+      val destination = root.resolve("destination")
+      IO.blocking {
+        Files.createDirectories(sourceHome)
+        Files.createDirectories(destination)
+        Files.writeString(sourceHome.resolve("oversized.txt"), "12345")
+      } *> serviceFor(twoFilesystemProviderConfig(root, destinationBufferedLimit = Some(4L))).flatMap { service =>
+        val request = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "oversized.txt")),
+          destination = TransferDestinationRequest("global", "shared", ""),
+          conflictPolicy = "fail"
+        )
+
+        service.transferEntries(identity, request).map { result =>
+          val response = result.toOption.get
+          assertEquals(response.success, true)
+          assertEquals(response.results.head.status, "copied")
+          assertEquals(Files.readString(destination.resolve("oversized.txt")), "12345")
+        }
+      }
+    }
+  }
+
+  test("enforces configured buffered transfer limits before downloading when streaming is unavailable") {
+    tempDirectory.use { root =>
+      val sourceHome = root.resolve("source").resolve("alice")
+      val destination = root.resolve("destination")
+      IO.blocking {
+        Files.createDirectories(sourceHome)
+        Files.createDirectories(destination)
+        Files.writeString(sourceHome.resolve("oversized.txt"), "12345")
+      } *> IO.defer {
+        val baseConfig = twoFilesystemProviderConfig(root, destinationBufferedLimit = Some(4L))
+        val config = baseConfig.copy(
+          globalStorage = baseConfig.globalStorage.map(storage =>
+            storage.copy(settings = Some(storage.settings.getOrElse(Map.empty) + ("maxBufferedObjectBytes" -> "4")))
+          )
+        )
+        val registry = StorageRegistry(
+          config.providers.map(provider =>
+            provider.id -> noStreamFilesystemProvider(provider)
+          ).toMap
+        )
+        val resolvedSource = AccessService(config).personalRoots(UserProfile("alice", "Alice", List("user"), List("engineering"), Map.empty)).head
+        assert(
+          registry.provider("local-source").toOption.get.stat(resolvedSource, "oversized.txt").isRight,
+          resolvedSource.target.toString
+        )
+        val service = ApiService(config, registry)
+        val request = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "oversized.txt")),
+          destination = TransferDestinationRequest("global", "shared", ""),
+          conflictPolicy = "fail"
+        )
+
+        service.transferEntries(identity, request).map { result =>
+          val response = result.toOption.get
+          assertEquals(response.success, false)
+          assertEquals(response.results.head.status, "failed")
+          assert(response.results.head.message.contains("buffered transfer limit"), response.results.head.message)
+          assert(!Files.exists(destination.resolve("oversized.txt")))
+        }
+      }
+    }
+  }
+
+  test("tracks transfer job lifecycle") {
+    tempDirectory.use { root =>
+      val sourceHome = root.resolve("source").resolve("alice")
+      val destination = root.resolve("destination")
+      IO.blocking {
+        Files.createDirectories(sourceHome)
+        Files.createDirectories(destination)
+        Files.writeString(sourceHome.resolve("job.txt"), "job content")
+      } *> serviceFor(twoFilesystemProviderConfig(root)).flatMap { service =>
+        val request = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "job.txt")),
+          destination = TransferDestinationRequest("global", "shared", ""),
+          conflictPolicy = "fail"
+        )
+
+        for
+          started <- service.startTransferJob(identity, request)
+          startedJob = started.toOption.get
+          listed <- service.transferJobList(identity)
+          completed <- waitForJob(service, startedJob.id)
+          detailed <- service.transferJob(identity, startedJob.id)
+        yield
+          assertEquals(startedJob.tasks.head.status, "queued")
+          assert(listed.toOption.get.jobs.exists(_.id == startedJob.id))
+          assertEquals(completed.status, "completed")
+          assertEquals(completed.results.head.status, "copied")
+          assertEquals(detailed.toOption.get.id, startedJob.id)
+          assertEquals(Files.readString(destination.resolve("job.txt")), "job content")
+      }
+    }
+  }
+
+  test("cancels running transfer jobs without deleting sources") {
+    tempDirectory.use { root =>
+      val sourceHome = root.resolve("source").resolve("alice")
+      val destination = root.resolve("destination")
+      IO.blocking {
+        Files.createDirectories(sourceHome)
+        Files.createDirectories(destination)
+        Files.write(sourceHome.resolve("large.bin"), Array.fill[Byte](4 * 1024 * 1024)(7))
+      } *> IO.defer {
+        val config = twoFilesystemProviderConfig(root)
+        val registry = StorageRegistry(
+          config.providers.map { provider =>
+            val storageProvider =
+              if provider.id == "local-destination" then slowFilesystemProvider(provider, delayMillis = 6L)
+              else FilesystemProvider(provider)
+            provider.id -> storageProvider
+          }.toMap
+        )
+        val service = ApiService(config, registry)
+        val request = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "large.bin")),
+          destination = TransferDestinationRequest("global", "shared", ""),
+          conflictPolicy = "fail"
+        )
+
+        for
+          started <- service.startTransferJob(identity, request)
+          startedJob = started.toOption.get
+          _ <- IO.sleep(40.millis)
+          canceled <- service.cancelTransferJob(identity, startedJob.id)
+          finalJob <- waitForJob(service, startedJob.id)
+        yield
+          assertEquals(canceled.toOption.get.status, "canceling")
+          assertEquals(finalJob.status, "canceled")
+          assert(Files.exists(sourceHome.resolve("large.bin")))
+          assert(!Files.exists(destination.resolve("large.bin")))
       }
     }
   }
@@ -483,6 +775,91 @@ class BackendCoreSuite extends CatsEffectSuite:
         )
       )
     )
+
+  private def twoFilesystemProviderConfig(root: Path, destinationBufferedLimit: Option[Long] = None): CagnardConfig =
+    val base = testConfig(root)
+    base.copy(
+      providers = List(
+        ProviderConfig("local-source", "filesystem", "unix", "Local source filesystem", None),
+        ProviderConfig(
+          "local-destination",
+          "filesystem",
+          "unix",
+          "Local destination filesystem",
+          destinationBufferedLimit.map(limit => Map("maxBufferedObjectBytes" -> limit.toString))
+        )
+      ),
+      accounts = List(
+        StorageAccountConfig("source-account", "local-source", "Local source", enabled = true, readOnly = false, "local-process", None),
+        StorageAccountConfig("destination-account", "local-destination", "Local destination", enabled = true, readOnly = false, "local-process", None)
+      ),
+      personalStorage = List(
+        StorageRootConfig(
+          "home",
+          Some("Home"),
+          "local-source",
+          "source-account",
+          Some(root.resolve("source/{user.id}").toString),
+          None,
+          Some(List("alice")),
+          None,
+          None
+        )
+      ),
+      globalStorage = List(
+        StorageRootConfig(
+          "shared",
+          Some("Global"),
+          "local-destination",
+          "destination-account",
+          Some(root.resolve("destination").toString),
+          None,
+          None,
+          Some(List("user")),
+          None
+        )
+      )
+    )
+
+  private def serviceFor(config: CagnardConfig): IO[ApiService] =
+    IO.fromEither(StorageRegistry.fromConfig(config)).map(registry => ApiService(config, registry))
+
+  private def waitForJob(service: ApiService, jobId: String, attempts: Int = 40): IO[TransferJobResponse] =
+    service.transferJob(identity, jobId).flatMap {
+      case Right(job) if Set("completed", "failed", "canceled", "partial", "blocked").contains(job.status) => IO.pure(job)
+      case Right(job) if attempts <= 0 => IO.pure(job)
+      case Right(_) => IO.sleep(50.millis) *> waitForJob(service, jobId, attempts - 1)
+      case Left(error) => IO.raiseError(IllegalStateException(error.message))
+    }
+
+  private def noStreamFilesystemProvider(config: ProviderConfig): FilesystemProvider =
+    new FilesystemProvider(config):
+      override def capabilities(root: ResolvedStorageRoot) =
+        super.capabilities(root).map {
+          case capability if capability.name == "stream-read" =>
+            capability.copy(status = "planned", description = Some("Disabled by test provider"))
+          case capability if capability.name == "stream-write" =>
+            capability.copy(status = "planned", description = Some("Disabled by test provider"))
+          case capability => capability
+        }
+
+      override def download(root: ResolvedStorageRoot, path: String) =
+        Left("download should not be called after buffered transfer preflight rejects a known oversized source")
+
+  private def slowFilesystemProvider(config: ProviderConfig, delayMillis: Long): FilesystemProvider =
+    new FilesystemProvider(config):
+      override def streamWrite(root: ResolvedStorageRoot, path: String, input: InputStream, info: FileContentInfo, overwrite: Boolean, onBytes: Long => Unit): Either[String, StorageEntry] =
+        super.streamWrite(
+          root,
+          path,
+          input,
+          info,
+          overwrite,
+          bytes => {
+            Thread.sleep(delayMillis)
+            onBytes(bytes)
+          }
+        )
 
   private def appFor(config: CagnardConfig) =
     IO.fromEither(StorageRegistry.fromConfig(config)).map { registry =>

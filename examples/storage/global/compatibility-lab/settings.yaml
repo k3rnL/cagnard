@@ -1,0 +1,13 @@
+project: cagnard
+fixture: yaml-source
+storage:
+  provider: filesystem
+  root: home
+openers:
+  markdown: enabled
+  json: enabled
+  csv: enabled
+  media: enabled
+notes:
+  - YAML is handled as source text in the first compatibility pass.
+  - Future plugins can replace this with a structured editor.

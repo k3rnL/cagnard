@@ -6,6 +6,10 @@ import type {
   OperationResponse,
   PreviewResponse,
   SessionResponse,
+  TransferRequest,
+  TransferJobListResponse,
+  TransferJobResponse,
+  TransferResponse,
   UiPluginsResponse
 } from "./types";
 
@@ -71,6 +75,14 @@ function operation<T extends Record<string, unknown>>(url: string, body: T) {
   });
 }
 
+function putStorageContent(tunnel: string, rootId: string, path: string, body: BodyInit, contentType: string, overwrite = false) {
+  return fetchJson<OperationResponse>(`/api/storage/content?${storageParams(tunnel, rootId, path, { overwrite: String(overwrite) })}`, {
+    method: "PUT",
+    headers: { "Content-Type": contentType || "application/octet-stream" },
+    body
+  });
+}
+
 export const cagnardApi = {
   authProviders: () => fetchJson<AuthProvidersResponse>("/api/auth/providers"),
   login: (providerId: string, username: string, password: string) =>
@@ -92,11 +104,8 @@ export const cagnardApi = {
   preview: (tunnel: string, rootId: string, path: string) =>
     fetchJson<PreviewResponse>(`/api/storage/preview?${storageParams(tunnel, rootId, path)}`),
   upload: (tunnel: string, rootId: string, path: string, file: File, overwrite = false) =>
-    fetchJson<OperationResponse>(`/api/storage/content?${storageParams(tunnel, rootId, path, { overwrite: String(overwrite) })}`, {
-      method: "PUT",
-      headers: { "Content-Type": file.type || "application/octet-stream" },
-      body: file
-    }),
+    putStorageContent(tunnel, rootId, path, file, file.type || "application/octet-stream", overwrite),
+  uploadContent: putStorageContent,
   download: async (tunnel: string, rootId: string, path: string) => {
     const response = await fetch(`/api/storage/content?${storageParams(tunnel, rootId, path)}`, {
       credentials: "same-origin"
@@ -117,5 +126,23 @@ export const cagnardApi = {
     operation("/api/storage/copy", { tunnel, rootId, sourcePath, targetPath, overwrite }),
   move: (tunnel: string, rootId: string, sourcePath: string, targetPath: string, overwrite = false) =>
     operation("/api/storage/move", { tunnel, rootId, sourcePath, targetPath, overwrite }),
+  transfer: (request: TransferRequest) =>
+    fetchJson<TransferResponse>("/api/storage/transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    }),
+  startTransferJob: (request: TransferRequest) =>
+    fetchJson<TransferJobResponse>("/api/storage/transfer/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    }),
+  transferJobs: () => fetchJson<TransferJobListResponse>("/api/storage/transfer/jobs"),
+  transferJob: (jobId: string) => fetchJson<TransferJobResponse>(`/api/storage/transfer/jobs/${encodeURIComponent(jobId)}`),
+  cancelTransferJob: (jobId: string) =>
+    fetchJson<TransferJobResponse>(`/api/storage/transfer/jobs/${encodeURIComponent(jobId)}/cancel`, {
+      method: "POST"
+    }),
   uiPlugins: () => fetchJson<UiPluginsResponse>("/api/plugins/ui")
 };

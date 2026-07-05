@@ -48,7 +48,7 @@ class S3StorageProviderSuite extends FunSuite:
 
     assertEquals(entries.map(entry => entry.name -> entry.kind), List("folder" -> "directory", "readme.txt" -> "file"))
     assertEquals(entries.find(_.name == "readme.txt").flatMap(_.metadata.size), Some(5L))
-    assertEquals(entries.find(_.name == "folder").toList.flatMap(_.capabilities.find(_.name == "delete").map(_.status)), List("unsupported"))
+    assertEquals(entries.find(_.name == "folder").toList.flatMap(_.capabilities.find(_.name == "delete").map(_.status)), List("supported"))
   }
 
   test("maps S3 object metadata into normalized and provider-specific fields") {
@@ -66,6 +66,8 @@ class S3StorageProviderSuite extends FunSuite:
 
     assertEquals(entry.metadata.size, Some(10L))
     assertEquals(entry.metadata.mimeType, Some("text/plain"))
+    assertEquals(entry.metadata.fileCategory, Some("text"))
+    assertEquals(entry.metadata.fileIcon, Some("file-text"))
     assertEquals(entry.metadata.version, Some("v1"))
     assertEquals(entry.metadata.encryption, Some("AES256"))
     assertEquals(entry.metadata.retention, Some("GOVERNANCE"))
@@ -103,11 +105,31 @@ class S3StorageProviderSuite extends FunSuite:
     assert(!fake.keys.contains("team/docs/renamed.txt"))
   }
 
+  test("deletes S3 directory-like prefixes recursively") {
+    val fake = FakeS3ObjectClient(
+      Map(
+        "team/docs/folder/readme.txt" -> fakeObject("team/docs/folder/readme.txt", "hello".getBytes, Some("text/plain")),
+        "team/docs/folder/nested/deep.txt" -> fakeObject("team/docs/folder/nested/deep.txt", "deep".getBytes, Some("text/plain")),
+        "team/docs/folder/nested/" -> fakeObject("team/docs/folder/nested/", Array.emptyByteArray, Some("application/x-directory")),
+        "team/docs/keep.txt" -> fakeObject("team/docs/keep.txt", "keep".getBytes, Some("text/plain"))
+      )
+    )
+    val provider = testProvider(fake)
+    val root = s3Root(prefix = "team/docs")
+
+    assert(provider.delete(root, "folder").isRight)
+    assertEquals(fake.keys.filter(_.startsWith("team/docs/folder/")), Set.empty[String])
+    assert(fake.keys.contains("team/docs/keep.txt"))
+  }
+
   test("reports degraded object-store move and rename capabilities") {
     val capabilities = testProvider(FakeS3ObjectClient(Map.empty)).capabilities(s3Root()).map(capability => capability.name -> capability.status).toMap
 
     assertEquals(capabilities("rename"), "degraded")
     assertEquals(capabilities("move"), "degraded")
+    assertEquals(capabilities("open"), "supported")
+    assertEquals(capabilities("bounded-read"), "supported")
+    assertEquals(capabilities("stream-read"), "planned")
   }
 
   test("runs opt-in S3-compatible integration smoke test") {

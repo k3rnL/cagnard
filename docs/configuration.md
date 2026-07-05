@@ -116,7 +116,7 @@ Provider settings:
 - `pathStyleAccess`: set `true` for providers that require path-style bucket addressing.
 - `sslEnabled`: controls the default scheme when `endpoint` omits `http://` or `https://`.
 - `trustAllCertificates`: local/insecure escape hatch for development endpoints with untrusted certificates.
-- `maxBufferedObjectBytes`: upload/download in-memory object limit, default `67108864` bytes.
+- `maxBufferedObjectBytes`: upload/download and non-streaming backend-mediated transfer fallback limit, default `67108864` bytes. Filesystem streaming transfers can exceed this limit; providers without stream support are rejected before download when the source size is known.
 
 Account credential modes:
 

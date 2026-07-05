@@ -57,7 +57,10 @@ case class EntryMetadata(
     version: Option[String],
     retention: Option[String],
     encryption: Option[String],
-    unavailable: List[String]
+    unavailable: List[String],
+    fileCategory: Option[String] = None,
+    fileIcon: Option[String] = None,
+    mimeTypeSource: Option[String] = None
 )
 
 case class StorageEntry(
@@ -86,6 +89,67 @@ case class CopyEntryRequest(tunnel: String, rootId: String, sourcePath: String, 
 
 case class MoveEntryRequest(tunnel: String, rootId: String, sourcePath: String, targetPath: String, overwrite: Boolean)
 
+case class TransferSourceRequest(intent: String, tunnel: String, rootId: String, path: String)
+
+case class TransferDestinationRequest(tunnel: String, rootId: String, path: String)
+
+case class TransferRequest(
+    sources: List[TransferSourceRequest],
+    destination: TransferDestinationRequest,
+    conflictPolicy: String
+)
+
+case class TransferItemResult(
+    intent: String,
+    sourceTunnel: String,
+    sourceRootId: String,
+    sourcePath: String,
+    targetPath: Option[String],
+    status: String,
+    message: String,
+    entry: Option[StorageEntry],
+    children: List[TransferItemResult] = Nil
+)
+
+case class TransferResponse(success: Boolean, message: String, results: List[TransferItemResult])
+
+case class TransferTaskProgress(
+    bytesTransferred: Long,
+    totalBytes: Option[Long],
+    itemsCompleted: Int,
+    totalItems: Option[Int]
+)
+
+case class TransferJobTask(
+    id: String,
+    intent: String,
+    sourceTunnel: String,
+    sourceRootId: String,
+    sourcePath: String,
+    targetPath: Option[String],
+    phase: String,
+    status: String,
+    message: String,
+    progress: TransferTaskProgress,
+    result: Option[TransferItemResult],
+    children: List[TransferJobTask] = Nil
+)
+
+case class TransferJobResponse(
+    id: String,
+    status: String,
+    message: String,
+    createdAt: String,
+    updatedAt: String,
+    operation: String,
+    destination: TransferDestinationRequest,
+    conflictPolicy: String,
+    tasks: List[TransferJobTask],
+    results: List[TransferItemResult]
+)
+
+case class TransferJobListResponse(jobs: List[TransferJobResponse])
+
 case class UiPluginManifest(
     id: String,
     label: String,
@@ -94,7 +158,14 @@ case class UiPluginManifest(
     mimeTypes: List[String],
     extensions: List[String],
     permissions: List[String],
-    priority: Int
+    priority: Int,
+    categories: List[String] = Nil,
+    mode: String = "viewer",
+    editMode: String = "none",
+    readStrategy: String = "bounded",
+    saveStrategy: String = "none",
+    maxSizeBytes: Option[Long] = None,
+    requiredCapabilities: List[String] = Nil
 )
 
 case class UiPluginsResponse(plugins: List[UiPluginManifest])
@@ -171,6 +242,33 @@ object ApiModels:
 
   given Encoder[MoveEntryRequest] = deriveEncoder
   given Decoder[MoveEntryRequest] = deriveDecoder
+
+  given Encoder[TransferSourceRequest] = deriveEncoder
+  given Decoder[TransferSourceRequest] = deriveDecoder
+
+  given Encoder[TransferDestinationRequest] = deriveEncoder
+  given Decoder[TransferDestinationRequest] = deriveDecoder
+
+  given Encoder[TransferRequest] = deriveEncoder
+  given Decoder[TransferRequest] = deriveDecoder
+
+  given Encoder[TransferItemResult] = deriveEncoder
+  given Decoder[TransferItemResult] = deriveDecoder
+
+  given Encoder[TransferResponse] = deriveEncoder
+  given Decoder[TransferResponse] = deriveDecoder
+
+  given Encoder[TransferTaskProgress] = deriveEncoder
+  given Decoder[TransferTaskProgress] = deriveDecoder
+
+  given Encoder[TransferJobTask] = deriveEncoder
+  given Decoder[TransferJobTask] = deriveDecoder
+
+  given Encoder[TransferJobResponse] = deriveEncoder
+  given Decoder[TransferJobResponse] = deriveDecoder
+
+  given Encoder[TransferJobListResponse] = deriveEncoder
+  given Decoder[TransferJobListResponse] = deriveDecoder
 
   given Encoder[UiPluginManifest] = deriveEncoder
   given Decoder[UiPluginManifest] = deriveDecoder

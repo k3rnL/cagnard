@@ -1,0 +1,28 @@
+{
+  "project": "cagnard",
+  "fixture": "json-opener",
+  "createdFor": "file-compatibility",
+  "features": {
+    "treeView": true,
+    "prettify": true,
+    "minify": true,
+    "writeBack": true
+  },
+  "objects": [
+    {
+      "name": "report.csv",
+      "mimeType": "text/csv",
+      "size": 1842
+    },
+    {
+      "name": "diagram.svg",
+      "mimeType": "image/svg+xml",
+      "size": 673
+    }
+  ],
+  "limits": {
+    "largeFileStrategy": "bounded-read",
+    "rangeRead": "planned",
+    "streamRead": "planned"
+  }
+}

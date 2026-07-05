@@ -1,6 +1,6 @@
 ## Purpose
 
-Defines the provider-neutral browser experience, navigation, metadata, preview, and storage actions.
+Defines the provider-neutral browser experience, navigation, metadata, explicit file opening, and storage actions.
 
 ## Requirements
 
@@ -67,19 +67,35 @@ Cagnard SHALL show breadcrumb navigation for the current path and allow returnin
 - **WHEN** the user activates the root breadcrumb
 - **THEN** Cagnard SHALL list the storage root path
 
+#### Scenario: Label root breadcrumb
+- **WHEN** the active storage root has a display label or nice name
+- **THEN** Cagnard SHALL use that label for the root breadcrumb instead of a generic root label
+
 ### Requirement: Capability-driven browser actions
-Cagnard SHALL enable search, preview, download, upload, create folder, rename, copy, move, and delete actions only when the selected provider, account, and storage entry expose the required capabilities.
+Cagnard SHALL enable search, open, download, upload, create file, create folder, rename, add-to-pasteboard, paste-copy, paste-move, and delete actions only when the selected provider, account, storage entry, active destination, and registered UI capabilities expose the required capabilities.
 
 #### Scenario: Enable available action
-- **WHEN** a selected storage entry supports download and preview
-- **THEN** Cagnard SHALL offer download and preview actions for that entry
+- **WHEN** a selected storage entry supports download and a compatible opener is available
+- **THEN** Cagnard SHALL offer download and open actions for that entry
 
 #### Scenario: Disable unavailable action
 - **WHEN** a selected storage entry does not support delete
 - **THEN** Cagnard SHALL show delete as unavailable or omit it according to the UI policy
 
+#### Scenario: Enable pasteboard staging
+- **WHEN** one or more selected entries can be referenced safely for later copy or move execution
+- **THEN** Cagnard SHALL allow adding them to the browser pasteboard
+
+#### Scenario: Enable paste into active destination
+- **WHEN** the pasteboard has selected items and the active destination supports the required write capabilities
+- **THEN** Cagnard SHALL enable Paste or Move here actions for the active location according to destination and source capabilities
+
 ### Requirement: Basic file actions
-Cagnard SHALL support download, upload, create folder, rename, delete, copy, and move actions for the active storage root when the root and selected entries expose the required capabilities.
+Cagnard SHALL support download, upload, create file, create folder, rename, delete, add to pasteboard, and pasteboard-driven copy or move actions for the active storage root when the root, selected entries, and destination expose the required capabilities.
+
+#### Scenario: Create file
+- **WHEN** the user creates a file in the current directory
+- **THEN** Cagnard SHALL create the file and refresh the listing
 
 #### Scenario: Create folder
 - **WHEN** the user creates a folder in the current directory
@@ -101,16 +117,20 @@ Cagnard SHALL support download, upload, create folder, rename, delete, copy, and
 - **WHEN** the user downloads a selected file
 - **THEN** Cagnard SHALL return the file content as raw bytes in a downloadable response
 
+#### Scenario: Add to pasteboard
+- **WHEN** the user adds selected entries to the pasteboard
+- **THEN** Cagnard SHALL stage references to those entries without copying or moving data immediately
+
 ### Requirement: Same-root copy and move
-Cagnard SHALL support copy and move within the active storage root using explicit target paths.
+Cagnard SHALL support copy and move within the active storage root through the pasteboard workflow and MAY use optimized same-root provider operations when they preserve requested semantics.
 
 #### Scenario: Copy file within root
-- **WHEN** the user copies a selected file to a target path in the same storage root
+- **WHEN** the user chooses Paste for a staged file in the same storage root
 - **THEN** Cagnard SHALL create the target file without removing the source
 
 #### Scenario: Move entry within root
-- **WHEN** the user moves a selected file or directory to a target path in the same storage root
-- **THEN** Cagnard SHALL create the target entry and remove the source entry
+- **WHEN** the user chooses Move here for a staged file or directory in the same storage root
+- **THEN** Cagnard SHALL create the target entry and remove the source entry only after destination success
 
 ### Requirement: Search across storage providers
 Cagnard SHALL support search through provider-native search when available and through clearly scoped fallback behavior when native search is unavailable.
@@ -131,26 +151,45 @@ Cagnard SHALL allow the user to filter and sort the entries currently loaded for
 - **THEN** Cagnard SHALL restrict the displayed entries to matching loaded entries and show the filtered count
 
 #### Scenario: Sort by metadata column
-- **WHEN** the user sorts by name, type, size, modified time, or MIME type
+- **WHEN** the user sorts by name, type, size, modified time, MIME type, or file category
 - **THEN** Cagnard SHALL reorder the current listing by that column while preserving selection semantics
 
-### Requirement: File preview
-Cagnard SHALL preview supported files and objects based on normalized metadata, content type, size limits, provider download or preview capabilities, and registered UI preview plugins.
+### Requirement: File open behavior
+Cagnard SHALL open supported files and objects through an explicit user action based on normalized metadata, content type, file category, size limits, storage capabilities, and registered file opener plugins.
 
-#### Scenario: Preview supported MIME type
-- **WHEN** the user previews an entry with a supported MIME type and accessible content
-- **THEN** Cagnard SHALL render an appropriate preview without requiring the user to download the file manually
+#### Scenario: Open supported MIME type
+- **WHEN** the user opens an entry with a supported MIME type and accessible content
+- **THEN** Cagnard SHALL render the file in an appropriate in-app opener without requiring the user to download it manually
 
-#### Scenario: Refuse unsafe or unsupported preview
-- **WHEN** the entry is too large, has an unsupported MIME type, or lacks a safe preview capability
-- **THEN** Cagnard SHALL decline inline preview and offer available alternative actions
+#### Scenario: Refuse unsafe or unsupported open
+- **WHEN** the entry is too large, has an unsupported type, or lacks required storage capabilities
+- **THEN** Cagnard SHALL decline in-app opening and offer available alternative actions
 
-#### Scenario: Preview supported text file
-- **WHEN** the selected file is a supported text file within the preview size limit
-- **THEN** Cagnard SHALL display the text content in the preview panel
+#### Scenario: Open supported text file
+- **WHEN** the selected file is a supported text-like file within the opener size limit
+- **THEN** Cagnard SHALL display the content in a text-capable opener rather than the browse metadata panel
+
+#### Scenario: Replace list with full opener
+- **WHEN** the user opens a file through the main open action
+- **THEN** Cagnard SHALL replace the file list with the opener surface while preserving breadcrumbs and applicable action controls
+
+#### Scenario: Inline quick open
+- **WHEN** the user activates quick view on a file row
+- **THEN** Cagnard SHALL insert the opener surface inline between that file row and the next entry without leaving the current directory listing
+
+### Requirement: Adaptive browser metadata surface
+Cagnard SHALL show normalized metadata without making the file listing unusable at medium or small viewport widths.
+
+#### Scenario: Show side metadata on wide screen
+- **WHEN** the browser has enough horizontal space for the listing and metadata
+- **THEN** Cagnard MAY show metadata as a side panel next to the file list
+
+#### Scenario: Show metadata drawer on constrained screen
+- **WHEN** the viewport is too narrow for a useful file list and side metadata panel
+- **THEN** Cagnard SHALL expose metadata through a toggleable drawer or equivalent overlay instead of placing it below the list
 
 ### Requirement: Metadata comparison
-Cagnard SHALL provide a normalized metadata view for size, MIME type, owner, permissions, modified time, version, retention, and encryption state across providers.
+Cagnard SHALL provide a normalized metadata view for size, MIME type, file category, owner, permissions, modified time, version, retention, and encryption state across providers.
 
 #### Scenario: Compare normalized metadata
 - **WHEN** the user selects entries from different providers
@@ -163,6 +202,47 @@ Cagnard SHALL provide a normalized metadata view for size, MIME type, owner, per
 #### Scenario: Compare modified time
 - **WHEN** the provider supplies a modified timestamp for an entry
 - **THEN** Cagnard SHALL display the timestamp as normalized metadata and allow sorting by it in the browser listing
+
+### Requirement: File type display
+Cagnard SHALL display file type and icon metadata in browser listings and file metadata surfaces when the information can be classified safely.
+
+#### Scenario: Show classified file type
+- **WHEN** a listed entry has a known MIME type, extension, or category
+- **THEN** Cagnard SHALL show the corresponding type label or icon without provider-specific UI logic
+
+#### Scenario: Show unknown file type
+- **WHEN** a listed entry cannot be classified
+- **THEN** Cagnard SHALL show a generic unknown or binary file representation while preserving available actions
+
+### Requirement: Grouped command bar
+Cagnard SHALL keep primary browser actions directly clickable and group related secondary actions without forcing toolbar wrapping in normal desktop and tablet layouts, including pasteboard staging and paste actions.
+
+#### Scenario: Primary action remains clickable
+- **WHEN** a command has related secondary actions
+- **THEN** Cagnard SHALL keep the primary action available as a direct button and expose secondary actions through a grouped menu or equivalent control
+
+#### Scenario: Remove redundant up action
+- **WHEN** breadcrumb navigation is available
+- **THEN** Cagnard MAY omit a separate up action from the primary toolbar
+
+#### Scenario: Show pasteboard action surface
+- **WHEN** the browser command bar is visible
+- **THEN** Cagnard SHALL expose a pasteboard control that shows staged item count and paste availability
+
+### Requirement: Browser action modal behavior
+Cagnard SHALL use normalized app-owned modals for browser action confirmation, text input, conflict choice, and detailed operation failures.
+
+#### Scenario: Create through app modal
+- **WHEN** the user creates or renames an entry
+- **THEN** Cagnard SHALL collect the name through an app-owned modal with inline validation
+
+#### Scenario: Confirm through app modal
+- **WHEN** the user starts a destructive action
+- **THEN** Cagnard SHALL confirm through an app-owned modal before mutating storage
+
+#### Scenario: Avoid native dialogs
+- **WHEN** a browser action requires user interaction
+- **THEN** Cagnard SHALL NOT use native browser `alert`, `confirm`, or `prompt`
 
 ### Requirement: Provider-neutral primary UI
 Cagnard SHALL keep the primary browser workflow provider-neutral while allowing contextual access to provider-specific features.

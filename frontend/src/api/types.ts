@@ -83,6 +83,9 @@ export interface EntryMetadata {
   retention?: string | null;
   encryption?: string | null;
   unavailable: string[];
+  fileCategory?: string | null;
+  fileIcon?: string | null;
+  mimeTypeSource?: string | null;
 }
 
 export interface StorageEntry {
@@ -107,6 +110,85 @@ export interface OperationResponse {
   entry?: StorageEntry;
 }
 
+export type TransferIntent = "copy" | "move";
+export type TransferConflictPolicy = "fail" | "skip" | "keep-both" | "replace";
+
+export interface TransferSourceRequest {
+  intent: TransferIntent;
+  tunnel: "personal" | "global";
+  rootId: string;
+  path: string;
+}
+
+export interface TransferDestinationRequest {
+  tunnel: "personal" | "global";
+  rootId: string;
+  path: string;
+}
+
+export interface TransferRequest {
+  sources: TransferSourceRequest[];
+  destination: TransferDestinationRequest;
+  conflictPolicy: TransferConflictPolicy;
+}
+
+export interface TransferItemResult {
+  intent: TransferIntent;
+  sourceTunnel: string;
+  sourceRootId: string;
+  sourcePath: string;
+  targetPath?: string;
+  status: "copied" | "moved" | "skipped" | "conflict" | "failed" | "partial" | string;
+  message: string;
+  entry?: StorageEntry;
+  children: TransferItemResult[];
+}
+
+export interface TransferResponse {
+  success: boolean;
+  message: string;
+  results: TransferItemResult[];
+}
+
+export interface TransferTaskProgress {
+  bytesTransferred: number;
+  totalBytes?: number | null;
+  itemsCompleted: number;
+  totalItems?: number | null;
+}
+
+export interface TransferJobTask {
+  id: string;
+  intent: TransferIntent;
+  sourceTunnel: string;
+  sourceRootId: string;
+  sourcePath: string;
+  targetPath?: string;
+  phase: string;
+  status: string;
+  message: string;
+  progress: TransferTaskProgress;
+  result?: TransferItemResult;
+  children: TransferJobTask[];
+}
+
+export interface TransferJobResponse {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed" | "canceled" | "partial" | "blocked" | "canceling" | string;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+  operation: TransferIntent | "mixed" | string;
+  destination: TransferDestinationRequest;
+  conflictPolicy: TransferConflictPolicy;
+  tasks: TransferJobTask[];
+  results: TransferItemResult[];
+}
+
+export interface TransferJobListResponse {
+  jobs: TransferJobResponse[];
+}
+
 export interface PreviewResponse {
   path: string;
   mimeType?: string;
@@ -123,6 +205,13 @@ export interface UiPluginManifest {
   extensions: string[];
   permissions: string[];
   priority: number;
+  categories?: string[];
+  mode?: string;
+  editMode?: string;
+  readStrategy?: string;
+  saveStrategy?: string;
+  maxSizeBytes?: number;
+  requiredCapabilities?: string[];
 }
 
 export interface UiPluginsResponse {

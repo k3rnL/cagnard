@@ -1,0 +1,20 @@
+- [x] 1.1 Add design artifact for job-backed large-file transfer.
+- [x] 1.2 Add delta specs for transfer jobs, streaming transfer, browser pasteboard, storage plugins, storage browser, cross-provider transfer, and stateless configuration.
+- [x] 2.1 Add backend API models for transfer jobs, task phases, progress, and cancellation.
+- [x] 2.2 Add transfer job HTTP routes for create, list, detail, and cancel.
+- [x] 2.3 Add in-memory transfer job management with explicit restart limitations.
+- [x] 3.1 Extend storage provider capabilities and contract with streaming read/write and source-size preflight hooks.
+- [x] 3.2 Implement filesystem stream read/write without full in-memory buffering.
+- [x] 3.3 Keep S3 same-root server-side copy and expose generic streaming as unsupported until multipart/stream methods are implemented.
+- [x] 4.1 Refactor provider-neutral file copy to stream when both providers support it.
+- [x] 4.2 Enforce bounded fallback limits before reading source content when streaming is unavailable.
+- [x] 4.3 Preserve safe move semantics: delete source only after destination write succeeds.
+- [x] 4.4 Report transfer job task failures with phase and safe diagnostics.
+- [x] 5.1 Update frontend API types/client for transfer jobs.
+- [x] 5.2 Start pasteboard Paste/Move here through transfer jobs.
+- [x] 5.3 Add recent/active transfer job status UI with cancel and details.
+- [x] 6.1 Update docs for cross-provider transfer, storage plugin capabilities, and configuration limitations.
+- [x] 6.2 Add backend tests for streaming transfer beyond buffered fallback limit.
+- [x] 6.3 Add backend tests for transfer job lifecycle and cancel behavior.
+- [x] 6.4 Run backend tests and frontend typecheck/build.
+- [x] 6.5 Check OpenSpec validation availability for `improve-large-files-copy` (`openspec` CLI not found in PATH).

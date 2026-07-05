@@ -1,0 +1,6 @@
+name,type,size_bytes,owner,encrypted
+developer-guide.md,markdown,348,alice,false
+payload.json,json,681,alice,false
+diagram.svg,image,673,alice,false
+server.log,log,416,system,false
+unknown.payload,binary,64,alice,false

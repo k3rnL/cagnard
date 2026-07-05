@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cagnard-fixture>
+  <name>XML sample</name>
+  <provider family="unix">filesystem</provider>
+  <capabilities>
+    <capability name="bounded-read" status="supported"/>
+    <capability name="overwrite" status="supported"/>
+    <capability name="stream-read" status="planned"/>
+  </capabilities>
+</cagnard-fixture>

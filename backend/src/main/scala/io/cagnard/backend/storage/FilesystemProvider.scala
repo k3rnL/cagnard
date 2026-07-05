@@ -3,9 +3,22 @@ package io.cagnard.backend.storage
 import io.cagnard.backend.api.StorageEntry
 import io.cagnard.backend.config.ProviderConfig
 
+import java.io.{InputStream, OutputStream}
 import java.nio.charset.StandardCharsets
-import java.nio.file.attribute.PosixFilePermissions
-import java.nio.file.{Files, Path, StandardCopyOption}
+import java.nio.file.attribute.{BasicFileAttributes, PosixFilePermissions}
+import java.nio.file.{
+  AccessDeniedException,
+  DirectoryNotEmptyException,
+  FileSystemException,
+  FileVisitResult,
+  Files,
+  LinkOption,
+  NoSuchFileException,
+  Path,
+  SimpleFileVisitor,
+  StandardCopyOption,
+  StandardOpenOption
+}
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
@@ -42,6 +55,43 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
           .toEither
           .left.map(_.getMessage)
           .map(bytes => FileContent(target.getFileName.toString, mimeType(target), bytes))
+    }
+
+  override def contentInfo(root: ResolvedStorageRoot, path: String): Either[String, FileContentInfo] =
+    resolve(root, path).flatMap { target =>
+      if !Files.exists(target) then Left(s"Path does not exist: $path")
+      else if !Files.isRegularFile(target) then Left(s"Path is not a regular file: $path")
+      else Right(FileContentInfo(target.getFileName.toString, mimeType(target), Try(Files.size(target)).toOption))
+    }
+
+  override def streamRead(root: ResolvedStorageRoot, path: String, output: OutputStream, onBytes: Long => Unit): Either[String, FileContentInfo] =
+    contentInfo(root, path).flatMap { info =>
+      resolve(root, path).flatMap { target =>
+        Try {
+          val input = Files.newInputStream(target, StandardOpenOption.READ)
+          try copyStream(input, output, onBytes)
+          finally input.close()
+          info
+        }.toEither.left.map(_.getMessage)
+      }
+    }
+
+  override def streamWrite(root: ResolvedStorageRoot, path: String, input: InputStream, info: FileContentInfo, overwrite: Boolean, onBytes: Long => Unit): Either[String, StorageEntry] =
+    ensureWritable(root).flatMap { _ =>
+      resolve(root, path).flatMap { target =>
+        if Files.exists(target) && !overwrite then Left("Target already exists")
+        else
+          Try {
+            val parent = target.getParent
+            if parent != null then Files.createDirectories(parent)
+            val options =
+              if overwrite then Array(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)
+              else Array(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+            val output = Files.newOutputStream(target, options*)
+            try copyStream(input, output, onBytes)
+            finally output.close()
+          }.toEither.left.map(_.getMessage).flatMap(_ => stat(root, path))
+      }
     }
 
   override def preview(root: ResolvedStorageRoot, path: String, maxBytes: Long): Either[String, TextPreview] =
@@ -116,8 +166,8 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
       if path.trim.isEmpty then Left("Cannot delete storage root")
       else
         resolve(root, path).flatMap { target =>
-          if !Files.exists(target) then Left(s"Path does not exist: $path")
-          else Try(Files.delete(target)).toEither.left.map(_.getMessage)
+          if !Files.exists(target, LinkOption.NOFOLLOW_LINKS) then Left(s"Path does not exist: $path")
+          else deleteResolvedPath(path, target)
         }
     }
 
@@ -179,6 +229,48 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
     if Files.exists(target) && !overwrite then Left("Target already exists")
     else Right(())
 
+  private def deleteResolvedPath(displayPath: String, target: Path): Either[String, Unit] =
+    Try {
+      if Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS) then
+        Files.walkFileTree(
+          target,
+          new SimpleFileVisitor[Path]:
+            override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult =
+              Files.delete(file)
+              FileVisitResult.CONTINUE
+
+            override def postVisitDirectory(dir: Path, error: java.io.IOException): FileVisitResult =
+              if error != null then throw error
+              Files.delete(dir)
+              FileVisitResult.CONTINUE
+        )
+        ()
+      else Files.delete(target)
+    }.toEither.left.map(deleteFailureMessage(displayPath, _))
+
+  private def deleteFailureMessage(displayPath: String, error: Throwable): String =
+    error match
+      case _: NoSuchFileException => s"Path does not exist: $displayPath"
+      case _: DirectoryNotEmptyException => s"Directory is not empty: $displayPath"
+      case _: AccessDeniedException => s"Access denied while deleting: $displayPath"
+      case fileSystemError: FileSystemException =>
+        Option(fileSystemError.getReason).map(_.trim).filter(_.nonEmpty) match
+          case Some(reason) => s"Cannot delete $displayPath: $reason"
+          case None => s"Cannot delete $displayPath"
+      case other =>
+        Option(other.getMessage).map(_.trim).filter(_.nonEmpty) match
+          case Some(message) => s"Cannot delete $displayPath: $message"
+          case None => s"Cannot delete $displayPath"
+
+  private def copyStream(input: InputStream, output: OutputStream, onBytes: Long => Unit): Unit =
+    val buffer = Array.ofDim[Byte](64 * 1024)
+    var read = input.read(buffer)
+    while read >= 0 do
+      if read > 0 then
+        output.write(buffer, 0, read)
+        onBytes(read.toLong)
+      read = input.read(buffer)
+
   private def validName(name: String): Either[String, String] =
     val trimmed = Option(name).getOrElse("").trim
     if trimmed.isEmpty then Left("Name cannot be empty")
@@ -190,12 +282,11 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
     if parent.isEmpty then name else s"$parent/$name"
 
   private def isTextLike(target: Path): Boolean =
-    val mt = mimeType(target).getOrElse("").toLowerCase
-    val name = target.getFileName.toString.toLowerCase
-    mt.startsWith("text/") || name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".json") || name.endsWith(".csv")
+    FileTypeCatalog.isTextLike(target.getFileName.toString, mimeType(target))
 
   private def mimeType(target: Path): Option[String] =
-    Try(Option(Files.probeContentType(target))).toOption.flatten
+    val detected = Try(Option(Files.probeContentType(target))).toOption.flatten
+    FileTypeCatalog.fallbackMimeType(target.getFileName.toString, detected)
 
   private def entry(root: ResolvedStorageRoot, target: Path): StorageEntry =
     val base = filesystemBase(root).toOption.get.toAbsolutePath.normalize()
@@ -218,7 +309,7 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
       name = name,
       path = normalized,
       kind = kind,
-      metadata = EmptyMetadata(size, detectedMimeType, owner, permissions, modifiedTime),
+      metadata = EmptyMetadata(size, detectedMimeType, owner, permissions, modifiedTime, name),
       capabilities = capabilities(root),
       providerSpecific = Map("filesystem.path" -> absolute.toString)
     )
