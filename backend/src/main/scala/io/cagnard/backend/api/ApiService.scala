@@ -538,7 +538,7 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
                 else if jobContext.exists(context => isCanceled(context.jobId)) then
                   copied.copy(intent = "move", status = "canceled", message = s"Transfer job was canceled after destination copy; source was not deleted")
                 else
-                  deleteRecursive(context.provider, context.root, context.entry.path) match
+                  context.provider.delete(context.root, context.entry.path) match
                     case Right(_) => copied.copy(intent = "move", status = "moved", message = s"Moved to ${copied.targetPath.getOrElse(targetPath)}")
                     case Left(message) => copied.copy(intent = "move", status = "partial", message = s"Copied to ${copied.targetPath.getOrElse(targetPath)}, but source delete failed: $message")
           }
@@ -771,7 +771,7 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
               )
             case "replace" =>
               if sourceKind == "directory" then
-                deleteRecursive(provider, root, targetPath).fold(
+                provider.delete(root, targetPath).fold(
                   message => Left(failedResult(source, Some(targetPath), s"Cannot replace existing directory: $message")),
                   _ => Right(TargetResolution(targetPath, overwrite = false))
                 )
@@ -785,24 +785,6 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
         provider <- registry.provider(root.providerId)
         entry <- provider.stat(root, source.path).left.map(operationError)
       yield TransferContext(root, provider, entry)
-    }
-
-  private def deleteRecursive(provider: StorageProvider, root: ResolvedStorageRoot, path: String): Either[String, Unit] =
-    provider.stat(root, path).flatMap { entry =>
-      if entry.kind == "directory" then
-        val deletedChildren =
-          provider.list(root, path).flatMap { children =>
-            children.foldLeft[Either[String, Unit]](Right(())) { (acc, child) =>
-              acc.flatMap(_ => deleteRecursive(provider, root, child.path))
-            }
-          }
-        deletedChildren.flatMap { _ =>
-          provider.delete(root, path) match
-            case Right(value) => Right(value)
-            case Left(message) if message.contains("Path does not exist") || message.contains("Recursive prefix delete is not supported") => Right(())
-            case Left(message) => Left(message)
-        }
-      else provider.delete(root, path)
     }
 
   private def destinationExists(provider: StorageProvider, root: ResolvedStorageRoot, path: String): Either[String, Boolean] =

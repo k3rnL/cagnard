@@ -82,7 +82,7 @@ object StorageCapabilities:
   val copy = CapabilityStatus("copy", "supported", Some("Copy a file inside the storage root"))
   val move = CapabilityStatus("move", "supported", Some("Move a file or directory inside the storage root"))
   val transfer = CapabilityStatus("transfer", "supported", Some("Participate in provider-neutral pasteboard transfer"))
-  val delete = CapabilityStatus("delete", "supported", Some("Delete a file or empty directory"))
+  val delete = CapabilityStatus("delete", "supported", Some("Delete a file or directory tree"))
   val search = CapabilityStatus("search", "degraded", Some("Search can fall back to scoped listing in a later implementation"))
   val preview = CapabilityStatus("preview", "supported", Some("Legacy bounded text preview API remains available for text openers"))
 
@@ -119,6 +119,7 @@ object StorageCapabilities:
   def s3(readOnly: Boolean, directory: Boolean = false): List[CapabilityStatus] =
     val objectStoreRename = rename.copy(status = "degraded", description = Some("S3 rename is implemented as copy then delete for objects"))
     val objectStoreMove = move.copy(status = "degraded", description = Some("S3 move is implemented as copy then delete for objects"))
+    val objectStoreDelete = delete.copy(description = Some("Delete S3 objects or directory-like prefixes recursively"))
     val directoryUnsupported = Some("Recursive prefix mutation is not implemented for S3 directory-like entries")
     val mutations =
       if readOnly then List(
@@ -137,9 +138,9 @@ object StorageCapabilities:
         rename.copy(status = "unsupported", description = directoryUnsupported),
         copy.copy(status = "unsupported", description = directoryUnsupported),
         move.copy(status = "unsupported", description = directoryUnsupported),
-        delete.copy(status = "unsupported", description = directoryUnsupported)
+        objectStoreDelete
       )
-      else List(upload, overwrite, createFolder, objectStoreRename, copy, objectStoreMove, delete)
+      else List(upload, overwrite, createFolder, objectStoreRename, copy, objectStoreMove, objectStoreDelete)
     List(list, recursiveList, stat, open, download, fullRead, boundedRead, rangeRead, streamRead, streamWrite, multipartUpload, verifyWrite, preview, search, transfer) ++ mutations
 
 object EmptyMetadata:

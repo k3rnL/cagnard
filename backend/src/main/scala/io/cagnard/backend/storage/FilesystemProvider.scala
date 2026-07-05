@@ -5,8 +5,20 @@ import io.cagnard.backend.config.ProviderConfig
 
 import java.io.{InputStream, OutputStream}
 import java.nio.charset.StandardCharsets
-import java.nio.file.attribute.PosixFilePermissions
-import java.nio.file.{Files, Path, StandardCopyOption, StandardOpenOption}
+import java.nio.file.attribute.{BasicFileAttributes, PosixFilePermissions}
+import java.nio.file.{
+  AccessDeniedException,
+  DirectoryNotEmptyException,
+  FileSystemException,
+  FileVisitResult,
+  Files,
+  LinkOption,
+  NoSuchFileException,
+  Path,
+  SimpleFileVisitor,
+  StandardCopyOption,
+  StandardOpenOption
+}
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
@@ -154,8 +166,8 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
       if path.trim.isEmpty then Left("Cannot delete storage root")
       else
         resolve(root, path).flatMap { target =>
-          if !Files.exists(target) then Left(s"Path does not exist: $path")
-          else Try(Files.delete(target)).toEither.left.map(_.getMessage)
+          if !Files.exists(target, LinkOption.NOFOLLOW_LINKS) then Left(s"Path does not exist: $path")
+          else deleteResolvedPath(path, target)
         }
     }
 
@@ -216,6 +228,39 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
   private def ensureTargetWritable(target: Path, overwrite: Boolean): Either[String, Unit] =
     if Files.exists(target) && !overwrite then Left("Target already exists")
     else Right(())
+
+  private def deleteResolvedPath(displayPath: String, target: Path): Either[String, Unit] =
+    Try {
+      if Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS) then
+        Files.walkFileTree(
+          target,
+          new SimpleFileVisitor[Path]:
+            override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult =
+              Files.delete(file)
+              FileVisitResult.CONTINUE
+
+            override def postVisitDirectory(dir: Path, error: java.io.IOException): FileVisitResult =
+              if error != null then throw error
+              Files.delete(dir)
+              FileVisitResult.CONTINUE
+        )
+        ()
+      else Files.delete(target)
+    }.toEither.left.map(deleteFailureMessage(displayPath, _))
+
+  private def deleteFailureMessage(displayPath: String, error: Throwable): String =
+    error match
+      case _: NoSuchFileException => s"Path does not exist: $displayPath"
+      case _: DirectoryNotEmptyException => s"Directory is not empty: $displayPath"
+      case _: AccessDeniedException => s"Access denied while deleting: $displayPath"
+      case fileSystemError: FileSystemException =>
+        Option(fileSystemError.getReason).map(_.trim).filter(_.nonEmpty) match
+          case Some(reason) => s"Cannot delete $displayPath: $reason"
+          case None => s"Cannot delete $displayPath"
+      case other =>
+        Option(other.getMessage).map(_.trim).filter(_.nonEmpty) match
+          case Some(message) => s"Cannot delete $displayPath: $message"
+          case None => s"Cannot delete $displayPath"
 
   private def copyStream(input: InputStream, output: OutputStream, onBytes: Long => Unit): Unit =
     val buffer = Array.ofDim[Byte](64 * 1024)

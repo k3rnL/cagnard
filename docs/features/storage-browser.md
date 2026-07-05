@@ -29,6 +29,7 @@ Copy and move use the browser pasteboard. The Copy button adds safe references t
 Paste and Move here start backend transfer jobs. When jobs exist, the command bar shows a transfer queue button next to the pasteboard. The button displays a spinner while work is active, a failure marker when any recent job needs attention, or a success marker when recent work completed. Its dropdown shows recent jobs with task progress, latest update time, status, destination context, and cancel action while a job is queued, running, or canceling.
 
 Create, rename, delete, and transfer conflict choices use app-owned modals with inline validation and keyboard handling instead of native browser dialogs.
+Delete is provider-neutral from the user's perspective: deleting a folder, prefix, or object asks the active storage provider to remove that entry, including children when the entry is directory-like.
 
 ## Configuration
 

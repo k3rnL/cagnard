@@ -17,7 +17,7 @@ The Unix filesystem provider supports:
 - direct overwrite/write-back where root policy allows it
 - create folder
 - rename
-- delete file or empty directory
+- delete file or directory tree
 - copy regular file
 - move file or directory
 - provider-neutral recursive transfer through list, create folder, stream or bounded read/write, upload, and delete
@@ -36,11 +36,11 @@ The S3-compatible provider supports:
 - bounded text preview
 - direct overwrite/write-back where root policy allows it
 - folder markers for directory-like prefixes
-- copy and delete objects
+- copy objects and delete objects or directory-like prefixes
 - rename and move as degraded copy-then-delete object operations
 - provider-neutral recursive paste where prefix listing, folder markers, upload, and delete semantics allow it
 
-S3 directory-like prefixes are not real directories. Provider-native lifecycle operations remain object-oriented, while cross-root pasteboard transfer can recursively traverse prefixes through the provider-neutral transfer service.
+Delete is exposed as a user-level storage operation: deleting a directory or prefix removes the whole entry tree when the provider can enumerate it. S3 directory-like prefixes are not real directories, so provider-native copy, rename, and move remain object-oriented, while delete and cross-root pasteboard transfer can recursively traverse prefixes.
 
 ## Configuration
 
@@ -93,4 +93,4 @@ providers = [
 
 - Google, Azure, WebDAV, and SFTP providers are planned but not implemented.
 - Provider-native directory copy is not implemented for the Unix provider; recursive pasteboard transfer is mediated by the backend service.
-- S3 multipart upload, S3 generic streaming transfer, range reads, provider-native recursive prefix mutation, IAM/policy management, and bucket administration are future work.
+- S3 multipart upload, S3 generic streaming transfer, range reads, provider-native recursive prefix copy/rename/move, IAM/policy management, and bucket administration are future work.

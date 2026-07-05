@@ -455,6 +455,25 @@ class BackendCoreSuite extends CatsEffectSuite:
     }
   }
 
+  test("deletes non-empty filesystem directories through the storage API") {
+    tempDirectory.use { root =>
+      IO.blocking {
+        Files.createDirectories(root.resolve("docs").resolve("nested"))
+        Files.writeString(root.resolve("docs").resolve("note.txt"), "hello")
+        Files.writeString(root.resolve("docs").resolve("nested").resolve("deep.txt"), "deep")
+      }.flatMap { _ =>
+        val config = testConfig(root)
+        IO.fromEither(StorageRegistry.fromConfig(config)).flatMap { registry =>
+          val service = ApiService(config, registry)
+          service.deleteEntry(identity, DeleteEntryRequest("personal", "home", "docs", confirmed = true)).map { result =>
+            assertEquals(result.toOption.map(_.success), Some(true))
+            assert(!Files.exists(root.resolve("docs")))
+          }
+        }
+      }
+    }
+  }
+
   test("rejects overwrite conflicts without approval") {
     tempDirectory.use { root =>
       IO.fromEither(StorageRegistry.fromConfig(testConfig(root))).map { registry =>

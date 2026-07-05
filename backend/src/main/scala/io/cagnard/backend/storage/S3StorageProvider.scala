@@ -139,12 +139,7 @@ class S3StorageProvider private[storage] (
         exists <- client.exists(target.bucket, key)
         result <-
           if exists then client.delete(target.bucket, key)
-          else
-            val markerKey = keyFor(target, relative, directory = true)
-            client.exists(target.bucket, markerKey).flatMap {
-              case true => client.delete(target.bucket, markerKey)
-              case false => Left("Recursive prefix delete is not supported")
-            }
+          else deletePrefix(target, client, relative, path)
       yield result
     }
 
@@ -170,6 +165,30 @@ class S3StorageProvider private[storage] (
       metadata <- client.copy(target.bucket, sourceKey, targetKey)
       _ <- if deleteSource then client.delete(target.bucket, sourceKey) else Right(())
     yield fileEntry(root, target, metadata)
+
+  private def deletePrefix(target: ObjectStoreRootTarget, client: S3ObjectClient, relative: String, displayPath: String): Either[String, Unit] =
+    val markerKey = keyFor(target, relative, directory = true)
+    for
+      markerExists <- client.exists(target.bucket, markerKey)
+      page <- listAll(client, target.bucket, markerKey, token = None, pagesSeen = 0)
+      _ <- Either.cond(markerExists || page.objects.nonEmpty || page.commonPrefixes.nonEmpty, (), s"Path does not exist: $displayPath")
+      _ <- deleteChildPrefixes(target, client, page.commonPrefixes)
+      _ <- deleteListedObjects(target, client, page.objects)
+      _ <- if markerExists && !page.objects.exists(_.key == markerKey) then client.delete(target.bucket, markerKey) else Right(())
+    yield ()
+
+  private def deleteChildPrefixes(target: ObjectStoreRootTarget, client: S3ObjectClient, prefixes: List[String]): Either[String, Unit] =
+    prefixes.foldLeft[Either[String, Unit]](Right(())) { (acc, prefix) =>
+      acc.flatMap { _ =>
+        val childRelative = relativeKey(target, prefix).stripSuffix("/")
+        deletePrefix(target, client, childRelative, childRelative)
+      }
+    }
+
+  private def deleteListedObjects(target: ObjectStoreRootTarget, client: S3ObjectClient, objects: List[S3ListedObject]): Either[String, Unit] =
+    objects.foldLeft[Either[String, Unit]](Right(())) { (acc, obj) =>
+      acc.flatMap(_ => client.delete(target.bucket, obj.key))
+    }
 
   private def listAll(client: S3ObjectClient, bucket: String, prefix: String, token: Option[String], pagesSeen: Int): Either[String, S3ListPage] =
     if pagesSeen >= providerSettings.maxListPages then Left(s"S3 listing exceeded configured page limit of ${providerSettings.maxListPages}")
