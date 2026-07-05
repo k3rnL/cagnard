@@ -3,9 +3,10 @@ package io.cagnard.backend.storage
 import io.cagnard.backend.api.StorageEntry
 import io.cagnard.backend.config.ProviderConfig
 
+import java.io.{InputStream, OutputStream}
 import java.nio.charset.StandardCharsets
 import java.nio.file.attribute.PosixFilePermissions
-import java.nio.file.{Files, Path, StandardCopyOption}
+import java.nio.file.{Files, Path, StandardCopyOption, StandardOpenOption}
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
@@ -42,6 +43,43 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
           .toEither
           .left.map(_.getMessage)
           .map(bytes => FileContent(target.getFileName.toString, mimeType(target), bytes))
+    }
+
+  override def contentInfo(root: ResolvedStorageRoot, path: String): Either[String, FileContentInfo] =
+    resolve(root, path).flatMap { target =>
+      if !Files.exists(target) then Left(s"Path does not exist: $path")
+      else if !Files.isRegularFile(target) then Left(s"Path is not a regular file: $path")
+      else Right(FileContentInfo(target.getFileName.toString, mimeType(target), Try(Files.size(target)).toOption))
+    }
+
+  override def streamRead(root: ResolvedStorageRoot, path: String, output: OutputStream, onBytes: Long => Unit): Either[String, FileContentInfo] =
+    contentInfo(root, path).flatMap { info =>
+      resolve(root, path).flatMap { target =>
+        Try {
+          val input = Files.newInputStream(target, StandardOpenOption.READ)
+          try copyStream(input, output, onBytes)
+          finally input.close()
+          info
+        }.toEither.left.map(_.getMessage)
+      }
+    }
+
+  override def streamWrite(root: ResolvedStorageRoot, path: String, input: InputStream, info: FileContentInfo, overwrite: Boolean, onBytes: Long => Unit): Either[String, StorageEntry] =
+    ensureWritable(root).flatMap { _ =>
+      resolve(root, path).flatMap { target =>
+        if Files.exists(target) && !overwrite then Left("Target already exists")
+        else
+          Try {
+            val parent = target.getParent
+            if parent != null then Files.createDirectories(parent)
+            val options =
+              if overwrite then Array(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)
+              else Array(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+            val output = Files.newOutputStream(target, options*)
+            try copyStream(input, output, onBytes)
+            finally output.close()
+          }.toEither.left.map(_.getMessage).flatMap(_ => stat(root, path))
+      }
     }
 
   override def preview(root: ResolvedStorageRoot, path: String, maxBytes: Long): Either[String, TextPreview] =
@@ -178,6 +216,15 @@ class FilesystemProvider(config: ProviderConfig) extends StorageProvider:
   private def ensureTargetWritable(target: Path, overwrite: Boolean): Either[String, Unit] =
     if Files.exists(target) && !overwrite then Left("Target already exists")
     else Right(())
+
+  private def copyStream(input: InputStream, output: OutputStream, onBytes: Long => Unit): Unit =
+    val buffer = Array.ofDim[Byte](64 * 1024)
+    var read = input.read(buffer)
+    while read >= 0 do
+      if read > 0 then
+        output.write(buffer, 0, read)
+        onBytes(read.toLong)
+      read = input.read(buffer)
 
   private def validName(name: String): Either[String, String] =
     val trimmed = Option(name).getOrElse("").trim

@@ -21,9 +21,11 @@ They do not persist across a full browser restart. Logout or user change clears 
 
 ## Paste Execution
 
-Paste uses the active storage root and current path as the destination. The selected pasteboard action provides the operation: Paste copies entries and Move here copies entries then deletes sources only after destination success. The frontend sends selected pasteboard entries to the backend transfer API, and the backend performs provider-neutral reads, writes, recursive directory planning, conflict handling, and safe move deletion.
+Paste uses the active storage root and current path as the destination. The selected pasteboard action provides the operation: Paste copies entries and Move here copies entries then deletes sources only after destination success. The frontend sends selected pasteboard entries to the backend transfer job API, and the backend performs provider-neutral reads, writes, recursive directory planning, conflict handling, and safe move deletion.
 
 The dropdown shows staged item count, selected item count, source context, per-item removal, clear all, and copy/move availability. It disables paste or move with an eligibility reason when the current destination is read-only, the source cannot be deleted for a move, or a folder would be pasted into itself.
+
+When paste or move starts, Cagnard creates a transfer job and shows recent/active jobs in the browser. Active jobs are polled while queued, running, or canceling. Completed move jobs may remove successfully moved source references from the pasteboard.
 
 ## Conflict Handling
 
@@ -37,6 +39,7 @@ The selected policy is applied to the batch retry.
 
 ## Known Limitations
 
-- Pasteboard state is not a background job queue.
-- Transfers are currently bounded buffered operations; streaming, resumability, cancellation, and byte-level progress are future work.
+- Pasteboard state is browser-session memory; transfer job state is backend memory.
+- Transfer jobs are not recovered after backend restart.
+- Retry and resumability are future work.
 - Staged references can become stale if source entries are deleted or permissions change; stale items are validated at paste time.

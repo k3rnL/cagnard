@@ -562,6 +562,63 @@ button {
   flex-basis: 100%;
 }
 
+.transfer-queue-menu-group {
+  position: relative;
+}
+
+.transfer-queue-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #263230;
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 650;
+  padding: 0 10px;
+}
+
+.transfer-queue-trigger:hover,
+.transfer-queue-trigger[aria-expanded="true"] {
+  background: #e5eee9;
+}
+
+.transfer-queue-trigger strong {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #e5eee9;
+  color: #255f54;
+  font-size: 0.76rem;
+}
+
+.transfer-queue-menu-group.running .transfer-queue-trigger {
+  color: #255f54;
+}
+
+.transfer-queue-menu-group.failed .transfer-queue-trigger {
+  color: #8f2d24;
+}
+
+.transfer-queue-menu-group.completed .transfer-queue-trigger {
+  color: #255f54;
+}
+
+.transfer-queue-spinner {
+  animation: transfer-spin 900ms linear infinite;
+}
+
+@keyframes transfer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .icon-button:disabled {
   cursor: not-allowed;
   opacity: 0.42;
@@ -749,6 +806,129 @@ button {
   background: #f0fbf1;
   color: #245d2c;
   padding: 10px 12px;
+}
+
+.transfer-jobs {
+  position: absolute;
+  z-index: 56;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  gap: 10px;
+  width: min(460px, calc(100vw - 32px));
+  overflow: visible;
+  border: 1px solid #d8ddd5;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(38, 50, 48, 0.16);
+  padding: 12px;
+}
+
+.transfer-jobs::before {
+  content: "";
+  position: absolute;
+  top: -9px;
+  right: 0;
+  left: 0;
+  height: 9px;
+}
+
+.transfer-jobs-heading,
+.transfer-job-main,
+.transfer-job-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.transfer-jobs-heading span,
+.transfer-job-main span,
+.transfer-job-meta {
+  color: #60706b;
+  font-size: 0.84rem;
+}
+
+.transfer-job-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(460px, calc(100dvh - 190px));
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.transfer-job {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #ecefea;
+  border-radius: 8px;
+  background: #fbfbf8;
+  padding: 10px;
+}
+
+.transfer-job.failed,
+.transfer-job.partial,
+.transfer-job.canceled,
+.transfer-job.blocked {
+  border-color: #e2c7c3;
+  background: #fff9f7;
+}
+
+.transfer-job-main {
+  min-width: 0;
+}
+
+.transfer-job-main > div {
+  display: grid;
+  min-width: 0;
+}
+
+.transfer-job-main strong,
+.transfer-job-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-job-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #e5eee9;
+  color: #255f54;
+  font-weight: 700;
+  padding: 3px 8px;
+}
+
+.transfer-job-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf0eb;
+}
+
+.transfer-job-progress span {
+  display: block;
+  height: 100%;
+  min-width: 6px;
+  border-radius: inherit;
+  background: #255f54;
+}
+
+.transfer-job-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.transfer-job-meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-job-meta .icon-button {
+  margin-left: auto;
 }
 
 .browser-layout {

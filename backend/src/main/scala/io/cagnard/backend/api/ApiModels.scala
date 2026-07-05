@@ -113,6 +113,43 @@ case class TransferItemResult(
 
 case class TransferResponse(success: Boolean, message: String, results: List[TransferItemResult])
 
+case class TransferTaskProgress(
+    bytesTransferred: Long,
+    totalBytes: Option[Long],
+    itemsCompleted: Int,
+    totalItems: Option[Int]
+)
+
+case class TransferJobTask(
+    id: String,
+    intent: String,
+    sourceTunnel: String,
+    sourceRootId: String,
+    sourcePath: String,
+    targetPath: Option[String],
+    phase: String,
+    status: String,
+    message: String,
+    progress: TransferTaskProgress,
+    result: Option[TransferItemResult],
+    children: List[TransferJobTask] = Nil
+)
+
+case class TransferJobResponse(
+    id: String,
+    status: String,
+    message: String,
+    createdAt: String,
+    updatedAt: String,
+    operation: String,
+    destination: TransferDestinationRequest,
+    conflictPolicy: String,
+    tasks: List[TransferJobTask],
+    results: List[TransferItemResult]
+)
+
+case class TransferJobListResponse(jobs: List[TransferJobResponse])
+
 case class UiPluginManifest(
     id: String,
     label: String,
@@ -216,8 +253,22 @@ object ApiModels:
   given Decoder[TransferRequest] = deriveDecoder
 
   given Encoder[TransferItemResult] = deriveEncoder
+  given Decoder[TransferItemResult] = deriveDecoder
 
   given Encoder[TransferResponse] = deriveEncoder
+  given Decoder[TransferResponse] = deriveDecoder
+
+  given Encoder[TransferTaskProgress] = deriveEncoder
+  given Decoder[TransferTaskProgress] = deriveDecoder
+
+  given Encoder[TransferJobTask] = deriveEncoder
+  given Decoder[TransferJobTask] = deriveDecoder
+
+  given Encoder[TransferJobResponse] = deriveEncoder
+  given Decoder[TransferJobResponse] = deriveDecoder
+
+  given Encoder[TransferJobListResponse] = deriveEncoder
+  given Decoder[TransferJobListResponse] = deriveDecoder
 
   given Encoder[UiPluginManifest] = deriveEncoder
   given Decoder[UiPluginManifest] = deriveDecoder

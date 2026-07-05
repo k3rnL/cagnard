@@ -11,6 +11,7 @@ The Unix filesystem provider supports:
 - list and stat
 - raw-byte download
 - full and bounded content reads
+- streaming read and streaming write
 - upload
 - bounded text preview
 - direct overwrite/write-back where root policy allows it
@@ -19,7 +20,7 @@ The Unix filesystem provider supports:
 - delete file or empty directory
 - copy regular file
 - move file or directory
-- provider-neutral recursive transfer through list, create folder, download, upload, and delete
+- provider-neutral recursive transfer through list, create folder, stream or bounded read/write, upload, and delete
 
 All filesystem paths are resolved within the configured storage root.
 
@@ -81,14 +82,15 @@ providers = [
 - Filesystem operations run with the backend process permissions.
 - Provider capabilities determine which browser actions are available.
 - The `recursive-list` and `transfer` capabilities indicate that a provider can participate in pasteboard transfer planning.
-- Content access capabilities distinguish `full-read`, `bounded-read`, `range-read`, and `stream-read`.
-- Current providers expose `full-read` and `bounded-read`; `range-read` and `stream-read` are planned.
+- Content access capabilities distinguish `full-read`, `bounded-read`, `range-read`, `stream-read`, and `stream-write`.
+- The filesystem provider exposes supported `stream-read` and `stream-write` capabilities.
+- S3 exposes `stream-read`, `stream-write`, and `multipart-upload` as planned; provider-neutral S3 transfer uses bounded fallback unless a provider-native same-root object copy path applies.
 - Write-back is represented through `overwrite` and is disabled for read-only roots.
-- S3 upload/download and provider-neutral fallback transfer currently buffer object bytes and default to a 64 MiB limit.
+- S3 upload/download and provider-neutral buffered fallback transfer currently buffer object bytes and default to a 64 MiB limit.
 - MinIO-compatible integration tests are opt-in through `CAGNARD_S3_INTEGRATION=true` and S3-specific environment variables.
 
 ## Known Limitations
 
 - Google, Azure, WebDAV, and SFTP providers are planned but not implemented.
 - Provider-native directory copy is not implemented for the Unix provider; recursive pasteboard transfer is mediated by the backend service.
-- S3 multipart upload, range reads, streaming transfer, provider-native recursive prefix mutation, IAM/policy management, and bucket administration are future work.
+- S3 multipart upload, S3 generic streaming transfer, range reads, provider-native recursive prefix mutation, IAM/policy management, and bucket administration are future work.

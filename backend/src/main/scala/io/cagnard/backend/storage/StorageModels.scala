@@ -2,6 +2,7 @@ package io.cagnard.backend.storage
 
 import io.cagnard.backend.api.{CapabilityStatus, EntryMetadata, StorageEntry}
 
+import java.io.{InputStream, OutputStream}
 import java.nio.file.Path
 
 case class ResolvedStorageRoot(
@@ -42,8 +43,22 @@ trait StorageProvider:
   def delete(root: ResolvedStorageRoot, path: String): Either[String, Unit]
   def copy(root: ResolvedStorageRoot, sourcePath: String, targetPath: String, overwrite: Boolean): Either[String, StorageEntry]
   def move(root: ResolvedStorageRoot, sourcePath: String, targetPath: String, overwrite: Boolean): Either[String, StorageEntry]
+  def contentInfo(root: ResolvedStorageRoot, path: String): Either[String, FileContentInfo] =
+    stat(root, path).map(entry => FileContentInfo(entry.name, entry.metadata.mimeType, entry.metadata.size))
+  def streamRead(root: ResolvedStorageRoot, path: String, output: OutputStream, onBytes: Long => Unit): Either[String, FileContentInfo] =
+    Left("Stream read is not supported")
+  def streamWrite(root: ResolvedStorageRoot, path: String, input: InputStream, info: FileContentInfo, overwrite: Boolean, onBytes: Long => Unit): Either[String, StorageEntry] =
+    Left("Stream write is not supported")
+  def supportsStreamRead(root: ResolvedStorageRoot): Boolean =
+    supports(root, "stream-read")
+  def supportsStreamWrite(root: ResolvedStorageRoot): Boolean =
+    supports(root, "stream-write")
+  private def supports(root: ResolvedStorageRoot, capabilityName: String): Boolean =
+    capabilities(root).exists(capability => capability.name == capabilityName && capability.status == "supported")
 
 case class FileContent(fileName: String, mimeType: Option[String], bytes: Array[Byte])
+
+case class FileContentInfo(fileName: String, mimeType: Option[String], size: Option[Long])
 
 case class TextPreview(path: String, mimeType: Option[String], content: String, truncated: Boolean)
 
@@ -57,6 +72,9 @@ object StorageCapabilities:
   val boundedRead = CapabilityStatus("bounded-read", "supported", Some("Read bounded content for previews and text openers"))
   val rangeRead = CapabilityStatus("range-read", "planned", Some("Byte-range file opening is not implemented yet"))
   val streamRead = CapabilityStatus("stream-read", "planned", Some("Streaming file opening is not implemented yet"))
+  val streamWrite = CapabilityStatus("stream-write", "planned", Some("Streaming file writes are not implemented yet"))
+  val multipartUpload = CapabilityStatus("multipart-upload", "planned", Some("Multipart upload is not implemented yet"))
+  val verifyWrite = CapabilityStatus("verify-write", "supported", Some("Verify destination writes through provider stat or metadata"))
   val upload = CapabilityStatus("upload", "supported", Some("Write file content to the provider"))
   val overwrite = CapabilityStatus("overwrite", "supported", Some("Replace existing file content when write policy allows it"))
   val createFolder = CapabilityStatus("create-folder", "supported", Some("Create a directory in the provider"))
@@ -80,7 +98,23 @@ object StorageCapabilities:
         delete.copy(status = "unsupported", description = Some("Delete is disabled for read-only roots"))
       )
       else List(upload, overwrite, createFolder, rename, copy, move, delete)
-    List(list, recursiveList, stat, open, download, fullRead, boundedRead, rangeRead, streamRead, preview, search, transfer) ++ mutations
+    List(
+      list,
+      recursiveList,
+      stat,
+      open,
+      download,
+      fullRead,
+      boundedRead,
+      rangeRead,
+      streamRead.copy(status = "supported", description = Some("Stream file content without loading the whole file into memory")),
+      streamWrite.copy(status = "supported", description = Some("Write file content from a stream")),
+      multipartUpload,
+      verifyWrite,
+      preview,
+      search,
+      transfer
+    ) ++ mutations
 
   def s3(readOnly: Boolean, directory: Boolean = false): List[CapabilityStatus] =
     val objectStoreRename = rename.copy(status = "degraded", description = Some("S3 rename is implemented as copy then delete for objects"))
@@ -106,7 +140,7 @@ object StorageCapabilities:
         delete.copy(status = "unsupported", description = directoryUnsupported)
       )
       else List(upload, overwrite, createFolder, objectStoreRename, copy, objectStoreMove, delete)
-    List(list, recursiveList, stat, open, download, fullRead, boundedRead, rangeRead, streamRead, preview, search, transfer) ++ mutations
+    List(list, recursiveList, stat, open, download, fullRead, boundedRead, rangeRead, streamRead, streamWrite, multipartUpload, verifyWrite, preview, search, transfer) ++ mutations
 
 object EmptyMetadata:
   val unavailableFields: List[String] = List("version", "retention", "encryption")

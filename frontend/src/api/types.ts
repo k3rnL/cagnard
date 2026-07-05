@@ -150,6 +150,45 @@ export interface TransferResponse {
   results: TransferItemResult[];
 }
 
+export interface TransferTaskProgress {
+  bytesTransferred: number;
+  totalBytes?: number | null;
+  itemsCompleted: number;
+  totalItems?: number | null;
+}
+
+export interface TransferJobTask {
+  id: string;
+  intent: TransferIntent;
+  sourceTunnel: string;
+  sourceRootId: string;
+  sourcePath: string;
+  targetPath?: string;
+  phase: string;
+  status: string;
+  message: string;
+  progress: TransferTaskProgress;
+  result?: TransferItemResult;
+  children: TransferJobTask[];
+}
+
+export interface TransferJobResponse {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed" | "canceled" | "partial" | "blocked" | "canceling" | string;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+  operation: TransferIntent | "mixed" | string;
+  destination: TransferDestinationRequest;
+  conflictPolicy: TransferConflictPolicy;
+  tasks: TransferJobTask[];
+  results: TransferItemResult[];
+}
+
+export interface TransferJobListResponse {
+  jobs: TransferJobResponse[];
+}
+
 export interface PreviewResponse {
   path: string;
   mimeType?: string;

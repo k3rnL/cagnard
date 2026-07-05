@@ -7,16 +7,18 @@ Cagnard transfers files and directories between storage roots through provider-n
 The backend transfer service supports:
 
 - same-root optimized file copy and move when provider semantics are safe
-- backend-mediated copy across roots/providers using source download and destination upload
+- backend-mediated copy across roots/providers using streaming read/write when both providers support it
+- bounded buffered fallback using source download and destination upload only when streaming is unavailable and the source is within configured limits
 - recursive directory copy through source listing, destination directory creation, and child transfer
 - move as copy-then-delete, with source deletion only after destination success
 - per-item and per-child result reporting
 - conflict policies: fail/ask, skip, keep both, and replace
 - configurable bounded transfer limits via `maxBufferedObjectBytes` from root or provider settings
+- in-memory transfer jobs for pasteboard copy and move requests
 
 ## API Shape
 
-Paste execution uses `POST /api/storage/transfer`.
+Paste execution uses `POST /api/storage/transfer/jobs`.
 
 The request includes:
 
@@ -25,7 +27,15 @@ The request includes:
 - destination tunnel, root id, and path
 - conflict policy
 
-The response returns overall success plus per-item results such as `copied`, `moved`, `skipped`, `conflict`, `failed`, or `partial`.
+The response returns a transfer job id, status, task list, progress counters, and any immediate per-item results such as `conflict`, `failed`, or `blocked`.
+
+Additional job endpoints:
+
+- `GET /api/storage/transfer/jobs`
+- `GET /api/storage/transfer/jobs/{jobId}`
+- `POST /api/storage/transfer/jobs/{jobId}/cancel`
+
+The compatibility endpoint `POST /api/storage/transfer` still returns the older synchronous `TransferResponse` and is kept for simple integrations and tests.
 
 ## Conflict Handling
 
@@ -39,9 +49,14 @@ Keep both creates predictable names such as `note copy.txt`, `note copy 2.txt`, 
 - Provider credentials remain backend-side; the frontend never downloads and re-uploads transfer bytes.
 - The service blocks moving an entry onto itself and blocks copying or moving a directory into its own subtree.
 - A move that copies successfully but cannot delete the source returns partial success.
+- Filesystem-to-filesystem provider-neutral transfers stream through bounded pipes instead of buffering whole files in memory.
+- If streaming is unavailable, known source size is checked against `maxBufferedObjectBytes` before download.
+- Transfer jobs are currently stored in backend memory and are lost on backend restart.
 
 ## Known Limitations
 
-- Streaming, resumability, cancellation, and byte-level progress are not implemented yet.
+- S3 generic cross-provider streaming and multipart transfer are not implemented yet; same-root S3 object copy remains provider-native.
+- Retry and resumability are not implemented yet.
+- Cancellation is cooperative and may not abort every provider operation until providers expose stronger cancellation hooks.
 - Provider-specific metadata preservation is not implemented beyond what upload/copy operations naturally retain.
 - Recursive object-store behavior depends on the provider's listing and folder marker semantics.

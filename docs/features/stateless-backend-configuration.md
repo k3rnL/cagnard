@@ -20,6 +20,16 @@ Key runtime inputs:
 - Container deployments can mount HOCON config and set `CAGNARD_CONFIG` without rebuilding the image.
 - Helm deployments can render non-secret config as a ConfigMap or mount existing Secret/volume sources.
 
+## Transfer Jobs
+
+Transfer jobs currently use backend in-memory state. This keeps the backend stateless from a startup and deployment perspective: no application database is required to create, run, list, or cancel jobs.
+
+The trade-off is explicit:
+
+- active and recent transfer jobs are lost when the backend process restarts
+- multi-replica deployments need sticky routing or a future external job store before jobs can be coordinated across replicas
+- source and destination providers remain the source of truth for any content already written before a restart
+
 ## Operational Notes
 
 - Invalid HOCON or invalid typed configuration fails startup.

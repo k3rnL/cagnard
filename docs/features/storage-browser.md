@@ -14,6 +14,7 @@ The storage browser provides a provider-neutral view of roots, directories, file
 - explicit in-app file opening through compatible opener plugins
 - inline quick opening from the file row
 - create file, upload, download, create folder, rename, delete, add to pasteboard, paste, and move from pasteboard
+- recent and active transfer job status for pasteboard copy/move operations
 
 Downloads return raw file bytes through the backend content endpoint.
 
@@ -24,6 +25,8 @@ The main Open action is shared by folders and files. Opening a folder navigates 
 The root breadcrumb uses the selected storage root display label. The command bar keeps primary actions directly clickable and places related secondary actions in dropdown groups.
 
 Copy and move use the browser pasteboard. The Copy button adds safe references to the selected entries. The user then navigates to the desired destination root/path and uses the pasteboard dropdown to copy selected staged entries there with Paste or move them there with Move here.
+
+Paste and Move here start backend transfer jobs. When jobs exist, the command bar shows a transfer queue button next to the pasteboard. The button displays a spinner while work is active, a failure marker when any recent job needs attention, or a success marker when recent work completed. Its dropdown shows recent jobs with task progress, latest update time, status, destination context, and cancel action while a job is queued, running, or canceling.
 
 Create, rename, delete, and transfer conflict choices use app-owned modals with inline validation and keyboard handling instead of native browser dialogs.
 
@@ -41,9 +44,10 @@ Browser roots come from `personalStorage` and `globalStorage` entries in backend
 - Batch delete, download, pasteboard staging, and paste operate on selected entries where supported.
 - Pasteboard contents are browser-session local and synchronize across active same-origin tabs when supported by the browser runtime.
 - Paste availability is disabled with an inline reason for read-only destinations and invalid self-directory paste targets.
+- Transfer job state is backend memory and is polled while jobs are active.
 
 ## Known Limitations
 
 - Provider-native search is specified but not implemented.
-- Pasteboard transfer uses bounded backend-mediated reads/writes; streaming progress and resumable background jobs are not implemented yet.
-- Range/stream opening is represented in capabilities but not implemented by providers yet.
+- Transfer retry and resumability are not implemented yet.
+- Range/stream opening is represented in capabilities but not implemented by opener routes yet.

@@ -4,7 +4,15 @@ import cats.effect.IO
 import io.cagnard.backend.api.ApiModels.given
 import io.cagnard.backend.auth.{AccessService, RequestIdentity, UserResolver}
 import io.cagnard.backend.config.CagnardConfig
-import io.cagnard.backend.storage.{ResolvedStorageRoot, StorageProvider, StorageRegistry}
+import io.cagnard.backend.storage.{FileContentInfo, ResolvedStorageRoot, StorageProvider, StorageRegistry}
+
+import java.io.{PipedInputStream, PipedOutputStream}
+import java.time.Instant
+import java.util.UUID
+import java.util.concurrent.{Callable, ConcurrentHashMap, Executors}
+import java.util.concurrent.atomic.AtomicLong
+import scala.jdk.CollectionConverters.*
+import scala.util.control.NonFatal
 
 class ApiService(config: CagnardConfig, registry: StorageRegistry):
   private val userResolver = UserResolver(config)
@@ -12,6 +20,8 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
   private val previewMaxBytes = 256 * 1024L
   private val defaultTransferMaxBytes = 64L * 1024L * 1024L
   private val providerSettings = config.providers.map(provider => provider.id -> provider.settings.getOrElse(Map.empty)).toMap
+  private val transferJobs = new ConcurrentHashMap[String, StoredTransferJob]()
+  private val canceledTransferJobs = ConcurrentHashMap.newKeySet[String]()
 
   def health: IO[HealthResponse] =
     IO.pure(HealthResponse("ok", stateless = true, providers = config.providers.size, configuredUsers = config.users.size))
@@ -192,6 +202,96 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
       }
     }
 
+  def startTransferJob(identity: RequestIdentity, request: TransferRequest): IO[Either[ApiError, TransferJobResponse]] =
+    userResolver.resolve(identity) match
+      case Left(error) => IO.pure(Left(error))
+      case Right(resolved) =>
+        IO.delay {
+          withWritableRoot(identity, request.destination.tunnel, request.destination.rootId) { destinationRoot =>
+            registry.provider(destinationRoot.providerId).map { destinationProvider =>
+              val policy = normalizeConflictPolicy(request.conflictPolicy)
+              val now = nowString
+              val jobId = UUID.randomUUID().toString
+              val initialTasks = request.sources.zipWithIndex.map { case (source, index) =>
+                transferTask(index, source, phase = "planned", status = "queued", message = "Waiting to start", targetPath = None, result = None)
+              }
+              val preflightResults =
+                if policy == "fail" then
+                  request.sources.flatMap(source => preflightTransfer(identity, source, destinationRoot, destinationProvider, request.destination.path))
+                else Nil
+              val initialStatus =
+                if request.sources.isEmpty then "failed"
+                else if preflightResults.nonEmpty then "blocked"
+                else "queued"
+              val initialMessage =
+                if request.sources.isEmpty then "No entries selected for transfer"
+                else if preflightResults.nonEmpty then "Transfer needs a conflict decision"
+                else "Transfer job queued"
+              val initialResults = preflightResults
+              val initialJob = TransferJobResponse(
+                id = jobId,
+                status = initialStatus,
+                message = initialMessage,
+                createdAt = now,
+                updatedAt = now,
+                operation = operationName(request.sources),
+                destination = request.destination,
+                conflictPolicy = policy,
+                tasks = if preflightResults.nonEmpty then tasksFromResults(request.sources, preflightResults) else initialTasks,
+                results = initialResults
+              )
+              transferJobs.put(jobId, StoredTransferJob(resolved.profile.id, initialJob))
+              (initialJob, destinationRoot, destinationProvider, policy, preflightResults)
+            }
+          }
+        }.flatMap {
+          case Left(error) => IO.pure(Left(error))
+          case Right((job, destinationRoot, destinationProvider, policy, preflightResults)) =>
+            if preflightResults.nonEmpty || request.sources.isEmpty then IO.pure(Right(job))
+            else
+              runTransferJob(job.id, identity, request, destinationRoot, destinationProvider, policy).start.as(Right(job))
+        }
+
+  def transferJob(identity: RequestIdentity, jobId: String): IO[Either[ApiError, TransferJobResponse]] =
+    IO.pure {
+      userResolver.resolve(identity).flatMap { resolved =>
+        Option(transferJobs.get(jobId)) match
+          case Some(stored) if stored.ownerId == resolved.profile.id => Right(stored.job)
+          case Some(_) => Left(ApiError("not_found", "Transfer job was not found"))
+          case None => Left(ApiError("not_found", "Transfer job was not found"))
+      }
+    }
+
+  def transferJobList(identity: RequestIdentity): IO[Either[ApiError, TransferJobListResponse]] =
+    IO.pure {
+      userResolver.resolve(identity).map { resolved =>
+        val jobs = transferJobs
+          .values()
+          .asScala
+          .toList
+          .filter(_.ownerId == resolved.profile.id)
+          .map(_.job)
+          .sortBy(_.createdAt)
+          .reverse
+        TransferJobListResponse(jobs)
+      }
+    }
+
+  def cancelTransferJob(identity: RequestIdentity, jobId: String): IO[Either[ApiError, TransferJobResponse]] =
+    IO.pure {
+      userResolver.resolve(identity).flatMap { resolved =>
+        Option(transferJobs.get(jobId)) match
+          case Some(stored) if stored.ownerId == resolved.profile.id =>
+            canceledTransferJobs.add(jobId)
+            val updated =
+              if terminalJobStatuses.contains(stored.job.status) then stored.job
+              else stored.job.copy(status = "canceling", message = "Cancellation requested", updatedAt = nowString)
+            transferJobs.put(jobId, stored.copy(job = updated))
+            Right(updated)
+          case _ => Left(ApiError("not_found", "Transfer job was not found"))
+      }
+    }
+
   def uiPlugins(identity: RequestIdentity): IO[Either[ApiError, UiPluginsResponse]] =
     IO.pure {
       userResolver.resolve(identity).map { _ =>
@@ -217,6 +317,157 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
 
   private case class TransferContext(root: ResolvedStorageRoot, provider: StorageProvider, entry: StorageEntry)
   private case class TargetResolution(path: String, overwrite: Boolean)
+  private case class StoredTransferJob(ownerId: String, job: TransferJobResponse)
+  private case class TransferJobContext(jobId: String, taskIndex: Int)
+
+  private val terminalJobStatuses = Set("completed", "failed", "canceled", "partial", "blocked")
+
+  private def runTransferJob(
+      jobId: String,
+      identity: RequestIdentity,
+      request: TransferRequest,
+      destinationRoot: ResolvedStorageRoot,
+      destinationProvider: StorageProvider,
+      conflictPolicy: String
+  ): IO[Unit] =
+    IO.blocking {
+      updateJob(jobId)(job => job.copy(status = "running", message = "Transfer job running", updatedAt = nowString))
+      val results = request.sources.zipWithIndex.map { case (source, index) =>
+        if isCanceled(jobId) then
+          val canceled = failedResult(source, None, "Transfer job was canceled").copy(status = "canceled")
+          updateJobTask(jobId, index, "canceled", "canceled", "Canceled before start", Some(canceled))
+          canceled
+        else
+          updateJobTask(jobId, index, "running", "running", "Transfer task running", None)
+          val result =
+            try transferOne(identity, source, destinationRoot, destinationProvider, request.destination.path, conflictPolicy, Some(TransferJobContext(jobId, index)))
+            catch
+              case NonFatal(error) => failedResult(source, None, safeExceptionMessage(error))
+          val phase =
+            result.status match
+              case "copied" | "moved" | "skipped" => "completed"
+              case "canceled" => "canceled"
+              case "partial" => "partial"
+              case _ => "failed"
+          updateJobTask(jobId, index, phase, result.status, result.message, Some(result))
+          result
+      }
+      val success = results.nonEmpty && results.forall(resultSucceeded)
+      val completed = results.count(resultSucceeded)
+      val canceled = results.exists(_.status == "canceled") || isCanceled(jobId)
+      val finalStatus =
+        if canceled then "canceled"
+        else if success then "completed"
+        else if completed > 0 then "partial"
+        else "failed"
+      val message =
+        if results.isEmpty then "No entries selected for transfer"
+        else if finalStatus == "completed" then s"Transferred $completed item${if completed == 1 then "" else "s"}"
+        else if finalStatus == "canceled" then "Transfer job canceled"
+        else s"Transferred $completed of ${results.size} item${if results.size == 1 then "" else "s"}"
+      updateJob(jobId)(_.copy(status = finalStatus, message = message, updatedAt = nowString, results = results))
+    }.void
+
+  private def updateJob(jobId: String)(update: TransferJobResponse => TransferJobResponse): Unit =
+    Option(transferJobs.get(jobId)).foreach { stored =>
+      transferJobs.put(jobId, stored.copy(job = update(stored.job)))
+    }
+
+  private def updateJobTask(jobId: String, index: Int, phase: String, status: String, message: String, result: Option[TransferItemResult]): Unit =
+    updateJob(jobId) { job =>
+      val nextTasks = job.tasks.zipWithIndex.map { case (task, currentIndex) =>
+        if currentIndex == index then
+          task.copy(
+            phase = phase,
+            status = status,
+            message = message,
+            targetPath = result.flatMap(_.targetPath).orElse(task.targetPath),
+            result = result,
+            children = result.map(resultToTaskChildren(task.id, _)).getOrElse(task.children)
+          )
+        else task
+      }
+      job.copy(tasks = nextTasks, updatedAt = nowString)
+    }
+
+  private def updateJobTaskProgress(jobId: String, index: Int, bytesTransferred: Long, totalBytes: Option[Long], itemsCompleted: Int): Unit =
+    updateJob(jobId) { job =>
+      val nextTasks = job.tasks.zipWithIndex.map { case (task, currentIndex) =>
+        if currentIndex == index then
+          task.copy(
+            phase = if task.phase == "planned" || task.phase == "queued" then "running" else task.phase,
+            status = if task.status == "queued" then "running" else task.status,
+            progress = task.progress.copy(
+              bytesTransferred = bytesTransferred,
+              totalBytes = totalBytes.orElse(task.progress.totalBytes),
+              itemsCompleted = itemsCompleted
+            )
+          )
+        else task
+      }
+      job.copy(tasks = nextTasks, updatedAt = nowString)
+    }
+
+  private def tasksFromResults(sources: List[TransferSourceRequest], results: List[TransferItemResult]): List[TransferJobTask] =
+    sources.zipWithIndex.map { case (source, index) =>
+      results.find(result => result.sourceTunnel == source.tunnel && result.sourceRootId == source.rootId && result.sourcePath == source.path) match
+        case Some(result) =>
+          transferTask(index, source, result.status, result.status, result.message, result.targetPath, Some(result))
+        case None =>
+          transferTask(index, source, "planned", "queued", "Waiting to start", None, None)
+    }
+
+  private def resultToTaskChildren(parentId: String, result: TransferItemResult): List[TransferJobTask] =
+    result.children.zipWithIndex.map { case (child, index) =>
+      TransferJobTask(
+        id = s"$parentId.${index + 1}",
+        intent = child.intent,
+        sourceTunnel = child.sourceTunnel,
+        sourceRootId = child.sourceRootId,
+        sourcePath = child.sourcePath,
+        targetPath = child.targetPath,
+        phase = child.status,
+        status = child.status,
+        message = child.message,
+        progress = TransferTaskProgress(0L, child.entry.flatMap(_.metadata.size), if resultSucceeded(child) then 1 else 0, Some(1)),
+        result = Some(child),
+        children = resultToTaskChildren(s"$parentId.${index + 1}", child)
+      )
+    }
+
+  private def transferTask(
+      index: Int,
+      source: TransferSourceRequest,
+      phase: String,
+      status: String,
+      message: String,
+      targetPath: Option[String],
+      result: Option[TransferItemResult]
+  ): TransferJobTask =
+    TransferJobTask(
+      id = s"task-${index + 1}",
+      intent = source.intent,
+      sourceTunnel = source.tunnel,
+      sourceRootId = source.rootId,
+      sourcePath = source.path,
+      targetPath = targetPath,
+      phase = phase,
+      status = status,
+      message = message,
+      progress = TransferTaskProgress(0L, result.flatMap(_.entry).flatMap(_.metadata.size), result.filter(resultSucceeded).map(_ => 1).getOrElse(0), Some(1)),
+      result = result,
+      children = result.map(resultToTaskChildren(s"task-${index + 1}", _)).getOrElse(Nil)
+    )
+
+  private def operationName(sources: List[TransferSourceRequest]): String =
+    val intents = sources.map(source => normalizeIntent(source.intent).getOrElse(source.intent)).distinct
+    if intents.size == 1 then intents.headOption.getOrElse("transfer") else "mixed"
+
+  private def isCanceled(jobId: String): Boolean =
+    canceledTransferJobs.contains(jobId)
+
+  private def nowString: String =
+    Instant.now().toString
 
   private def preflightTransfer(
       identity: RequestIdentity,
@@ -257,7 +508,8 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
       destinationRoot: ResolvedStorageRoot,
       destinationProvider: StorageProvider,
       destinationPath: String,
-      conflictPolicy: String
+      conflictPolicy: String,
+      jobContext: Option[TransferJobContext] = None
   ): TransferItemResult =
     val intent = normalizeIntent(source.intent)
     intent match
@@ -266,7 +518,8 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
         sourceContext(identity, source).fold(
           error => failedResult(source, None, error.message),
           context => {
-            if nextIntent == "move" && context.root.readOnly then failedResult(source, None, "Source root is read-only")
+            if jobContext.exists(context => isCanceled(context.jobId)) then failedResult(source.copy(intent = nextIntent), None, "Transfer job was canceled").copy(status = "canceled")
+            else if nextIntent == "move" && context.root.readOnly then failedResult(source, None, "Source root is read-only")
             else if context.entry.kind != "file" && context.entry.kind != "directory" then failedResult(source, None, s"Unsupported entry kind '${context.entry.kind}'")
             else
               val targetPath = joinPath(destinationPath, context.entry.name)
@@ -279,9 +532,11 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
               else if sameRoot && context.entry.kind == "file" then
                 transferSameRootFile(source.copy(intent = nextIntent), context, targetPath, conflictPolicy)
               else
-                val copied = copyTree(source.copy(intent = "copy"), context.provider, context.root, context.entry, destinationProvider, destinationRoot, targetPath, conflictPolicy)
+                val copied = copyTree(source.copy(intent = "copy"), context.provider, context.root, context.entry, destinationProvider, destinationRoot, targetPath, conflictPolicy, jobContext)
                 if nextIntent == "copy" then copied.copy(intent = "copy")
                 else if !resultSucceeded(copied) then copied.copy(intent = "move")
+                else if jobContext.exists(context => isCanceled(context.jobId)) then
+                  copied.copy(intent = "move", status = "canceled", message = s"Transfer job was canceled after destination copy; source was not deleted")
                 else
                   deleteRecursive(context.provider, context.root, context.entry.path) match
                     case Right(_) => copied.copy(intent = "move", status = "moved", message = s"Moved to ${copied.targetPath.getOrElse(targetPath)}")
@@ -317,15 +572,18 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
       destinationProvider: StorageProvider,
       destinationRoot: ResolvedStorageRoot,
       targetPath: String,
-      conflictPolicy: String
+      conflictPolicy: String,
+      jobContext: Option[TransferJobContext]
   ): TransferItemResult =
     resolveTarget(source, destinationProvider, destinationRoot, targetPath, sourceEntry.kind, conflictPolicy).fold(
       identity,
       target => {
-        if sourceEntry.kind == "directory" then
-          copyDirectory(source, sourceProvider, sourceRoot, sourceEntry, destinationProvider, destinationRoot, target, conflictPolicy)
+        if jobContext.exists(context => isCanceled(context.jobId)) then failedResult(source, Some(target.path), "Transfer job was canceled").copy(status = "canceled")
         else
-          copyFile(source, sourceProvider, sourceRoot, destinationProvider, destinationRoot, target)
+        if sourceEntry.kind == "directory" then
+          copyDirectory(source, sourceProvider, sourceRoot, sourceEntry, destinationProvider, destinationRoot, target, conflictPolicy, jobContext)
+        else
+          copyFile(source, sourceProvider, sourceRoot, destinationProvider, destinationRoot, target, jobContext)
       }
     )
 
@@ -335,20 +593,118 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
       sourceRoot: ResolvedStorageRoot,
       destinationProvider: StorageProvider,
       destinationRoot: ResolvedStorageRoot,
-      target: TargetResolution
+      target: TargetResolution,
+      jobContext: Option[TransferJobContext]
   ): TransferItemResult =
-    val transferMaxBytes = configuredTransferMaxBytes(sourceRoot, destinationRoot)
     val copied =
-      for
-        content <- sourceProvider.download(sourceRoot, source.path)
-        _ <- Either.cond(content.bytes.length.toLong <= transferMaxBytes, (), s"File exceeds buffered transfer limit of $transferMaxBytes bytes")
-        entry <- destinationProvider.upload(destinationRoot, target.path, content.bytes, target.overwrite)
-      yield entry
+      if sourceProvider.supportsStreamRead(sourceRoot) && destinationProvider.supportsStreamWrite(destinationRoot) then
+        streamCopyFile(source, sourceProvider, sourceRoot, destinationProvider, destinationRoot, target, jobContext)
+      else
+        bufferedCopyFile(source, sourceProvider, sourceRoot, destinationProvider, destinationRoot, target, jobContext)
 
     copied.fold(
-      message => failedResult(source, Some(target.path), message),
+      message =>
+        val status = if message.toLowerCase.contains("canceled") then "canceled" else "failed"
+        failedResult(source, Some(target.path), message).copy(status = status),
       entry => TransferItemResult(source.intent, source.tunnel, source.rootId, source.path, Some(entry.path), "copied", s"Copied to ${entry.path}", Some(entry))
     )
+
+  private def bufferedCopyFile(
+      source: TransferSourceRequest,
+      sourceProvider: StorageProvider,
+      sourceRoot: ResolvedStorageRoot,
+      destinationProvider: StorageProvider,
+      destinationRoot: ResolvedStorageRoot,
+      target: TargetResolution,
+      jobContext: Option[TransferJobContext]
+  ): Either[String, StorageEntry] =
+    val maxBytes = configuredTransferMaxBytes(sourceRoot, destinationRoot)
+    for
+      info <- sourceProvider.contentInfo(sourceRoot, source.path)
+      _ <- info.size match
+        case Some(size) if size > maxBytes => Left(s"File exceeds buffered transfer limit of $maxBytes bytes and no streaming transfer path is available")
+        case _ => Right(())
+      content <- sourceProvider.download(sourceRoot, source.path)
+      actualSize = content.bytes.length.toLong
+      _ <- Either.cond(actualSize <= maxBytes, (), s"File exceeds buffered transfer limit of $maxBytes bytes and no streaming transfer path is available")
+      _ = jobContext.foreach(context => updateJobTaskProgress(context.jobId, context.taskIndex, actualSize, Some(actualSize), 0))
+      entry <- destinationProvider.upload(destinationRoot, target.path, content.bytes, target.overwrite)
+      verified <- verifyWrittenEntry(FileContentInfo(content.fileName, content.mimeType, Some(actualSize)), entry)
+    yield verified
+
+  private def streamCopyFile(
+      source: TransferSourceRequest,
+      sourceProvider: StorageProvider,
+      sourceRoot: ResolvedStorageRoot,
+      destinationProvider: StorageProvider,
+      destinationRoot: ResolvedStorageRoot,
+      target: TargetResolution,
+      jobContext: Option[TransferJobContext]
+  ): Either[String, StorageEntry] =
+    sourceProvider.contentInfo(sourceRoot, source.path).flatMap { info =>
+      val transferred = AtomicLong(0L)
+      val input = PipedInputStream(64 * 1024)
+      val output = PipedOutputStream(input)
+      val executor = Executors.newSingleThreadExecutor()
+      val readFuture = executor.submit(new Callable[Either[String, FileContentInfo]]:
+        override def call(): Either[String, FileContentInfo] =
+          try sourceProvider.streamRead(sourceRoot, source.path, output, _ => ())
+          catch
+            case NonFatal(error) => Left(safeExceptionMessage(error))
+          finally closeQuietly(output)
+      )
+
+      try
+        val writeResult =
+          try
+            destinationProvider
+              .streamWrite(
+                destinationRoot,
+                target.path,
+                input,
+                info,
+                target.overwrite,
+                bytes => {
+                  val total = transferred.addAndGet(bytes)
+                  jobContext.foreach { context =>
+                    if isCanceled(context.jobId) then throw RuntimeException("Transfer job was canceled")
+                    updateJobTaskProgress(context.jobId, context.taskIndex, total, info.size, 0)
+                  }
+                }
+              )
+              .flatMap(entry => verifyWrittenEntry(info, entry))
+          catch
+            case NonFatal(error) => Left(safeExceptionMessage(error))
+          finally closeQuietly(input)
+
+        val readResult =
+          try readFuture.get()
+          catch
+            case NonFatal(error) => Left(safeExceptionMessage(error))
+
+        val result =
+          (readResult, writeResult) match
+            case (Right(_), Right(entry)) => Right(entry)
+            case (Left(message), Right(_)) => Left(message)
+            case (_, Left(message)) => Left(message)
+
+        result.left.foreach(_ => cleanupPartialDestination(destinationProvider, destinationRoot, target))
+        result
+      finally executor.shutdown()
+    }
+
+  private def verifyWrittenEntry(info: FileContentInfo, entry: StorageEntry): Either[String, StorageEntry] =
+    (info.size, entry.metadata.size) match
+      case (Some(expected), Some(actual)) if expected != actual => Left(s"Destination size verification failed: expected $expected bytes, found $actual bytes")
+      case _ => Right(entry)
+
+  private def cleanupPartialDestination(provider: StorageProvider, root: ResolvedStorageRoot, target: TargetResolution): Unit =
+    if !target.overwrite then provider.delete(root, target.path).foreach(_ => ())
+
+  private def closeQuietly(closeable: AutoCloseable): Unit =
+    try closeable.close()
+    catch
+      case NonFatal(_) => ()
 
   private def copyDirectory(
       source: TransferSourceRequest,
@@ -358,7 +714,8 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
       destinationProvider: StorageProvider,
       destinationRoot: ResolvedStorageRoot,
       target: TargetResolution,
-      conflictPolicy: String
+      conflictPolicy: String,
+      jobContext: Option[TransferJobContext]
   ): TransferItemResult =
     val childEntries = sourceProvider.list(sourceRoot, sourceEntry.path)
     childEntries.fold(
@@ -374,7 +731,7 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
           directoryEntry => {
             val children = entries.map { child =>
               val childSource = source.copy(path = child.path)
-              copyTree(childSource, sourceProvider, sourceRoot, child, destinationProvider, destinationRoot, joinPath(target.path, child.name), conflictPolicy)
+              copyTree(childSource, sourceProvider, sourceRoot, child, destinationProvider, destinationRoot, joinPath(target.path, child.name), conflictPolicy, jobContext)
             }
             val ok = children.forall(resultSucceeded)
             TransferItemResult(
@@ -545,6 +902,10 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
       else if message.toLowerCase.contains("read-only") then "read_only_root"
       else "storage_operation_failed"
     ApiError(code, message)
+
+  private def safeExceptionMessage(error: Throwable): String =
+    val cause = Option(error.getCause).getOrElse(error)
+    Option(cause.getMessage).map(_.trim).filter(_.nonEmpty).getOrElse(cause.getClass.getSimpleName)
 
   private def sessionFor(resolved: io.cagnard.backend.auth.ResolvedUser): SessionResponse =
     val personal = access.personalRoots(resolved.profile)

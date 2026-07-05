@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import {
   ArrowUpDown,
   Braces,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clipboard,
@@ -28,6 +29,7 @@ import {
   Home,
   Info,
   ListTree,
+  LoaderCircle,
   MoveRight,
   Pencil,
   RefreshCw,
@@ -35,12 +37,13 @@ import {
   Search,
   Trash2,
   Upload,
-  X
+  X,
+  XCircle
 } from "lucide-react";
 
 import type { CagnardDataState, EntrySelectionMode, OpenedFileState } from "../api/useCagnardData";
 import type { EntrySortField } from "../api/useCagnardData";
-import type { EntryMetadata, StorageEntry } from "../api/types";
+import type { EntryMetadata, StorageEntry, TransferJobResponse } from "../api/types";
 import { classifyEntry } from "../plugins/fileTypeCatalog";
 import { openerSupportsRaw } from "../plugins/fileOpeners";
 
@@ -101,6 +104,7 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
             items={[{ icon: <Trash2 size={16} />, label: "Delete", onClick: state.deleteSelected, disabled: !hasSelection || !canMutate, danger: true }]}
           />
           <PasteboardControl state={state} />
+          <TransferQueueControl state={state} />
           <input
             ref={uploadInput}
             className="visually-hidden"
@@ -255,6 +259,166 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
       <BrowserActionModal state={state} />
     </main>
   );
+}
+
+function TransferQueueControl({ state }: { state: CagnardDataState }) {
+  const menu = useHoverDropdown<HTMLDivElement>();
+  if (state.transferJobs.length === 0) return null;
+
+  const summary = transferQueueSummary(state.transferJobs);
+
+  return (
+    <div className={`action-menu-group transfer-queue-menu-group ${summary.kind}`} ref={menu.ref} onMouseEnter={menu.openOnHover} onMouseLeave={menu.closeOnLeave}>
+      <button
+        aria-expanded={menu.open}
+        aria-haspopup="menu"
+        aria-label="Transfer queue"
+        className="transfer-queue-trigger"
+        onClick={menu.togglePinned}
+        title="Transfer queue"
+        type="button"
+      >
+        {summary.icon}
+        <span>{summary.label}</span>
+        <strong>{state.transferJobs.length}</strong>
+      </button>
+      {menu.open ? (
+        <TransferJobsPanel state={state} />
+      ) : null}
+    </div>
+  );
+}
+
+function TransferJobsPanel({
+  state
+}: {
+  state: CagnardDataState;
+}) {
+  const jobs = state.transferJobs;
+  const visibleJobs = jobs.slice(0, 4);
+  const activeCount = jobs.filter(isActiveTransferJob).length;
+
+  return (
+    <section className="transfer-jobs" aria-label="Transfer jobs">
+      <div className="transfer-jobs-heading">
+        <strong>Transfers</strong>
+        <span>{activeCount > 0 ? `${activeCount} active` : `${jobs.length} recent`}</span>
+      </div>
+      <div className="transfer-job-list">
+        {visibleJobs.map((job) => {
+          const progress = aggregateJobProgress(job);
+          const canCancel = isActiveTransferJob(job);
+          return (
+            <article className={`transfer-job ${job.status}`} key={job.id}>
+              <div className="transfer-job-main">
+                <div>
+                  <strong>{job.operation === "move" ? "Move" : job.operation === "copy" ? "Copy" : "Transfer"}</strong>
+                  <span>{job.message}</span>
+                </div>
+                <span className="transfer-job-status">{job.status}</span>
+              </div>
+              <div className="transfer-job-progress" aria-label={progress.label}>
+                <span style={{ width: `${progress.percent}%` }} />
+              </div>
+              <div className="transfer-job-meta">
+                <span>{progress.label}</span>
+                <span>{formatTransferJobTime(job)}</span>
+                <span>{transferDestinationLabel(job, state)}</span>
+                {canCancel ? (
+                  <button className="icon-button compact" type="button" onClick={() => void state.cancelTransferJob(job.id)} title="Cancel transfer">
+                    <X size={14} />
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function transferQueueSummary(jobs: TransferJobResponse[]): { icon: ReactNode; kind: string; label: string } {
+  const activeCount = jobs.filter(isActiveTransferJob).length;
+  if (activeCount > 0) {
+    return {
+      icon: <LoaderCircle className="transfer-queue-spinner" size={16} />,
+      kind: "running",
+      label: `${activeCount} active`
+    };
+  }
+
+  const latestJob = jobs[0];
+  if (latestJob && ["failed", "partial", "canceled", "blocked"].includes(latestJob.status)) {
+    return {
+      icon: <XCircle size={16} />,
+      kind: "failed",
+      label: "Issue"
+    };
+  }
+
+  return {
+    icon: <CheckCircle2 size={16} />,
+    kind: "completed",
+    label: "Done"
+  };
+}
+
+function aggregateJobProgress(job: TransferJobResponse): { percent: number; label: string } {
+  const totals = job.tasks.reduce(
+    (acc, task) => {
+      acc.bytes += task.progress.bytesTransferred;
+      acc.totalBytes += task.progress.totalBytes ?? 0;
+      acc.items += task.progress.itemsCompleted;
+      acc.totalItems += task.progress.totalItems ?? 0;
+      return acc;
+    },
+    { bytes: 0, totalBytes: 0, items: 0, totalItems: 0 }
+  );
+
+  if (totals.totalBytes > 0) {
+    return {
+      percent: Math.min(100, Math.round((totals.bytes / totals.totalBytes) * 100)),
+      label: `${formatSize(totals.bytes)} of ${formatSize(totals.totalBytes)}`
+    };
+  }
+
+  if (totals.totalItems > 0) {
+    return {
+      percent: Math.min(100, Math.round((totals.items / totals.totalItems) * 100)),
+      label: `${totals.items} of ${totals.totalItems} items`
+    };
+  }
+
+  return {
+    percent: isTerminalTransferJob(job) ? 100 : 8,
+    label: job.status
+  };
+}
+
+function isActiveTransferJob(job: TransferJobResponse): boolean {
+  return ["queued", "running", "canceling"].includes(job.status);
+}
+
+function isTerminalTransferJob(job: TransferJobResponse): boolean {
+  return ["completed", "failed", "canceled", "partial", "blocked"].includes(job.status);
+}
+
+function transferDestinationLabel(job: TransferJobResponse, state: CagnardDataState): string {
+  const roots = [
+    ...(state.navigation?.personal?.roots ?? []),
+    ...(state.navigation?.global?.roots ?? [])
+  ];
+  const root = roots.find(candidate => candidate.tunnel === job.destination.tunnel && candidate.id === job.destination.rootId);
+  const rootLabel = root?.label ?? job.destination.rootId;
+  return job.destination.path ? `to ${rootLabel} / ${job.destination.path}` : `to ${rootLabel}`;
+}
+
+function formatTransferJobTime(job: TransferJobResponse): string {
+  const timestamp = job.updatedAt || job.createdAt;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "time unavailable";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 interface ActionDefinition {
