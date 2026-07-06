@@ -18,7 +18,7 @@ The validation workflow is:
 
 It runs:
 
-- backend tests with `sbt backend/test`
+- backend tests with `go test ./...` under `backend-go`
 - frontend typecheck with `pnpm --filter @cagnard/frontend typecheck`
 - frontend production build with `pnpm --filter @cagnard/frontend build`
 - backend Docker image build
@@ -30,7 +30,9 @@ The workflow uses Node.js 22 because the repository declares `pnpm@11.7.0`, whic
 Local equivalents:
 
 ```bash
-sbt backend/test
+cd backend-go
+go test ./...
+cd ..
 pnpm --filter @cagnard/frontend typecheck
 pnpm --filter @cagnard/frontend build
 docker build -f Containerfile.backend -t cagnard-backend:ci .
@@ -49,7 +51,7 @@ The publishing workflow is:
 
 By default it publishes:
 
-- `ghcr.io/<owner-lowercase>/cagnard-backend:<tag>`
+- `ghcr.io/<owner-lowercase>/cagnard-backend:<tag>` containing the Go backend runtime
 - `ghcr.io/<owner-lowercase>/cagnard-frontend:<tag>`
 - `oci://ghcr.io/<owner-lowercase>/charts/cagnard:<chart-version>`
 

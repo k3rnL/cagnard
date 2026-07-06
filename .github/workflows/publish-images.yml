@@ -105,7 +105,7 @@ jobs:
           {
             echo "## Container Images"
             echo
-            echo "- \`$BACKEND_IMAGE\`"
+            echo "- \`$BACKEND_IMAGE\` (Go backend runtime)"
             echo "- \`$FRONTEND_IMAGE\`"
             echo
             echo "## Helm Chart"

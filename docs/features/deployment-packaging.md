@@ -4,7 +4,7 @@
 
 Cagnard ships as two deployable container images:
 
-- `cagnard-backend`: Scala HTTP API running on port `8080`.
+- `cagnard-backend`: Go HTTP API running on port `8080`.
 - `cagnard-frontend`: production React assets served by nginx on port `8080`.
 
 The frontend uses relative `/api` calls. In container and Kubernetes deployments, `/api` can reach the backend through either the frontend nginx proxy or an ingress path routed directly to the backend service.
@@ -24,6 +24,8 @@ docker build -f frontend/Containerfile -t cagnard-frontend:local .
 ```
 
 The backend image includes the example config and example filesystem content for local demos. Production deployments should mount their own HOCON config and set `CAGNARD_CONFIG`.
+
+The runtime image contains the compiled Go backend binary and static runtime assets. It does not include sbt, Scala, or a JVM.
 
 Example backend run with a mounted config:
 
@@ -140,11 +142,10 @@ Secrets should not be written into `values.yaml`. Use Kubernetes Secrets, mounte
 
 ## Known Limitations
 
-- The chart is source-controlled only; OCI chart publishing is not implemented yet.
+- Release publishing packages the chart as a Helm OCI artifact, but provenance, SBOMs, and signing are not implemented yet.
 - The default inline config is for demos and local clusters, not production.
 - The first chart does not include cloud-specific ingress annotations, certificate automation, or external secret controller templates.
 - The S3/MinIO Helm values assume a reachable MinIO or S3-compatible service; the Cagnard chart does not deploy MinIO as a chart dependency.
-- The backend image uses a JVM runtime image and is not yet optimized with jlink or native-image.
 
 ## Example Maintenance
 

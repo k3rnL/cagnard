@@ -8,7 +8,7 @@ Cagnard provides runnable examples under `examples/run`. They are ordered from s
 2. `s3-minio-static`: static users with S3-compatible storage backed by local MinIO.
 3. `local-and-s3-static`: static users with both filesystem and S3/MinIO storage roots.
 
-Every runnable example starts both the backend and frontend. S3 examples also start MinIO and a MinIO initialization service that creates the demo bucket and seeds generated sample files.
+Every runnable example starts both the Go backend image and frontend. S3 examples also start MinIO and a MinIO initialization service that creates the demo bucket and seeds generated sample files.
 
 ## Docker Compose
 

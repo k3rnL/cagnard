@@ -4,11 +4,11 @@
 TBD - created by archiving change add-docker-helm-github-actions. Update Purpose after archive.
 ## Requirements
 ### Requirement: Backend container image
-Cagnard SHALL provide a Docker-compatible build for the backend runtime that starts the Scala HTTP service without requiring developer tooling in the final runtime image.
+Cagnard SHALL provide a Docker-compatible build for the backend runtime that starts the Go HTTP service without requiring developer tooling in the final runtime image.
 
 #### Scenario: Build backend image
 - **WHEN** an operator builds the backend image from the repository
-- **THEN** the resulting image SHALL contain the compiled backend application and a minimal runtime needed to execute it
+- **THEN** the resulting image SHALL contain the compiled Go backend binary and static runtime assets needed to execute it without sbt, Scala, or a JVM
 
 #### Scenario: Run backend image with external config
 - **WHEN** the backend container starts with `CAGNARD_CONFIG` pointing to a mounted HOCON file
@@ -68,4 +68,3 @@ Cagnard SHALL document Docker image builds, local Mocker validation, Docker Comp
 #### Scenario: Read example maintenance guidance
 - **WHEN** a contributor reads the deployment or examples documentation
 - **THEN** it SHALL state that new provider and auth-method changes must add or update relevant Docker Compose examples and Helm values when startup configuration changes
-

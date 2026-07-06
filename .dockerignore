@@ -4,16 +4,6 @@
 .env
 .env.*
 
-# Scala / sbt
-target/
-backend/target/
-project/target/
-project/project/
-.bsp/
-.bloop/
-.metals/
-.scala-build/
-
 # Node / frontend
 node_modules/
 frontend/node_modules/
@@ -26,3 +16,7 @@ tmp/
 data/
 *.log
 
+# Manual test captures in example storage should not inflate image build contexts.
+examples/storage/**/*.mov
+examples/storage/**/*.mp4
+examples/storage/**/*.mkv

@@ -4,6 +4,7 @@ This directory is the maintained documentation surface for implemented Cagnard f
 
 Feature documentation is organized by spec area:
 
+- [Go backend runtime](features/go-backend-runtime.md)
 - [Stateless backend configuration](features/stateless-backend-configuration.md)
 - [User login flow](features/user-login-flow.md)
 - [Storage browser](features/storage-browser.md)

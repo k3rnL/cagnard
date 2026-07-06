@@ -19,7 +19,8 @@ HOCON supports comments, includes, and substitutions. This makes deployment conf
 From the repository root:
 
 ```bash
-sbt backend/run
+cd backend-go
+go run ./cmd/cagnard-backend
 ```
 
 By default, the backend reads:
@@ -31,10 +32,15 @@ config/cagnard.example.conf
 Override the path with `CAGNARD_CONFIG`:
 
 ```bash
-CAGNARD_CONFIG=/path/to/cagnard.conf sbt backend/run
+CAGNARD_CONFIG=/path/to/cagnard.conf go run ./cmd/cagnard-backend
 ```
 
-Or pass the path as the first backend argument when running the application outside sbt.
+Or pass the path as the first backend argument when running the compiled binary:
+
+```bash
+go build -o ../tmp/cagnard-backend ./cmd/cagnard-backend
+../tmp/cagnard-backend /path/to/cagnard.conf
+```
 
 ## Container Configuration
 
@@ -121,7 +127,7 @@ Provider settings:
 Account credential modes:
 
 - `static`: `accessKeyId`, `secretAccessKey`, and optional `sessionToken`.
-- `default-chain`: use the runtime AWS/JVM default credential provider chain.
+- `default-chain`: use the AWS SDK for Go default credential provider chain.
 - `profile`: use `profile` from compatible AWS config/credential files.
 
 Root settings:

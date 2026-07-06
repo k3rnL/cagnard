@@ -1,6 +1,6 @@
 # Local Filesystem And S3 MinIO With Static Users
 
-This example starts Cagnard with both filesystem and S3-compatible storage roots. It is useful for testing provider-neutral browsing and transfer-ready setups.
+This example starts the Cagnard Go backend with both filesystem and S3-compatible storage roots. It is useful for testing provider-neutral browsing and transfer-ready setups.
 
 ## Start
 
@@ -25,7 +25,7 @@ MinIO is available at:
 
 ## What It Starts
 
-- Cagnard backend on `http://127.0.0.1:8080`
+- Cagnard Go backend on `http://127.0.0.1:8080`
 - Cagnard frontend on `http://127.0.0.1:5173`
 - Filesystem roots mounted at `/data`
 - MinIO bucket `cagnard-combined` with generated sample objects under `documents/` and `shared/`

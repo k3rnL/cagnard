@@ -1,0 +1,20 @@
+- [x] 1.1 Create Go backend module, binary entrypoint, and package layout.
+- [x] 1.2 Implement typed Go config model for current HOCON schema.
+- [x] 1.3 Implement HOCON loading, relative filesystem path resolution, and startup validation.
+- [x] 1.4 Add Go config tests for canonical and runnable example configs.
+- [x] 1.5 Add basic Go HTTP server with health endpoint.
+- [x] 1.6 Add initial session/auth-provider/navigation API skeleton from loaded config.
+- [x] 2.1 Port static password verifier and stateless session signing.
+- [x] 2.2 Port access model and root resolution for personal/global storage.
+- [x] 3.1 Port provider-neutral storage models and capability reporting.
+- [x] 3.2 Port Unix filesystem provider list/stat/content/mutation/stream behavior.
+- [x] 3.3 Port S3-compatible provider registration and object/prefix semantics.
+- [x] 4.1 Port transfer job API models and routes.
+- [x] 4.2 Port provider-neutral transfer engine and conflict policies.
+- [x] 4.3 Port transfer cancellation and progress reporting.
+- [x] 5.1 Add API compatibility tests against frontend-used routes.
+- [x] 5.2 Update Docker backend image to build the Go binary.
+- [x] 5.3 Update Helm values/docs/examples for Go backend image.
+- [x] 5.4 Update CI validation and release publishing for Go backend.
+- [x] 6.1 Remove or retire Scala backend from the default runtime after Go parity is validated.
+- [x] 6.2 Update feature documentation and release notes for the backend runtime rewrite.

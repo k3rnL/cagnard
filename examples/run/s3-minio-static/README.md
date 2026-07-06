@@ -1,6 +1,6 @@
 # S3 MinIO With Static Users
 
-This example starts Cagnard with an S3-compatible storage provider backed by local MinIO. The MinIO init service creates a bucket and seeds generated sample files.
+This example starts the Cagnard Go backend with an S3-compatible storage provider backed by local MinIO. The MinIO init service creates a bucket and seeds generated sample files.
 
 ## Start
 
@@ -25,7 +25,7 @@ MinIO is available at:
 
 ## What It Starts
 
-- Cagnard backend on `http://127.0.0.1:8080`
+- Cagnard Go backend on `http://127.0.0.1:8080`
 - Cagnard frontend on `http://127.0.0.1:5173`
 - MinIO S3-compatible object storage
 - MinIO initialization that creates `cagnard-demo` and seeds `documents/`

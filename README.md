@@ -2,19 +2,19 @@
 
 Cagnard is a provider-neutral storage browser. Storage is modeled as a capability implemented by plugins, so the same browser can navigate local filesystems, object stores, document drives, and future storage providers through one contract.
 
-The first implementation pass is intentionally small:
+The current implementation includes:
 
-- stateless backend driven by configuration
-- Scala/tapir HTTP API
-- Unix filesystem storage provider
-- Refine React frontend
+- stateless Go backend driven by HOCON configuration
+- provider-neutral HTTP API for browsing, mutation, preview, and transfer jobs
+- Unix filesystem and S3-compatible storage providers
+- React frontend
 - personal `Home` / `My documents` and admin-configured `Global` storage navigation
 - UI plugin declarations for preview and file-specific actions
 
 ## Layout
 
 ```text
-backend/       Scala backend service
+backend-go/    Go backend service
 frontend/      Refine React application
 config/        Example stateless backend configuration
 docs/          Maintained feature and operator documentation
@@ -34,7 +34,8 @@ The backend is stateless: it derives providers, accounts, users, access rules, a
 Run from the repository root:
 
 ```bash
-sbt backend/run
+cd backend-go
+go run ./cmd/cagnard-backend
 ```
 
 By default the backend reads:
@@ -46,7 +47,7 @@ config/cagnard.example.conf
 Override it with:
 
 ```bash
-CAGNARD_CONFIG=/path/to/cagnard.conf sbt backend/run
+CAGNARD_CONFIG=/path/to/cagnard.conf go run ./cmd/cagnard-backend
 ```
 
 The backend configuration format is HOCON. See [docs/configuration.md](docs/configuration.md).
@@ -118,7 +119,7 @@ Pure Helm values matching the runnable examples are also available under `deploy
 
 ## GitHub Actions
 
-The validation workflow runs backend tests, frontend checks, Docker image builds, and Helm rendering on hosted runners. The publishing workflow uses Docker to push backend and frontend images to GHCR or another configured registry.
+The validation workflow runs Go backend tests, frontend checks, Docker image builds, and Helm rendering on hosted runners. The publishing workflow uses Docker to push backend and frontend images to GHCR or another configured registry.
 
 See [docs/features/deployment-packaging.md](docs/features/deployment-packaging.md) and [docs/features/ci-release-automation.md](docs/features/ci-release-automation.md).
 
