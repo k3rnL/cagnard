@@ -52,10 +52,19 @@ class S3StorageProvider private[storage] (
         if exists then client.head(target.bucket, key).map(metadata => fileEntry(root, target, metadata))
         else
           val markerKey = keyFor(target, relative, directory = true)
-          client.exists(target.bucket, markerKey).flatMap {
-            case true => Right(directoryEntry(root, target, markerKey))
-            case false => Left(s"Path does not exist: $path")
-          }
+          for
+            markerExists <- client.exists(target.bucket, markerKey)
+            directory <-
+              if markerExists then Right(directoryEntry(root, target, markerKey))
+              else
+                listAll(client, target.bucket, markerKey, token = None, pagesSeen = 0).flatMap { page =>
+                  Either.cond(
+                    page.objects.nonEmpty || page.commonPrefixes.nonEmpty,
+                    directoryEntry(root, target, markerKey),
+                    s"Path does not exist: $path"
+                  )
+                }
+          yield directory
     yield entry
 
   override def download(root: ResolvedStorageRoot, path: String): Either[String, FileContent] =

@@ -1,6 +1,6 @@
 ThisBuild / organization := "io.cagnard"
 ThisBuild / scalaVersion := "3.3.3"
-ThisBuild / version := "0.2.0"
+ThisBuild / version := "0.3.0-SNAPSHOT"
 
 lazy val awsSdkVersion = "2.46.21"
 

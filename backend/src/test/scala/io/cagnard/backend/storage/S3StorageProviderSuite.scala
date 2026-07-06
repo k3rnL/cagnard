@@ -51,6 +51,24 @@ class S3StorageProviderSuite extends FunSuite:
     assertEquals(entries.find(_.name == "folder").toList.flatMap(_.capabilities.find(_.name == "delete").map(_.status)), List("supported"))
   }
 
+  test("stats implicit S3 prefixes without folder marker objects") {
+    val fake = FakeS3ObjectClient(
+      Map(
+        "team/docs/folder/nested/note.txt" -> fakeObject("team/docs/folder/nested/note.txt", "note".getBytes, Some("text/plain"))
+      )
+    )
+    val provider = testProvider(fake)
+    val root = s3Root(prefix = "team/docs")
+
+    val folder = provider.stat(root, "folder").toOption.get
+    val nested = provider.stat(root, "folder/nested").toOption.get
+
+    assertEquals(folder.kind, "directory")
+    assertEquals(folder.path, "folder")
+    assertEquals(nested.kind, "directory")
+    assertEquals(nested.path, "folder/nested")
+  }
+
   test("maps S3 object metadata into normalized and provider-specific fields") {
     val metadata = fakeMetadata(
       "team/docs/report.txt",
