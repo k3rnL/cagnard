@@ -10,6 +10,8 @@ Implemented classification uses provider MIME metadata first and falls back to a
 - browser-supported images, PDF, audio, and video
 - archives and common office/data/database formats as metadata-first types
 
+MIME values are normalized for classification and opener routing. Parameters and casing differences such as `Application/JSON; charset=utf-8` are treated as `application/json`, while user-visible metadata can still show the provider value where the browser needs it.
+
 The browser now opens content only through an explicit user action. Selecting a file updates metadata and actions but does not fetch file content. A normal Open replaces the file list with the opener surface. A row hover quick-view action inserts the opener inline in the list for temporary inspection.
 
 ## Built-In Openers

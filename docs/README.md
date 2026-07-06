@@ -8,6 +8,7 @@ Feature documentation is organized by spec area:
 - [Stateless backend configuration](features/stateless-backend-configuration.md)
 - [User login flow](features/user-login-flow.md)
 - [Storage browser](features/storage-browser.md)
+- [Browser feedback and notifications](features/browser-feedback-and-notifications.md)
 - [Browser action modals](features/browser-action-modals.md)
 - [Browser pasteboard](features/browser-pasteboard.md)
 - [File compatibility](features/file-compatibility.md)

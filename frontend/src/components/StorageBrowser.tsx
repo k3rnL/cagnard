@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, RefObject } from "react";
 import type { ReactNode } from "react";
 import {
@@ -51,9 +51,21 @@ interface StorageBrowserProps {
   state: CagnardDataState;
 }
 
+type ToastKind = "error" | "success";
+
+interface ToastMessage {
+  id: number;
+  kind: ToastKind;
+  title: string;
+  message: string;
+}
+
 export function StorageBrowser({ state }: StorageBrowserProps) {
   const uploadInput = useRef<HTMLInputElement>(null);
+  const toastSequence = useRef(0);
+  const toastTimers = useRef<number[]>([]);
   const [metadataOpen, setMetadataOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const selectedEntry = state.selectedEntry;
   const pageOpenedFile = state.openedFile?.placement === "page" ? state.openedFile : undefined;
   const inlineOpenedFile = state.openedFile?.placement === "inline" ? state.openedFile : undefined;
@@ -66,10 +78,49 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
   const allVisibleSelected = state.entries.length > 0 && visibleSelectedCount === state.entries.length;
   const partiallyVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
   const rootBreadcrumbLabel = state.selectedRoot?.label ?? "Root";
+  const readablePath = useMemo(() => readableStoragePath(rootBreadcrumbLabel, state.currentPath), [rootBreadcrumbLabel, state.currentPath]);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
+  const showToast = useCallback((kind: ToastKind, title: string, message: string) => {
+    const id = toastSequence.current + 1;
+    toastSequence.current = id;
+    setToasts((current) => [...current.slice(-3), { id, kind, title, message }]);
+
+    const timeout = window.setTimeout(() => {
+      dismissToast(id);
+    }, kind === "error" ? 7000 : 4200);
+    toastTimers.current.push(timeout);
+  }, [dismissToast]);
 
   useEffect(() => {
     setMetadataOpen(false);
   }, [pageOpenedFile?.entry.id, state.currentPath, state.selectedRoot?.id]);
+
+  useEffect(() => {
+    return () => {
+      toastTimers.current.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, []);
+
+  useEffect(() => {
+    if (state.error) showToast("error", "Action failed", state.error);
+  }, [showToast, state.error]);
+
+  useEffect(() => {
+    if (state.operationMessage) showToast("success", "Done", state.operationMessage);
+  }, [showToast, state.operationMessage]);
+
+  const copyCurrentPath = useCallback(async () => {
+    try {
+      await copyTextToClipboard(readablePath);
+      showToast("success", "Path copied", readablePath);
+    } catch (caught) {
+      showToast("error", "Clipboard unavailable", caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [readablePath, showToast]);
 
   return (
     <main className="content">
@@ -135,6 +186,10 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
             </Fragment>
           ))}
         </nav>
+        <button className="copy-path-button" type="button" onClick={() => void copyCurrentPath()} title="Copy current path">
+          <Clipboard size={14} />
+          <span>Copy path</span>
+        </button>
       </section>
 
       {!pageOpenedFile ? (
@@ -145,16 +200,13 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
         />
       ) : null}
 
-      {state.error ? <div className="error-banner">{state.error}</div> : null}
-      {state.operationMessage ? <div className="success-banner">{state.operationMessage}</div> : null}
-
       {pageOpenedFile ? (
         <FileOpenerSurface state={state} opened={pageOpenedFile} />
       ) : (
       <>
       {metadataOpen ? <button className="metadata-backdrop" type="button" aria-label="Close metadata" onClick={() => setMetadataOpen(false)} /> : null}
       <section className="browser-layout">
-        <div className="table-surface">
+        <div className={state.loading ? "table-surface pending" : "table-surface"} aria-busy={state.loading}>
           <div className="table-header">
             <label className="selection-cell" title="Select visible entries">
               <SelectAllCheckbox
@@ -174,7 +226,12 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
             <SortHeader field="mimeType" label="MIME" state={state} />
           </div>
 
-          {state.loading ? <div className="empty-row">Loading</div> : null}
+          {state.loading ? (
+            <div className="pending-overlay" aria-live="polite">
+              <LoaderCircle className="pending-spinner" size={22} />
+              <span className="visually-hidden">Loading entries</span>
+            </div>
+          ) : null}
 
           {!state.loading && state.entries.length === 0 ? (
             <div className="empty-row">{state.totalEntryCount === 0 ? "No entries" : "No matches"}</div>
@@ -184,8 +241,7 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
             <Fragment key={entry.id}>
             <div
               className={selectedIdSet.has(entry.id) ? "entry-row selected" : "entry-row"}
-              onClick={(event) => state.selectEntry(entry, selectionMode(event))}
-              onDoubleClick={() => void state.openEntry(entry)}
+              onClick={(event) => handleEntryClick(event, entry, state)}
               onKeyDown={(event) => handleEntryKey(event, entry, state)}
               role="button"
               tabIndex={0}
@@ -257,8 +313,55 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
       </>
       )}
       <BrowserActionModal state={state} />
+      <ToastViewport toasts={toasts} onDismiss={dismissToast} />
     </main>
   );
+}
+
+function ToastViewport({ toasts, onDismiss }: { toasts: ToastMessage[]; onDismiss: (id: number) => void }) {
+  if (toasts.length === 0) return null;
+
+  return (
+    <div className="toast-viewport" aria-live="polite" aria-relevant="additions">
+      {toasts.map((toast) => (
+        <article className={`toast ${toast.kind}`} key={toast.id} role={toast.kind === "error" ? "alert" : "status"}>
+          <div>
+            <strong>{toast.title}</strong>
+            <p>{toast.message}</p>
+          </div>
+          <button className="icon-button compact" type="button" onClick={() => onDismiss(toast.id)} title="Dismiss notification">
+            <X size={14} />
+          </button>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function readableStoragePath(rootLabel: string, path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return [rootLabel, ...parts].join("/");
+}
+
+async function copyTextToClipboard(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    if (!document.execCommand("copy")) throw new Error("Browser refused clipboard access.");
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }
 
 function TransferQueueControl({ state }: { state: CagnardDataState }) {
@@ -508,10 +611,7 @@ function useHoverDropdown<T extends HTMLElement>() {
     closeOnLeave: () => {
       if (pinned) return;
       clearCloseTimer();
-      closeTimer.current = window.setTimeout(() => {
-        setOpen(false);
-        closeTimer.current = undefined;
-      }, 140);
+      setOpen(false);
     },
     togglePinned: (event: MouseEvent<HTMLElement>) => {
       event.preventDefault();
@@ -971,6 +1071,15 @@ function selectionMode(event: MouseEvent<HTMLElement>): EntrySelectionMode {
   return "replace";
 }
 
+function handleEntryClick(event: MouseEvent<HTMLElement>, entry: StorageEntry, state: CagnardDataState) {
+  if (event.shiftKey || event.metaKey || event.ctrlKey) {
+    state.selectEntry(entry, selectionMode(event));
+    return;
+  }
+
+  void state.openEntry(entry);
+}
+
 function handleEntryKey(event: KeyboardEvent<HTMLElement>, entry: StorageEntry, state: CagnardDataState) {
   if (event.key === " ") {
     event.preventDefault();
@@ -1013,7 +1122,7 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
   const hasSource = Boolean(match && openerSupportsRaw(match.opener) && opened.content !== undefined);
 
   return (
-    <section className={inline ? "file-opener inline-file-opener" : "file-opener page-file-opener"}>
+    <section className={`${inline ? "file-opener inline-file-opener" : "file-opener page-file-opener"}${opened.loading ? " pending" : ""}`} aria-busy={opened.loading}>
       <header className="file-opener-header">
         <div className="file-opener-title">
           <EntryIcon entry={entry} size={20} />
@@ -1058,10 +1167,15 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
       ) : null}
 
       {opened.error ? <div className="error-banner">{opened.error}</div> : null}
-      {opened.loading ? <div className="empty-row">Opening file</div> : null}
 
-      {!opened.loading ? (
-        <div className="file-opener-body">
+      <div className="file-opener-body">
+        {opened.loading ? (
+          <div className="opener-pending" aria-live="polite">
+            <LoaderCircle className="pending-spinner" size={22} />
+            <span className="visually-hidden">Opening file</span>
+          </div>
+        ) : (
+          <>
           {!match ? <UnsupportedFile entry={entry} classification={classification} /> : null}
           {match?.opener.view === "archive" ? <ArchiveMetadata entry={entry} classification={classification} /> : null}
           {match?.opener.view === "media" && opened.blobUrl ? <MediaViewer entry={entry} classification={classification} url={opened.blobUrl} /> : null}
@@ -1076,8 +1190,9 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
               <pre className="source-view">{content}</pre>
             )
           ) : null}
-        </div>
-      ) : null}
+          </>
+        )}
+      </div>
     </section>
   );
 }

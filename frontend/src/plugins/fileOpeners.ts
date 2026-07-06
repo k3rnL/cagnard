@@ -209,7 +209,7 @@ function pluginOpeners(plugins: UiPluginManifest[]): FileOpener[] {
 }
 
 function openerMatches(opener: FileOpener, entry: StorageEntry, classification: FileTypeInfo): boolean {
-  const mimeType = classification.mimeType?.toLowerCase();
+  const mimeType = normalizeMimeType(classification.mimeType);
   const extension = extensionOf(entry.name);
   const byCategory = opener.categories?.includes(classification.category) ?? false;
   const byMime = mimeType ? opener.mimeTypes?.some((pattern) => mimeMatches(mimeType, pattern)) ?? false : false;
@@ -219,10 +219,16 @@ function openerMatches(opener: FileOpener, entry: StorageEntry, classification: 
 }
 
 function mimeMatches(mimeType: string, pattern: string): boolean {
-  const normalized = pattern.toLowerCase();
+  const normalized = normalizeMimeType(pattern);
+  if (!normalized) return false;
   if (normalized === mimeType) return true;
   if (normalized.endsWith("/*")) return mimeType.startsWith(normalized.slice(0, -1));
   return false;
+}
+
+function normalizeMimeType(mimeType?: string | null): string | undefined {
+  const normalized = mimeType?.split(";")[0]?.trim().toLowerCase();
+  return normalized || undefined;
 }
 
 function capabilitiesAvailable(capabilities: CapabilityStatus[], required: string[]): boolean {

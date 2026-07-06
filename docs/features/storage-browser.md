@@ -5,7 +5,8 @@
 The storage browser provides a provider-neutral view of roots, directories, files, and objects. It supports:
 
 - personal and global navigation areas
-- breadcrumbs
+- breadcrumbs with hover/focus copy-path action
+- readable URL location for the current root and path
 - single and multi-selection
 - current-directory filtering
 - sorting by name, kind, file type, size, modified time, and MIME type
@@ -22,7 +23,13 @@ Selecting a file does not fetch file content. The user opens a file explicitly, 
 
 The main Open action is shared by folders and files. Opening a folder navigates into it. Opening a file replaces the list view with the opener surface while keeping breadcrumbs and the main storage actions available. File rows swap the file icon for a hover quick-view button that inserts the same opener surface inline between the current row and the next row.
 
-The root breadcrumb uses the selected storage root display label. The command bar keeps primary actions directly clickable and places related secondary actions in dropdown groups.
+Clicking a file or directory row opens it in one action. Checkbox clicks, keyboard selection, modifier-key row clicks, and inline quick-view controls remain selection-specific so multi-selection stays separate from opening.
+
+The root breadcrumb uses the selected storage root display label. The breadcrumb copy button appears when the path area is hovered or focused and copies the readable path, such as `Home/projects/report.json`, to the browser clipboard.
+
+The browser URL stores stable restore parameters (`tunnel`, `rootId`, and `path`) and a readable hash path, for example `#/personal/Home/projects`. Reloading or opening that URL in another tab restores the location when the authenticated user can access it.
+
+The command bar keeps primary actions directly clickable and places related secondary actions in dropdown groups.
 
 Copy and move use the browser pasteboard. The Copy button adds safe references to the selected entries. The user then navigates to the desired destination root/path and uses the pasteboard dropdown to copy selected staged entries there with Paste or move them there with Move here.
 
@@ -39,6 +46,7 @@ Browser roots come from `personalStorage` and `globalStorage` entries in backend
 
 - Current search/filtering is scoped to loaded entries in the active directory.
 - The file table is horizontally scrollable so provider metadata columns remain reachable on narrow panels.
+- Directory navigation keeps the current listing mounted, greys it out, and shows a spinner overlay instead of inserting a transient loading row.
 - The metadata panel is a side panel on wide screens and a toggleable drawer on medium and small screens.
 - File type labels and icons are derived from provider MIME metadata or extension fallback classification.
 - Rename is single-selection.

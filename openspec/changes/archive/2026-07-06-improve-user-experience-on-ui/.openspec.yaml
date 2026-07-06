@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-07-06
+goal: Improve Cagnard's frontend user experience across navigation, actions,
+  feedback, responsiveness, accessibility, and everyday file-browser workflows
+  without changing the provider-neutral storage model.

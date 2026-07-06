@@ -205,6 +205,7 @@ export function useCagnardData(): CagnardDataState {
   const pasteboardBroadcastReady = useRef(false);
   const suppressPasteboardBroadcast = useRef(false);
   const transferJobsRef = useRef<TransferJobResponse[]>([]);
+  const urlRestoredRef = useRef(false);
 
   const pasteboardSelectedCount = useMemo(
     () => pasteboardItems.filter((item) => item.selected).length,
@@ -239,6 +240,7 @@ export function useCagnardData(): CagnardDataState {
     if (activeEntryId) return entriesById.get(activeEntryId) ?? selectedEntries[0];
     return selectedEntries[0];
   }, [activeEntryId, entriesById, selectedEntries]);
+  const effectivePath = entryResponse?.path ?? currentPath;
 
   useEffect(() => {
     pasteboardItemsRef.current = pasteboardItems;
@@ -277,6 +279,7 @@ export function useCagnardData(): CagnardDataState {
   }, []);
 
   const resetAuthenticatedState = useCallback(() => {
+    urlRestoredRef.current = false;
     setSession(undefined);
     setNavigation(undefined);
     setSelectedRoot(undefined);
@@ -389,6 +392,29 @@ export function useCagnardData(): CagnardDataState {
       window.clearInterval(interval);
     };
   }, [hasActiveTransferJobs, refreshTransferJobs, session?.user.id]);
+
+  useEffect(() => {
+    if (!session || !navigation || urlRestoredRef.current) return;
+    const requestedLocation = requestedStorageLocation(navigation);
+    urlRestoredRef.current = true;
+
+    if (!requestedLocation) return;
+    if ("error" in requestedLocation) {
+      setError(requestedLocation.error);
+      return;
+    }
+
+    setSelectedRoot(requestedLocation.root);
+    setCurrentPath(requestedLocation.path);
+    setFilterQueryState("");
+    setOpenedFile(undefined);
+    clearSelection();
+  }, [clearSelection, navigation, session]);
+
+  useEffect(() => {
+    if (!session || !selectedRoot || !urlRestoredRef.current) return;
+    replaceStorageLocationURL(selectedRoot, effectivePath);
+  }, [effectivePath, selectedRoot, session]);
 
   useEffect(() => {
     if (!session?.user.id || typeof BroadcastChannel === "undefined") return;
@@ -1016,8 +1042,6 @@ export function useCagnardData(): CagnardDataState {
     }
   }, [handleUnauthorized, requireRoot, requireSelection]);
 
-  const effectivePath = entryResponse?.path ?? currentPath;
-
   return useMemo(
     () => ({
       session,
@@ -1155,6 +1179,84 @@ export function useCagnardData(): CagnardDataState {
 
 function firstRoot(navigation: NavigationResponse): NavigationRoot | undefined {
   return navigation.personal?.roots[0] ?? navigation.global?.roots[0];
+}
+
+function requestedStorageLocation(navigation: NavigationResponse): { root: NavigationRoot; path: string } | { error: string } | undefined {
+  const params = new URLSearchParams(window.location.search);
+  const tunnel = params.get("tunnel");
+  const rootId = params.get("rootId");
+  const roots = navigationRoots(navigation);
+
+  if (rootId) {
+    const root = roots.find((candidate) => candidate.id === rootId && (!tunnel || candidate.tunnel === tunnel));
+    if (!root) return { error: "The URL points to a storage root that is not available to this user." };
+    return { root, path: normalizeBrowserPath(params.get("path") ?? "") };
+  }
+
+  const readableLocation = parseReadableLocationHash();
+  if (!readableLocation) return undefined;
+
+  const candidates = roots.filter((root) => {
+    const tunnelMatches = !readableLocation.tunnel || root.tunnel === readableLocation.tunnel;
+    return tunnelMatches && root.label === readableLocation.rootLabel;
+  });
+
+  if (candidates.length === 1) return { root: candidates[0], path: readableLocation.path };
+  if (candidates.length > 1) return { error: "The URL root name is ambiguous. Select a storage root from the navigation menu." };
+  return { error: "The URL points to a storage root that is not available to this user." };
+}
+
+function replaceStorageLocationURL(root: NavigationRoot, path: string) {
+  const params = new URLSearchParams(window.location.search);
+  params.set("tunnel", root.tunnel);
+  params.set("rootId", root.id);
+  if (path) params.set("path", path);
+  else params.delete("path");
+
+  const search = params.toString();
+  const nextURL = `${window.location.pathname}${search ? `?${search}` : ""}${readableLocationHash(root, path)}`;
+  const currentURL = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (nextURL !== currentURL) window.history.replaceState(null, "", nextURL);
+}
+
+function readableLocationHash(root: NavigationRoot, path: string): string {
+  const segments = [root.tunnel, root.label, ...path.split("/").filter(Boolean)];
+  return `#/${segments.map(encodeURIComponent).join("/")}`;
+}
+
+function parseReadableLocationHash(): { tunnel?: "personal" | "global"; rootLabel: string; path: string } | undefined {
+  const value = window.location.hash.replace(/^#\/?/, "");
+  if (!value) return undefined;
+
+  const segments = value
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    });
+  if (segments.length === 0) return undefined;
+
+  const first = segments[0];
+  const tunnel = first === "personal" || first === "global" ? first : undefined;
+  const rootIndex = tunnel ? 1 : 0;
+  const rootLabel = segments[rootIndex];
+  if (!rootLabel) return undefined;
+  return { tunnel, rootLabel, path: normalizeBrowserPath(segments.slice(rootIndex + 1).join("/")) };
+}
+
+function navigationRoots(navigation: NavigationResponse): NavigationRoot[] {
+  return [
+    ...(navigation.personal?.roots ?? []),
+    ...(navigation.global?.roots ?? [])
+  ];
+}
+
+function normalizeBrowserPath(path: string): string {
+  return path.split("/").filter(Boolean).join("/");
 }
 
 function breadcrumbs(path: string): Array<{ label: string; path: string }> {

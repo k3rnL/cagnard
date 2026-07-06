@@ -134,13 +134,14 @@ export function classifyEntry(entry: StorageEntry): FileTypeInfo {
 
   const metadataCategory = normalizeCategory(entry.metadata.fileCategory);
   if (metadataCategory) {
+    const normalizedMime = normalizeMimeType(entry.metadata.mimeType);
     return {
-      mimeType: entry.metadata.mimeType ?? undefined,
+      mimeType: normalizedMime,
       category: metadataCategory,
       icon: entry.metadata.fileIcon ?? iconForCategory(metadataCategory),
       label: labelForCategory(metadataCategory),
       source: entry.metadata.mimeTypeSource === "provider" ? "provider" : entry.metadata.mimeTypeSource === "extension" ? "extension" : "unknown",
-      textLike: isTextCategory(metadataCategory) || isTextMime(entry.metadata.mimeType)
+      textLike: isTextCategory(metadataCategory) || isTextMime(normalizedMime)
     };
   }
 
@@ -148,7 +149,7 @@ export function classifyEntry(entry: StorageEntry): FileTypeInfo {
 }
 
 export function classifyFile(name: string, providerMimeType?: string | null): FileTypeInfo {
-  const normalizedMime = providerMimeType?.trim().toLowerCase() || undefined;
+  const normalizedMime = normalizeMimeType(providerMimeType);
   const extensionMatch = definitionForExtension(name);
   const preferExtension = shouldPreferExtension(normalizedMime, extensionMatch);
   const definition = preferExtension ? extensionMatch : (normalizedMime ? definitionForMime(normalizedMime) : undefined) ?? extensionMatch;
@@ -280,7 +281,7 @@ function labelForCategory(category: FileCategory): string {
 }
 
 function isTextMime(mimeType?: string | null): boolean {
-  const value = mimeType?.toLowerCase() ?? "";
+  const value = normalizeMimeType(mimeType) ?? "";
   return (
     value.startsWith("text/") ||
     value === "application/json" ||
@@ -294,6 +295,11 @@ function isTextMime(mimeType?: string | null): boolean {
     value === "application/sql" ||
     value === "application/x-sh"
   );
+}
+
+function normalizeMimeType(mimeType?: string | null): string | undefined {
+  const normalized = mimeType?.split(";")[0]?.trim().toLowerCase();
+  return normalized || undefined;
 }
 
 function text(

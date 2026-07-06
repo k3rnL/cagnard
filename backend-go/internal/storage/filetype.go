@@ -61,6 +61,37 @@ var extensionTypes = map[string]fileTypeDefinition{
 	".pptx":  binaryType("application/vnd.openxmlformats-officedocument.presentationml.presentation", "presentation", "file-text"),
 }
 
+var exactMIMETypes = map[string]fileTypeDefinition{
+	"text/markdown":                 extensionTypes[".md"],
+	"application/json":              extensionTypes[".json"],
+	"application/x-ndjson":          extensionTypes[".jsonl"],
+	"text/csv":                      extensionTypes[".csv"],
+	"text/tab-separated-values":     extensionTypes[".tsv"],
+	"application/xml":               extensionTypes[".xml"],
+	"text/xml":                      extensionTypes[".xml"],
+	"application/yaml":              extensionTypes[".yaml"],
+	"application/x-yaml":            extensionTypes[".yaml"],
+	"application/toml":              extensionTypes[".toml"],
+	"text/html":                     extensionTypes[".html"],
+	"text/css":                      extensionTypes[".css"],
+	"application/javascript":        extensionTypes[".js"],
+	"text/javascript":               extensionTypes[".js"],
+	"application/typescript":        extensionTypes[".ts"],
+	"application/sql":               extensionTypes[".sql"],
+	"application/x-sh":              extensionTypes[".sh"],
+	"image/svg+xml":                 extensionTypes[".svg"],
+	"application/pdf":               extensionTypes[".pdf"],
+	"application/zip":               extensionTypes[".zip"],
+	"application/x-tar":             extensionTypes[".tar"],
+	"application/gzip":              extensionTypes[".gz"],
+	"application/msword":            extensionTypes[".doc"],
+	"application/vnd.ms-excel":      extensionTypes[".xls"],
+	"application/vnd.ms-powerpoint": extensionTypes[".ppt"],
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   extensionTypes[".docx"],
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         extensionTypes[".xlsx"],
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": extensionTypes[".pptx"],
+}
+
 func fallbackMIMEType(fileName string, providerMIMEType *string) *string {
 	classification := classify(fileName, providerMIMEType)
 	if classification.mimeType == "" {
@@ -76,7 +107,7 @@ func isTextLike(fileName string, mimeType *string) bool {
 func classify(fileName string, providerMIMEType *string) fileTypeDefinition {
 	extDefinition, hasExt := definitionForExtension(fileName)
 	if providerMIMEType != nil {
-		normalized := strings.ToLower(strings.TrimSpace(*providerMIMEType))
+		normalized := normalizeMIMEType(*providerMIMEType)
 		if normalized != "" && normalized != "application/octet-stream" {
 			definition := definitionForMIME(normalized)
 			if hasExt && strings.HasPrefix(normalized, "text/") && extDefinition.category != "text" {
@@ -103,25 +134,43 @@ func definitionForExtension(fileName string) (fileTypeDefinition, bool) {
 		return fileTypeDefinition{}, false
 	}
 	if value := mime.TypeByExtension(ext); value != "" {
-		return definitionForMIME(strings.Split(value, ";")[0]), true
+		return definitionForMIME(value), true
 	}
 	return fileTypeDefinition{}, false
 }
 
 func definitionForMIME(mimeType string) fileTypeDefinition {
-	if strings.HasPrefix(mimeType, "text/") || strings.HasSuffix(mimeType, "+json") || strings.HasSuffix(mimeType, "+xml") {
-		return textType(mimeType, "text", "file-text")
+	normalized := normalizeMIMEType(mimeType)
+	if definition, ok := exactMIMETypes[normalized]; ok {
+		return definition
 	}
-	if strings.HasPrefix(mimeType, "image/") {
-		return binaryType(mimeType, "image", "file-image")
+	if strings.HasPrefix(normalized, "text/") {
+		return textType(normalized, "text", "file-text")
 	}
-	if strings.HasPrefix(mimeType, "audio/") {
-		return binaryType(mimeType, "audio", "file-audio")
+	if strings.HasSuffix(normalized, "+json") {
+		return textType(normalized, "json", "file-json")
 	}
-	if strings.HasPrefix(mimeType, "video/") {
-		return binaryType(mimeType, "video", "file-video")
+	if strings.HasSuffix(normalized, "+xml") {
+		return textType(normalized, "xml", "file-code")
 	}
-	return fileTypeDefinition{mimeType: mimeType, category: fallbackType.category, icon: fallbackType.icon, textLike: false}
+	if strings.HasPrefix(normalized, "image/") {
+		return binaryType(normalized, "image", "file-image")
+	}
+	if strings.HasPrefix(normalized, "audio/") {
+		return binaryType(normalized, "audio", "file-audio")
+	}
+	if strings.HasPrefix(normalized, "video/") {
+		return binaryType(normalized, "video", "file-video")
+	}
+	return fileTypeDefinition{mimeType: normalized, category: fallbackType.category, icon: fallbackType.icon, textLike: false}
+}
+
+func normalizeMIMEType(mimeType string) string {
+	normalized := strings.ToLower(strings.TrimSpace(mimeType))
+	if index := strings.Index(normalized, ";"); index >= 0 {
+		normalized = strings.TrimSpace(normalized[:index])
+	}
+	return normalized
 }
 
 func textType(mimeType string, category string, icon string) fileTypeDefinition {
