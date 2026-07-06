@@ -190,7 +190,7 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
             }
             val success = results.nonEmpty && results.forall(resultSucceeded)
             val completed = results.count(resultSucceeded)
-            val conflicted = results.exists(result => result.status == "conflict" || result.children.exists(_.status == "conflict"))
+            val conflicted = results.exists(hasConflict)
             val message =
               if results.isEmpty then "No entries selected for transfer"
               else if success then s"Transferred $completed item${if completed == 1 then "" else "s"}"
@@ -343,27 +343,32 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
             try transferOne(identity, source, destinationRoot, destinationProvider, request.destination.path, conflictPolicy, Some(TransferJobContext(jobId, index)))
             catch
               case NonFatal(error) => failedResult(source, None, safeExceptionMessage(error))
+          val conflicted = hasConflict(result)
           val phase =
             result.status match
               case "copied" | "moved" | "skipped" => "completed"
               case "canceled" => "canceled"
               case "partial" => "partial"
+              case _ if conflicted => "blocked"
               case _ => "failed"
-          updateJobTask(jobId, index, phase, result.status, result.message, Some(result))
+          updateJobTask(jobId, index, phase, if conflicted then "blocked" else result.status, result.message, Some(result))
           result
       }
       val success = results.nonEmpty && results.forall(resultSucceeded)
       val completed = results.count(resultSucceeded)
       val canceled = results.exists(_.status == "canceled") || isCanceled(jobId)
+      val conflicted = results.exists(hasConflict)
       val finalStatus =
         if canceled then "canceled"
         else if success then "completed"
+        else if conflicted then "blocked"
         else if completed > 0 then "partial"
         else "failed"
       val message =
         if results.isEmpty then "No entries selected for transfer"
         else if finalStatus == "completed" then s"Transferred $completed item${if completed == 1 then "" else "s"}"
         else if finalStatus == "canceled" then "Transfer job canceled"
+        else if finalStatus == "blocked" then "Transfer needs a conflict decision"
         else s"Transferred $completed of ${results.size} item${if results.size == 1 then "" else "s"}"
       updateJob(jobId)(_.copy(status = finalStatus, message = message, updatedAt = nowString, results = results))
     }.void
@@ -412,7 +417,8 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
     sources.zipWithIndex.map { case (source, index) =>
       results.find(result => result.sourceTunnel == source.tunnel && result.sourceRootId == source.rootId && result.sourcePath == source.path) match
         case Some(result) =>
-          transferTask(index, source, result.status, result.status, result.message, result.targetPath, Some(result))
+          val status = if hasConflict(result) && result.status != "conflict" then "blocked" else result.status
+          transferTask(index, source, status, status, result.message, result.targetPath, Some(result))
         case None =>
           transferTask(index, source, "planned", "queued", "Waiting to start", None, None)
     }
@@ -492,15 +498,54 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
             else if sameRoot && context.entry.kind == "directory" && targetPath != context.entry.path && isDescendantPath(targetPath, context.entry.path) then
               Some(failedResult(checkedSource, Some(targetPath), "Cannot transfer a directory into itself"))
             else
-              destinationExists(destinationProvider, destinationRoot, targetPath).fold(
-                message => Some(failedResult(checkedSource, Some(targetPath), message)),
-                exists =>
-                  Option.when(exists)(
-                    TransferItemResult(checkedSource.intent, checkedSource.tunnel, checkedSource.rootId, checkedSource.path, Some(targetPath), "conflict", s"Target already exists: $targetPath", None)
-                  )
+              preflightTarget(
+                checkedSource,
+                context.provider,
+                context.root,
+                context.entry,
+                destinationProvider,
+                destinationRoot,
+                targetPath
               )
           }
         )
+
+  private def preflightTarget(
+      source: TransferSourceRequest,
+      sourceProvider: StorageProvider,
+      sourceRoot: ResolvedStorageRoot,
+      sourceEntry: StorageEntry,
+      destinationProvider: StorageProvider,
+      destinationRoot: ResolvedStorageRoot,
+      targetPath: String
+  ): Option[TransferItemResult] =
+    destinationExists(destinationProvider, destinationRoot, targetPath).fold(
+      message => Some(failedResult(source, Some(targetPath), message)),
+      exists =>
+        if exists then Some(conflictResult(source, targetPath))
+        else if sourceEntry.kind == "directory" then
+          sourceProvider.list(sourceRoot, sourceEntry.path).fold(
+            message => Some(failedResult(source, Some(targetPath), message)),
+            entries =>
+              entries.iterator
+                .map { child =>
+                  preflightTarget(
+                    source.copy(path = child.path),
+                    sourceProvider,
+                    sourceRoot,
+                    child,
+                    destinationProvider,
+                    destinationRoot,
+                    joinPath(targetPath, child.name)
+                  )
+                }
+                .collectFirst { case Some(result) => result }
+                .map { childConflict =>
+                  failedResult(source, Some(targetPath), "Directory contains conflicting destination item(s)").copy(children = List(childConflict))
+                }
+          )
+        else None
+    )
 
   private def transferOne(
       identity: RequestIdentity,
@@ -776,7 +821,7 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
                   _ => Right(TargetResolution(targetPath, overwrite = false))
                 )
               else Right(TargetResolution(targetPath, overwrite = true))
-            case _ => Left(TransferItemResult(source.intent, source.tunnel, source.rootId, source.path, Some(targetPath), "conflict", s"Target already exists: $targetPath", None))
+            case _ => Left(conflictResult(source, targetPath))
     )
 
   private def sourceContext(identity: RequestIdentity, source: TransferSourceRequest): Either[ApiError, TransferContext] =
@@ -816,6 +861,12 @@ class ApiService(config: CagnardConfig, registry: StorageRegistry):
 
   private def resultSucceeded(result: TransferItemResult): Boolean =
     Set("copied", "moved", "skipped").contains(result.status) && result.children.forall(resultSucceeded)
+
+  private def hasConflict(result: TransferItemResult): Boolean =
+    result.status == "conflict" || result.children.exists(hasConflict)
+
+  private def conflictResult(source: TransferSourceRequest, targetPath: String): TransferItemResult =
+    TransferItemResult(source.intent, source.tunnel, source.rootId, source.path, Some(targetPath), "conflict", s"Target already exists: $targetPath", None)
 
   private def failedResult(source: TransferSourceRequest, targetPath: Option[String], message: String): TransferItemResult =
     TransferItemResult(source.intent, source.tunnel, source.rootId, source.path, targetPath, "failed", message, None)

@@ -11,6 +11,7 @@ The backend transfer service supports:
 - bounded buffered fallback using source download and destination upload only when streaming is unavailable and the source is within configured limits
 - recursive directory copy through source listing, destination directory creation, and child transfer
 - move as copy-then-delete, with source deletion only after destination success
+- recursive fail-policy preflight so conflicts in child paths block before a transfer job starts writing
 - per-item and per-child result reporting
 - conflict policies: fail/ask, skip, keep both, and replace
 - configurable bounded transfer limits via `maxBufferedObjectBytes` from root or provider settings
@@ -42,6 +43,8 @@ The compatibility endpoint `POST /api/storage/transfer` still returns the older 
 Transfers do not overwrite by default. The first paste attempt uses fail-on-conflict behavior. If a destination exists, the frontend asks the user whether to Skip, Keep both, or Replace, then retries the batch with the selected policy.
 
 Keep both creates predictable names such as `note copy.txt`, `note copy 2.txt`, or `folder copy`.
+
+For directory transfers, fail-on-conflict preflight checks the source tree recursively. This catches conflicts under implicit object-store prefixes before a background transfer job starts writing, so the same conflict modal can be used for top-level and nested conflicts.
 
 ## Operational Notes
 

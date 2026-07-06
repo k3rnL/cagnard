@@ -687,6 +687,49 @@ class BackendCoreSuite extends CatsEffectSuite:
     }
   }
 
+  test("preflights nested transfer conflicts before starting async jobs") {
+    tempDirectory.use { root =>
+      val sourceHome = root.resolve("source").resolve("alice")
+      val destination = root.resolve("destination")
+      IO.blocking {
+        Files.createDirectories(sourceHome.resolve("docs").resolve("nested"))
+        Files.createDirectories(destination.resolve("incoming").resolve("docs").resolve("nested"))
+        Files.writeString(sourceHome.resolve("docs").resolve("root.txt"), "root")
+        Files.writeString(sourceHome.resolve("docs").resolve("nested").resolve("child.txt"), "new child")
+        Files.writeString(destination.resolve("incoming").resolve("docs").resolve("nested").resolve("child.txt"), "existing child")
+      } *> IO.defer {
+        val config = twoFilesystemProviderConfig(root)
+        val registry = StorageRegistry(
+          config.providers.map { provider =>
+            val storageProvider =
+              if provider.id == "local-destination" then
+                hiddenDirectoryStatFilesystemProvider(provider, Set("incoming/docs", "incoming/docs/nested"))
+              else FilesystemProvider(provider)
+            provider.id -> storageProvider
+          }.toMap
+        )
+        val service = ApiService(config, registry)
+        val request = TransferRequest(
+          sources = List(TransferSourceRequest("copy", "personal", "home", "docs")),
+          destination = TransferDestinationRequest("global", "shared", "incoming"),
+          conflictPolicy = "fail"
+        )
+
+        service.startTransferJob(identity, request).map { started =>
+          val job = started.toOption.get
+          val nestedConflict = job.results.head.children.head.children.head
+
+          assertEquals(job.status, "blocked")
+          assertEquals(job.message, "Transfer needs a conflict decision")
+          assertEquals(nestedConflict.status, "conflict")
+          assertEquals(nestedConflict.targetPath, Some("incoming/docs/nested/child.txt"))
+          assertEquals(Files.readString(destination.resolve("incoming").resolve("docs").resolve("nested").resolve("child.txt")), "existing child")
+          assert(!Files.exists(destination.resolve("incoming").resolve("docs").resolve("root.txt")))
+        }
+      }
+    }
+  }
+
   test("cancels running transfer jobs without deleting sources") {
     tempDirectory.use { root =>
       val sourceHome = root.resolve("source").resolve("alice")
@@ -860,6 +903,12 @@ class BackendCoreSuite extends CatsEffectSuite:
             onBytes(bytes)
           }
         )
+
+  private def hiddenDirectoryStatFilesystemProvider(config: ProviderConfig, hiddenPaths: Set[String]): FilesystemProvider =
+    new FilesystemProvider(config):
+      override def stat(root: ResolvedStorageRoot, path: String) =
+        if hiddenPaths.contains(path) then Left(s"Path does not exist: $path")
+        else super.stat(root, path)
 
   private def appFor(config: CagnardConfig) =
     IO.fromEither(StorageRegistry.fromConfig(config)).map { registry =>

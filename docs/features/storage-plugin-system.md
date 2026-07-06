@@ -36,11 +36,12 @@ The S3-compatible provider supports:
 - bounded text preview
 - direct overwrite/write-back where root policy allows it
 - folder markers for directory-like prefixes
+- implicit directory-like prefixes derived from object listing, even when no folder marker object exists
 - copy objects and delete objects or directory-like prefixes
 - rename and move as degraded copy-then-delete object operations
 - provider-neutral recursive paste where prefix listing, folder markers, upload, and delete semantics allow it
 
-Delete is exposed as a user-level storage operation: deleting a directory or prefix removes the whole entry tree when the provider can enumerate it. S3 directory-like prefixes are not real directories, so provider-native copy, rename, and move remain object-oriented, while delete and cross-root pasteboard transfer can recursively traverse prefixes.
+Delete is exposed as a user-level storage operation: deleting a directory or prefix removes the whole entry tree when the provider can enumerate it. S3 directory-like prefixes are not real directories, so provider-native copy, rename, and move remain object-oriented, while delete and cross-root pasteboard transfer can recursively traverse prefixes. Cagnard treats listed S3 prefixes as directory entries even when the bucket does not contain explicit folder marker objects.
 
 ## Configuration
 
