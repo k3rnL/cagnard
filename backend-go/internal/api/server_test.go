@@ -64,7 +64,7 @@ func TestHealthAndDiscoveryRoutes(t *testing.T) {
 	}
 
 	emptyJob := postJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs", cookie, `{"sources":[],"destination":{"tunnel":"personal","rootId":"home","path":""},"conflictPolicy":"fail"}`)
-	if emptyJob.Status != "failed" || emptyJob.Message != "No entries selected for transfer" {
+	if emptyJob.Status != "error" || emptyJob.Message != "No entries selected for transfer" {
 		t.Fatalf("unexpected empty transfer job response: %#v", emptyJob)
 	}
 
@@ -200,9 +200,60 @@ func TestTransferRoutes(t *testing.T) {
 	}
 	assertFileContent(t, filepath.Join(global, "jobs", "job.txt"), "job-content")
 
+	writeTestFile(t, filepath.Join(home, "docs", "same-root.txt"), []byte("same-root"))
+	sameRootJob := postJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs", "", `{"sources":[{"intent":"copy","tunnel":"personal","rootId":"home","path":"docs/same-root.txt"}],"destination":{"tunnel":"personal","rootId":"home","path":"copies"},"conflictPolicy":"fail"}`)
+	finalSameRootJob := waitTransferJob(t, server, sameRootJob.ID)
+	if finalSameRootJob.Status != "completed" || len(finalSameRootJob.Tasks) != 1 {
+		t.Fatalf("unexpected same-root transfer job: %#v", finalSameRootJob)
+	}
+	if finalSameRootJob.Tasks[0].Progress.ItemsCompleted != 1 || finalSameRootJob.Tasks[0].Progress.BytesTransferred != int64(len("same-root")) || finalSameRootJob.Tasks[0].Progress.TotalBytes == nil || *finalSameRootJob.Tasks[0].Progress.TotalBytes != int64(len("same-root")) {
+		t.Fatalf("unexpected same-root transfer progress: %#v", finalSameRootJob.Tasks[0].Progress)
+	}
+	assertFileContent(t, filepath.Join(home, "copies", "same-root.txt"), "same-root")
+
+	writeTestFile(t, filepath.Join(home, "job-tree", "child", "note.txt"), []byte("job-tree"))
+	folderJob := postJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs", "", `{"sources":[{"intent":"copy","tunnel":"personal","rootId":"home","path":"job-tree"}],"destination":{"tunnel":"global","rootId":"shared","path":"jobs"},"conflictPolicy":"fail"}`)
+	finalFolderJob := waitTransferJob(t, server, folderJob.ID)
+	if finalFolderJob.Status != "completed" || len(finalFolderJob.Tasks) != 1 || len(finalFolderJob.Tasks[0].Children) != 1 {
+		t.Fatalf("unexpected folder transfer task: %#v", finalFolderJob)
+	}
+	childDir := finalFolderJob.Tasks[0].Children[0]
+	if len(childDir.Children) != 1 || childDir.Children[0].SourcePath != "job-tree/child/note.txt" {
+		t.Fatalf("expected nested child file task, got: %#v", childDir)
+	}
+	if finalFolderJob.Tasks[0].Progress.BytesTransferred != int64(len("job-tree")) || finalFolderJob.Tasks[0].Progress.TotalBytes == nil || *finalFolderJob.Tasks[0].Progress.TotalBytes != int64(len("job-tree")) {
+		t.Fatalf("unexpected folder aggregate progress: %#v", finalFolderJob.Tasks[0].Progress)
+	}
+	assertFileContent(t, filepath.Join(global, "jobs", "job-tree", "child", "note.txt"), "job-tree")
+
+	writeTestFile(t, filepath.Join(home, "docs", "job-conflict.txt"), []byte("new"))
+	writeTestFile(t, filepath.Join(global, "jobs", "job-conflict.txt"), []byte("old"))
+	blockedJob := postJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs", "", `{"sources":[{"intent":"copy","tunnel":"personal","rootId":"home","path":"docs/job-conflict.txt"}],"destination":{"tunnel":"global","rootId":"shared","path":"jobs"},"conflictPolicy":"fail"}`)
+	if blockedJob.Status != "blocked" || blockedJob.ID == "" {
+		t.Fatalf("unexpected blocked transfer job: %#v", blockedJob)
+	}
+	resolvedJob := postJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs/"+blockedJob.ID+"/resolve", "", `{"conflictPolicy":"keep-both"}`)
+	if resolvedJob.ID != blockedJob.ID || resolvedJob.Status != "pending" {
+		t.Fatalf("expected conflict resolution to reuse task id, got: %#v", resolvedJob)
+	}
+	finalResolvedJob := waitTransferJob(t, server, blockedJob.ID)
+	if finalResolvedJob.Status != "completed" || len(finalResolvedJob.Results) != 1 || finalResolvedJob.Results[0].TargetPath == nil || *finalResolvedJob.Results[0].TargetPath != "jobs/job-conflict copy.txt" {
+		t.Fatalf("unexpected resolved transfer job: %#v", finalResolvedJob)
+	}
+	assertFileContent(t, filepath.Join(global, "jobs", "job-conflict copy.txt"), "new")
+
 	jobs := getJSON[TransferJobListResponse](t, server, "/api/storage/transfer/jobs")
-	if len(jobs.Jobs) == 0 || jobs.Jobs[0].ID != job.ID {
+	if !transferJobListContains(jobs, job.ID) || !transferJobListContains(jobs, sameRootJob.ID) || !transferJobListContains(jobs, blockedJob.ID) {
 		t.Fatalf("unexpected transfer job list: %#v", jobs)
+	}
+
+	clearResponse := postJSON[OperationResponse](t, server, "/api/storage/transfer/jobs/clear", "", `{}`)
+	if !clearResponse.Success {
+		t.Fatalf("unexpected transfer clear response: %#v", clearResponse)
+	}
+	clearedJobs := getJSON[TransferJobListResponse](t, server, "/api/storage/transfer/jobs")
+	if len(clearedJobs.Jobs) != 0 {
+		t.Fatalf("expected cleared transfer jobs, got: %#v", clearedJobs)
 	}
 
 	missingCancel := postJSONError(t, server, "/api/storage/transfer/jobs/missing/cancel", "", `{}`, http.StatusNotFound)
@@ -377,7 +428,7 @@ func waitTransferJob(t *testing.T, server *Server, id string) TransferJobRespons
 	for {
 		job := getJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs/"+id)
 		switch job.Status {
-		case "completed", "failed", "canceled", "partial", "blocked":
+		case "completed", "error", "failed", "canceled", "partial", "blocked":
 			return job
 		}
 		if time.Now().After(deadline) {
@@ -385,6 +436,15 @@ func waitTransferJob(t *testing.T, server *Server, id string) TransferJobRespons
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func transferJobListContains(jobs TransferJobListResponse, id string) bool {
+	for _, job := range jobs.Jobs {
+		if job.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func postJSONError(t *testing.T, server *Server, path string, cookie string, body string, status int) APIError {

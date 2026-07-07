@@ -85,13 +85,13 @@ providers = [
 - The `recursive-list` and `transfer` capabilities indicate that a provider can participate in pasteboard transfer planning.
 - Content access capabilities distinguish `full-read`, `bounded-read`, `range-read`, `stream-read`, and `stream-write`.
 - The filesystem provider exposes supported `stream-read` and `stream-write` capabilities.
-- S3 exposes `stream-read`, `stream-write`, and `multipart-upload` as planned; provider-neutral S3 transfer uses bounded fallback unless a provider-native same-root object copy path applies.
+- S3 exposes supported `stream-read` and `stream-write` capabilities; `multipart-upload` remains planned. Provider-neutral S3 transfer streams object bytes through the backend when both endpoints support streaming.
 - Write-back is represented through `overwrite` and is disabled for read-only roots.
-- S3 upload/download and provider-neutral buffered fallback transfer currently buffer object bytes and default to a 64 MiB limit.
+- S3 upload/download and provider-neutral buffered fallback transfer buffer object bytes and default to a 64 MiB limit; streaming transfers are not bounded by that buffer limit.
 - MinIO-compatible integration tests are opt-in through `CAGNARD_S3_INTEGRATION=true` and S3-specific environment variables.
 
 ## Known Limitations
 
 - Google, Azure, WebDAV, and SFTP providers are planned but not implemented.
 - Provider-native directory copy is not implemented for the Unix provider; recursive pasteboard transfer is mediated by the backend service.
-- S3 multipart upload, S3 generic streaming transfer, range reads, provider-native recursive prefix copy/rename/move, IAM/policy management, and bucket administration are future work.
+- S3 multipart upload, range reads, provider-native recursive prefix copy/rename/move, IAM/policy management, and bucket administration are future work.

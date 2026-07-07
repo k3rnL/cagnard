@@ -3,6 +3,7 @@ package config
 type CagnardConfig struct {
 	Server          ServerConfig
 	Auth            AuthConfig
+	Tasks           TaskConfig
 	Users           []ConfiguredUser
 	Providers       []ProviderConfig
 	Accounts        []StorageAccountConfig
@@ -14,6 +15,10 @@ type CagnardConfig struct {
 type ServerConfig struct {
 	Host string
 	Port int
+}
+
+type TaskConfig struct {
+	MaxConcurrentTransfers int
 }
 
 type AuthConfig struct {

@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"testing"
@@ -117,6 +119,37 @@ func TestS3MetadataLimitAndMutations(t *testing.T) {
 	}
 	if fake.has("team/docs/renamed.txt") {
 		t.Fatalf("delete keys = %#v", fake.keys())
+	}
+}
+
+func TestS3StreamsReadAndWriteWithProgress(t *testing.T) {
+	fake := newFakeS3ObjectClient(map[string]fakeS3Object{
+		"team/docs/source.bin": fakeObject("team/docs/source.bin", []byte(strings.Repeat("x", 128)), ptr("application/octet-stream")),
+	})
+	provider := testS3Provider(fake, 64)
+	root := s3Root("team/docs")
+
+	var read bytes.Buffer
+	readProgress := int64(0)
+	info, err := provider.StreamRead(root, "source.bin", &read, func(delta int64) {
+		readProgress += delta
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Len() != 128 || readProgress != 128 || info.Size == nil || *info.Size != 128 {
+		t.Fatalf("unexpected stream read: len=%d progress=%d info=%#v", read.Len(), readProgress, info)
+	}
+
+	writeProgress := int64(0)
+	entry, err := provider.StreamWrite(root, "target.bin", strings.NewReader(strings.Repeat("y", 96)), FileContentInfo{FileName: "target.bin", MIMEType: ptr("application/octet-stream"), Size: int64Ptr(96)}, false, func(delta int64) {
+		writeProgress += delta
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fake.has("team/docs/target.bin") || writeProgress != 96 || entry.Metadata.Size == nil || *entry.Metadata.Size != 96 {
+		t.Fatalf("unexpected stream write: progress=%d entry=%#v keys=%#v", writeProgress, entry, fake.keys())
 	}
 }
 
@@ -256,6 +289,27 @@ func (f *fakeS3ObjectClient) Put(bucket string, key string, body []byte, content
 	return metadata, nil
 }
 
+func (f *fakeS3ObjectClient) StreamGet(bucket string, key string, output io.Writer, onBytes func(int64)) (S3ObjectMetadata, error) {
+	obj, ok := f.objects[key]
+	if !ok {
+		return S3ObjectMetadata{}, errorsForFakeS3("Path does not exist")
+	}
+	if _, err := copyWithProgress(output, bytes.NewReader(obj.bytes), onBytes); err != nil {
+		return S3ObjectMetadata{}, err
+	}
+	return obj.metadata, nil
+}
+
+func (f *fakeS3ObjectClient) StreamPut(bucket string, key string, input io.Reader, info FileContentInfo, contentType *string, onBytes func(int64)) (S3ObjectMetadata, error) {
+	var out bytes.Buffer
+	if _, err := copyWithProgress(&out, input, onBytes); err != nil {
+		return S3ObjectMetadata{}, err
+	}
+	metadata := fakeMetadata(key, int64(out.Len()), contentType, nil, nil, nil)
+	f.objects[key] = fakeS3Object{bytes: append([]byte{}, out.Bytes()...), metadata: metadata}
+	return metadata, nil
+}
+
 func (f *fakeS3ObjectClient) Copy(bucket string, sourceKey string, targetKey string) (S3ObjectMetadata, error) {
 	source, ok := f.objects[sourceKey]
 	if !ok {
@@ -312,6 +366,10 @@ func fakeMetadata(key string, size int64, contentType *string, versionID *string
 }
 
 func ptr(value string) *string {
+	return &value
+}
+
+func int64Ptr(value int64) *int64 {
 	return &value
 }
 

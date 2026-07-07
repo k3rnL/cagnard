@@ -132,6 +132,10 @@ export interface TransferRequest {
   conflictPolicy: TransferConflictPolicy;
 }
 
+export interface ResolveTransferJobRequest {
+  conflictPolicy: TransferConflictPolicy;
+}
+
 export interface TransferItemResult {
   intent: TransferIntent;
   sourceTunnel: string;
@@ -174,7 +178,7 @@ export interface TransferJobTask {
 
 export interface TransferJobResponse {
   id: string;
-  status: "queued" | "running" | "completed" | "failed" | "canceled" | "partial" | "blocked" | "canceling" | string;
+  status: "pending" | "blocked" | "canceled" | "running" | "completed" | "error" | string;
   message: string;
   createdAt: string;
   updatedAt: string;

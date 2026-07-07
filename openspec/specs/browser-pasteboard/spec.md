@@ -56,9 +56,17 @@ Cagnard SHALL expose pasteboard contents through a command-bar dropdown or popov
 - **WHEN** the pasteboard dropdown is open
 - **THEN** the user SHALL be able to clear all entries, remove one entry, and select or deselect entries for paste
 
+#### Scenario: Long pasteboard actions remain available
+- **WHEN** the pasteboard dropdown contains enough entries to scroll
+- **THEN** Cagnard SHALL keep the clear, paste, and move actions accessible at the bottom of the dropdown
+
 #### Scenario: Close dropdown
 - **WHEN** the user clicks outside the pasteboard dropdown
 - **THEN** Cagnard SHALL close the dropdown without clearing its entries
+
+#### Scenario: Remove selected entries when transfer starts
+- **WHEN** the user starts Paste or Move here from selected pasteboard entries
+- **THEN** Cagnard SHALL remove those selected entries from the pasteboard immediately after the task is accepted
 
 ### Requirement: Paste into active destination
 Cagnard SHALL paste selected pasteboard file and directory entries into the currently active storage root and current path.
@@ -91,12 +99,16 @@ Cagnard SHALL validate pasteboard entries at paste time before reading from sour
 - **THEN** Cagnard SHALL block that directory item before moving or deleting any source content
 
 ### Requirement: Pasteboard result reporting
-Cagnard SHALL report batch paste results with enough detail for success, partial success, and failure.
+Cagnard SHALL report batch paste results with enough detail for success, partial success, and failure through the task queue once a pasteboard transfer task has been accepted.
+
+#### Scenario: Running batch result
+- **WHEN** a pasteboard copy or move task is pending, blocked, or running
+- **THEN** Cagnard SHALL show progress and decisions through the task queue rather than requiring the original pasteboard entries to remain staged
 
 #### Scenario: Partial batch result
 - **WHEN** some pasteboard items succeed and others fail
-- **THEN** Cagnard SHALL show per-item results and keep enough source context to let the user retry failed items
+- **THEN** Cagnard SHALL show per-item results through expandable task details and keep enough source context in the task to let the user understand failed items
 
 #### Scenario: Completed move item
 - **WHEN** an item pasted with Move here is copied successfully and source deletion succeeds
-- **THEN** Cagnard MAY remove that item from the pasteboard after reporting success
+- **THEN** Cagnard SHALL report that item as completed in the task details

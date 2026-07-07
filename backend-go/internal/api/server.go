@@ -29,10 +29,10 @@ type Server struct {
 
 func NewServer(cfg *config.CagnardConfig) *Server {
 	s := &Server{
-		cfg:      cfg,
-		mux:      http.NewServeMux(),
-		resolver: auth.NewUserResolver(cfg),
-		access:   auth.NewAccessService(cfg),
+		cfg:                  cfg,
+		mux:                  http.NewServeMux(),
+		resolver:             auth.NewUserResolver(cfg),
+		access:               auth.NewAccessService(cfg),
 		registry:             storage.NewRegistry(cfg),
 		transferJobs:         map[string]storedTransferJob{},
 		canceledTransferJobs: map[string]bool{},
@@ -64,9 +64,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/storage/move", s.moveEntry)
 	s.mux.HandleFunc("POST /api/storage/transfer", s.transferEntries)
 	s.mux.HandleFunc("POST /api/storage/transfer/jobs", s.startTransferJob)
+	s.mux.HandleFunc("POST /api/storage/transfer/jobs/clear", s.clearTransferJobs)
 	s.mux.HandleFunc("GET /api/storage/transfer/jobs", s.transferJobList)
 	s.mux.HandleFunc("GET /api/storage/transfer/jobs/{jobId}", s.transferJob)
 	s.mux.HandleFunc("POST /api/storage/transfer/jobs/{jobId}/cancel", s.cancelTransferJob)
+	s.mux.HandleFunc("POST /api/storage/transfer/jobs/{jobId}/resolve", s.resolveTransferJob)
 	s.mux.HandleFunc("GET /api/plugins/ui", s.uiPlugins)
 }
 
@@ -375,8 +377,30 @@ func (s *Server) transferJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+func (s *Server) resolveTransferJob(w http.ResponseWriter, r *http.Request) {
+	var request ResolveTransferJobRequest
+	if !decodeJSONBody(w, r, &request) {
+		return
+	}
+	response, apiErr := s.resolveTransferJobRequest(requestIdentity(r), r.PathValue("jobId"), request)
+	if apiErr != nil {
+		writeAPIError(w, apiErr.Status, apiErr.Error)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
 func (s *Server) cancelTransferJob(w http.ResponseWriter, r *http.Request) {
 	response, apiErr := s.cancelTransferJobRequest(requestIdentity(r), r.PathValue("jobId"))
+	if apiErr != nil {
+		writeAPIError(w, apiErr.Status, apiErr.Error)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) clearTransferJobs(w http.ResponseWriter, r *http.Request) {
+	response, apiErr := s.clearTransferJobsRequest(requestIdentity(r))
 	if apiErr != nil {
 		writeAPIError(w, apiErr.Status, apiErr.Error)
 		return

@@ -11,6 +11,7 @@ Feature documentation is organized by spec area:
 - [Browser feedback and notifications](features/browser-feedback-and-notifications.md)
 - [Browser action modals](features/browser-action-modals.md)
 - [Browser pasteboard](features/browser-pasteboard.md)
+- [Task queue](features/task-queue.md)
 - [File compatibility](features/file-compatibility.md)
 - [Storage plugin system](features/storage-plugin-system.md)
 - [Secure account management](features/secure-account-management.md)

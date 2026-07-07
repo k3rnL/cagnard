@@ -55,6 +55,8 @@ type S3ObjectClient interface {
 	Exists(bucket string, key string) (bool, error)
 	Get(bucket string, key string) (S3ObjectContent, error)
 	Put(bucket string, key string, body []byte, contentType *string) (S3ObjectMetadata, error)
+	StreamGet(bucket string, key string, output io.Writer, onBytes func(int64)) (S3ObjectMetadata, error)
+	StreamPut(bucket string, key string, input io.Reader, info FileContentInfo, contentType *string, onBytes func(int64)) (S3ObjectMetadata, error)
 	Copy(bucket string, sourceKey string, targetKey string) (S3ObjectMetadata, error)
 	Delete(bucket string, key string) error
 }
@@ -386,11 +388,47 @@ func (p *S3StorageProvider) Move(root ResolvedStorageRoot, sourcePath string, ta
 }
 
 func (p *S3StorageProvider) StreamRead(root ResolvedStorageRoot, path string, output io.Writer, onBytes func(int64)) (FileContentInfo, error) {
-	return FileContentInfo{}, errors.New("Stream read is not supported")
+	target, client, relative, err := p.objectRequest(root, path, "Cannot stream S3 storage root")
+	if err != nil {
+		return FileContentInfo{}, err
+	}
+	metadata, err := client.StreamGet(target.Bucket, keyFor(target, relative, false), output, onBytes)
+	if err != nil {
+		return FileContentInfo{}, err
+	}
+	return FileContentInfo{FileName: fileName(relative), MIMEType: metadata.ContentType, Size: metadata.Size}, nil
 }
 
 func (p *S3StorageProvider) StreamWrite(root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error) {
-	return StorageEntry{}, errors.New("Stream write is not supported")
+	if err := ensureWritable(root); err != nil {
+		return StorageEntry{}, err
+	}
+	target, err := objectTarget(root)
+	if err != nil {
+		return StorageEntry{}, err
+	}
+	client, err := p.client(root)
+	if err != nil {
+		return StorageEntry{}, err
+	}
+	relative, err := normalizeObjectPath(path)
+	if err != nil {
+		return StorageEntry{}, err
+	}
+	if relative == "" {
+		return StorageEntry{}, errors.New("Upload path cannot be empty")
+	}
+	key := keyFor(target, relative, false)
+	if exists, err := client.Exists(target.Bucket, key); err != nil {
+		return StorageEntry{}, err
+	} else if exists && !overwrite {
+		return StorageEntry{}, errors.New("Target already exists")
+	}
+	metadata, err := client.StreamPut(target.Bucket, key, input, info, contentType(relative), onBytes)
+	if err != nil {
+		return StorageEntry{}, err
+	}
+	return p.fileEntry(root, target, metadata), nil
 }
 
 func (p *S3StorageProvider) objectRequest(root ResolvedStorageRoot, path string, emptyMessage string) (ObjectStoreRootTarget, S3ObjectClient, string, error) {
@@ -768,6 +806,19 @@ func filteredMap(values map[string]string) map[string]string {
 	return out
 }
 
+type progressReader struct {
+	reader  io.Reader
+	onBytes func(int64)
+}
+
+func (r progressReader) Read(p []byte) (int, error) {
+	count, err := r.reader.Read(p)
+	if count > 0 && r.onBytes != nil {
+		r.onBytes(int64(count))
+	}
+	return count, err
+}
+
 func s3ProviderSettingsFromConfig(provider config.ProviderConfig) (S3ProviderSettings, error) {
 	region := strings.TrimSpace(provider.Settings["region"])
 	if region == "" {
@@ -953,6 +1004,31 @@ func (c *AwsS3ObjectClient) Get(bucket string, key string) (S3ObjectContent, err
 
 func (c *AwsS3ObjectClient) Put(bucket string, key string, body []byte, contentType *string) (S3ObjectMetadata, error) {
 	_, err := c.client.PutObject(context.Background(), &s3.PutObjectInput{Bucket: &bucket, Key: &key, Body: bytes.NewReader(body), ContentType: contentType})
+	if err != nil {
+		return S3ObjectMetadata{}, safeS3Error(err)
+	}
+	return c.Head(bucket, key)
+}
+
+func (c *AwsS3ObjectClient) StreamGet(bucket string, key string, output io.Writer, onBytes func(int64)) (S3ObjectMetadata, error) {
+	out, err := c.client.GetObject(context.Background(), &s3.GetObjectInput{Bucket: &bucket, Key: &key})
+	if err != nil {
+		return S3ObjectMetadata{}, safeS3Error(err)
+	}
+	defer out.Body.Close()
+	if _, err := copyWithProgress(output, out.Body, onBytes); err != nil {
+		return S3ObjectMetadata{}, err
+	}
+	return metadataFromGet(key, out), nil
+}
+
+func (c *AwsS3ObjectClient) StreamPut(bucket string, key string, input io.Reader, info FileContentInfo, contentType *string, onBytes func(int64)) (S3ObjectMetadata, error) {
+	body := progressReader{reader: input, onBytes: onBytes}
+	put := &s3.PutObjectInput{Bucket: &bucket, Key: &key, Body: body, ContentType: contentType}
+	if info.Size != nil {
+		put.ContentLength = info.Size
+	}
+	_, err := c.client.PutObject(context.Background(), put)
 	if err != nil {
 		return S3ObjectMetadata{}, safeS3Error(err)
 	}

@@ -40,11 +40,15 @@ func Load(path string) (*CagnardConfig, error) {
 func decode(root hocon.Object) (*CagnardConfig, error) {
 	server := objectAt(root, "server")
 	auth := objectAt(root, "auth")
+	tasks := objectAt(root, "tasks")
 
 	return &CagnardConfig{
 		Server: ServerConfig{
 			Host: stringOrDefault(server, "host", "127.0.0.1"),
 			Port: intOrDefault(server, "port", 8080),
+		},
+		Tasks: TaskConfig{
+			MaxConcurrentTransfers: intOrDefault(tasks, "maxConcurrentTransfers", 4),
 		},
 		Auth: AuthConfig{
 			Mode:                   optionalString(auth, "mode"),

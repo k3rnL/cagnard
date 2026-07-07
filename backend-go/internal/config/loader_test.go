@@ -14,6 +14,9 @@ func TestLoadExampleConfig(t *testing.T) {
 	if cfg.AuthMode() != "static" {
 		t.Fatalf("auth mode = %q", cfg.AuthMode())
 	}
+	if cfg.Tasks.MaxConcurrentTransfers != 4 {
+		t.Fatalf("max concurrent transfers = %d", cfg.Tasks.MaxConcurrentTransfers)
+	}
 	if len(cfg.Users) != 1 || cfg.Users[0].ID != "alice" {
 		t.Fatalf("users = %#v", cfg.Users)
 	}

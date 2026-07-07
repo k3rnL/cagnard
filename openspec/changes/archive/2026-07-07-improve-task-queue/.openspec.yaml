@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-07-06
+goal: Improve Cagnard's task queue experience for transfers and other long-running
+  operations, with clearer status, better user control, and robust failure handling.

@@ -165,7 +165,9 @@ export interface CagnardDataState {
   clearPasteboard: () => void;
   togglePasteboardItem: (id: string) => void;
   pasteboardTransfer: (intent?: PasteboardIntent) => Promise<void>;
+  resolveTransferJob: (jobId: string) => Promise<void>;
   cancelTransferJob: (jobId: string) => Promise<void>;
+  clearTransferJobs: () => Promise<void>;
   cancelModal: () => void;
   submitModal: (value: BrowserModalResult) => void;
   showMessage: (title: string, message: string, danger?: boolean) => Promise<void>;
@@ -205,6 +207,7 @@ export function useCagnardData(): CagnardDataState {
   const pasteboardBroadcastReady = useRef(false);
   const suppressPasteboardBroadcast = useRef(false);
   const transferJobsRef = useRef<TransferJobResponse[]>([]);
+  const transferPollingStartedAt = useRef<number>();
   const urlRestoredRef = useRef(false);
 
   const pasteboardSelectedCount = useMemo(
@@ -306,18 +309,6 @@ export function useCagnardData(): CagnardDataState {
     [resetAuthenticatedState]
   );
 
-  const removeCompletedMovePasteboardItems = useCallback((jobs: TransferJobResponse[]) => {
-    const successfulMoveKeys = new Set(
-      jobs
-        .filter(isTerminalTransferJob)
-        .flatMap((job) => flattenTransferResults(job.results))
-        .filter((result) => result.intent === "move" && result.status === "moved")
-        .map((result) => `${result.sourceTunnel}:${result.sourceRootId}:${result.sourcePath}`)
-    );
-    if (successfulMoveKeys.size === 0) return;
-    setPasteboardItems((current) => current.filter((item) => !successfulMoveKeys.has(pasteboardSourceKey(item))));
-  }, []);
-
   const refreshTransferJobs = useCallback(async () => {
     try {
       const response = await cagnardApi.transferJobs();
@@ -325,7 +316,6 @@ export function useCagnardData(): CagnardDataState {
       const newlyTerminal = response.jobs.some((job) => isTerminalTransferJob(job) && !isTerminalTransferJob(previousJobs.get(job.id)));
       setTransferJobs(response.jobs);
       if (newlyTerminal) {
-        removeCompletedMovePasteboardItems(response.jobs);
         setRefreshTick((value) => value + 1);
       }
     } catch (caught) {
@@ -334,7 +324,7 @@ export function useCagnardData(): CagnardDataState {
         setError(message);
       }
     }
-  }, [handleUnauthorized, removeCompletedMovePasteboardItems]);
+  }, [handleUnauthorized]);
 
   const loadApplication = useCallback(async () => {
     setLoading(true);
@@ -382,14 +372,26 @@ export function useCagnardData(): CagnardDataState {
   }, [loadApplication]);
 
   useEffect(() => {
-    if (!session?.user.id || !hasActiveTransferJobs) return;
+    if (!session?.user.id || !hasActiveTransferJobs) {
+      transferPollingStartedAt.current = undefined;
+      return;
+    }
     let active = true;
-    const interval = window.setInterval(() => {
-      if (active) void refreshTransferJobs();
-    }, 2000);
+    let timeout: number | undefined;
+    const startedAt = transferPollingStartedAt.current ?? Date.now();
+    transferPollingStartedAt.current = startedAt;
+
+    const poll = async () => {
+      if (!active) return;
+      await refreshTransferJobs();
+      if (!active) return;
+      timeout = window.setTimeout(poll, transferPollDelay(Date.now() - startedAt));
+    };
+
+    timeout = window.setTimeout(poll, 50);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      if (timeout !== undefined) window.clearTimeout(timeout);
     };
   }, [hasActiveTransferJobs, refreshTransferJobs, session?.user.id]);
 
@@ -842,6 +844,26 @@ export function useCagnardData(): CagnardDataState {
     [openModal]
   );
 
+  const resolveTransferJob = useCallback(async (jobId: string) => {
+    const job = transferJobsRef.current.find((candidate) => candidate.id === jobId);
+    const conflict = job ? firstTransferConflict(job.results) : undefined;
+    const choice = await askConflictPolicy(conflict?.message ?? job?.message ?? "A destination item already exists.");
+
+    try {
+      const nextJob = choice
+        ? await cagnardApi.resolveTransferJob(jobId, { conflictPolicy: choice.policy })
+        : await cagnardApi.cancelTransferJob(jobId);
+      setTransferJobs((current) => mergeTransferJobs(current, nextJob));
+      setOperationMessage(nextJob.message);
+      setError(failedTransferJobMessage(nextJob));
+      if (isTerminalTransferJob(nextJob)) setRefreshTick((value) => value + 1);
+    } catch (caught) {
+      if (handleUnauthorized(caught)) return;
+      setError(caught instanceof Error ? caught.message : String(caught));
+      setOperationMessage(undefined);
+    }
+  }, [askConflictPolicy, handleUnauthorized]);
+
   const createFile = useCallback(async () => {
     const root = requireRoot();
     const name = await askText({ title: "New file", label: "File name", defaultValue: "untitled.txt", confirmLabel: "Create" });
@@ -954,9 +976,12 @@ export function useCagnardData(): CagnardDataState {
       return;
     }
 
-    const executeTransfer = (conflictPolicy: "fail" | "skip" | "keep-both" | "replace") =>
-      cagnardApi.startTransferJob({
-        conflictPolicy,
+    const selectedIds = new Set(selectedItems.map((item) => item.id));
+
+    setPasteboardBusy(true);
+    try {
+      let job = await cagnardApi.startTransferJob({
+        conflictPolicy: "fail",
         destination: { tunnel: root.tunnel, rootId: root.id, path: currentPath },
         sources: selectedItems.map((item) => ({
           intent,
@@ -965,24 +990,17 @@ export function useCagnardData(): CagnardDataState {
           path: item.source.path
         }))
       });
-
-    setPasteboardBusy(true);
-    try {
-      let job = await executeTransfer("fail");
+      setPasteboardItems((current) => current.filter((item) => !selectedIds.has(item.id)));
       setTransferJobs((current) => mergeTransferJobs(current, job));
-      if (hasTransferConflict(job.results)) {
+      if (job.status === "blocked" || hasTransferConflict(job.results)) {
         const conflict = firstTransferConflict(job.results);
-        const choice = await askConflictPolicy(conflict?.message ?? "A destination item already exists.");
-        if (!choice) {
-          setOperationMessage(undefined);
-          setError("Paste cancelled.");
-          return;
-        }
-        job = await executeTransfer(choice.policy);
+        const choice = await askConflictPolicy(conflict?.message ?? job.message ?? "A destination item already exists.");
+        job = choice
+          ? await cagnardApi.resolveTransferJob(job.id, { conflictPolicy: choice.policy })
+          : await cagnardApi.cancelTransferJob(job.id);
         setTransferJobs((current) => mergeTransferJobs(current, job));
       }
 
-      removeCompletedMovePasteboardItems([job]);
       setOperationMessage(job.message);
       setError(failedTransferJobMessage(job));
       if (isTerminalTransferJob(job)) setRefreshTick((value) => value + 1);
@@ -993,13 +1011,26 @@ export function useCagnardData(): CagnardDataState {
     } finally {
       setPasteboardBusy(false);
     }
-  }, [askConflictPolicy, currentPath, handleUnauthorized, pasteboardItems, removeCompletedMovePasteboardItems, requireRoot]);
+  }, [askConflictPolicy, currentPath, handleUnauthorized, pasteboardItems, requireRoot]);
 
   const cancelTransferJob = useCallback(async (jobId: string) => {
     try {
       const job = await cagnardApi.cancelTransferJob(jobId);
       setTransferJobs((current) => mergeTransferJobs(current, job));
       setOperationMessage(job.message);
+      setError(undefined);
+    } catch (caught) {
+      if (handleUnauthorized(caught)) return;
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [handleUnauthorized]);
+
+  const clearTransferJobs = useCallback(async () => {
+    try {
+      const response = await cagnardApi.clearTransferJobs();
+      const jobs = await cagnardApi.transferJobs();
+      setTransferJobs(jobs.jobs);
+      setOperationMessage(response.message);
       setError(undefined);
     } catch (caught) {
       if (handleUnauthorized(caught)) return;
@@ -1103,7 +1134,9 @@ export function useCagnardData(): CagnardDataState {
       clearPasteboard,
       togglePasteboardItem,
       pasteboardTransfer,
+      resolveTransferJob,
       cancelTransferJob,
+      clearTransferJobs,
       cancelModal,
       submitModal,
       showMessage,
@@ -1114,6 +1147,7 @@ export function useCagnardData(): CagnardDataState {
       authProviders,
       cancelModal,
       cancelTransferJob,
+      clearTransferJobs,
       copySelected,
       createFile,
       createFolder,
@@ -1146,6 +1180,7 @@ export function useCagnardData(): CagnardDataState {
       refresh,
       renameSelected,
       removePasteboardItem,
+      resolveTransferJob,
       clearSelection,
       clearPasteboard,
       selectEntry,
@@ -1422,10 +1457,6 @@ function pasteboardKey(item: PasteboardItem): string {
   return `${item.intent}:${item.source.tunnel}:${item.source.rootId}:${item.source.path}`;
 }
 
-function pasteboardSourceKey(item: PasteboardItem): string {
-  return `${item.source.tunnel}:${item.source.rootId}:${item.source.path}`;
-}
-
 function hasTransferConflict(results: TransferItemResult[]): boolean {
   return results.some((result) => result.status === "conflict" || hasTransferConflict(result.children ?? []));
 }
@@ -1455,14 +1486,21 @@ function mergeTransferJobs(current: TransferJobResponse[], job: TransferJobRespo
 }
 
 function isActiveTransferJob(job?: TransferJobResponse): boolean {
-  return Boolean(job && ["queued", "running", "canceling"].includes(job.status));
+  return Boolean(job && ["pending", "running", "queued", "canceling"].includes(job.status));
 }
 
 function isTerminalTransferJob(job?: TransferJobResponse): boolean {
-  return Boolean(job && ["completed", "failed", "canceled", "partial", "blocked"].includes(job.status));
+  return Boolean(job && ["completed", "canceled", "error", "failed", "partial"].includes(job.status));
 }
 
 function failedTransferJobMessage(job: TransferJobResponse): string | undefined {
-  if (!["failed", "partial", "canceled", "blocked"].includes(job.status)) return undefined;
+  if (!["error", "failed", "partial"].includes(job.status)) return undefined;
   return transferErrorSummary(job.results) ?? job.message;
+}
+
+function transferPollDelay(elapsedMs: number): number {
+  if (elapsedMs < 1000) return 50;
+  if (elapsedMs < 5000) return 300;
+  if (elapsedMs < 30000) return 1000;
+  return 2000;
 }

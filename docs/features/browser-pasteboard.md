@@ -25,17 +25,19 @@ Paste uses the active storage root and current path as the destination. The sele
 
 The dropdown shows staged item count, selected item count, source context, per-item removal, clear all, and copy/move availability. It disables paste or move with an eligibility reason when the current destination is read-only, the source cannot be deleted for a move, or a folder would be pasted into itself.
 
-When paste or move starts, Cagnard creates a transfer job and shows recent/active jobs in the browser. Active jobs are polled while queued, running, or canceling. Completed move jobs may remove successfully moved source references from the pasteboard.
+For long pasteboards, the item list scrolls independently while the clear, paste, and move actions remain pinned at the bottom of the panel.
+
+When paste or move starts, Cagnard creates a transfer task and immediately removes the selected staged entries from the pasteboard once the backend accepts the task. The task queue becomes the source of truth for progress, conflict resolution, cancellation, and final results. Active tasks are polled while pending or running.
 
 ## Conflict Handling
 
-The first transfer request uses fail-on-conflict semantics. If a destination conflict is returned, Cagnard opens a conflict modal with standard file-browser choices:
+The first transfer request uses fail-on-conflict semantics. If a destination conflict is returned, Cagnard marks the accepted task as blocked and opens a conflict modal with standard file-browser choices:
 
 - Skip
 - Keep both with predictable auto-renaming
 - Replace
 
-The selected policy is applied to the batch retry.
+The selected policy is applied to the existing task id. Dismissing the modal cancels the task.
 
 ## Known Limitations
 

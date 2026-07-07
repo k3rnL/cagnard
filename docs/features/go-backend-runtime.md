@@ -62,5 +62,5 @@ The previous Scala backend source and sbt build were removed after Go parity val
 ## Known Limitations
 
 - External OIDC/SSO validation remains a future authentication provider implementation.
-- S3 generic streaming and multipart uploads are not implemented yet; non-streaming cross-provider fallback is bounded by `maxBufferedObjectBytes`.
+- S3 multipart uploads are not implemented yet; non-streaming cross-provider fallback is bounded by `maxBufferedObjectBytes`.
 - Transfer jobs are in memory and are lost on backend restart.

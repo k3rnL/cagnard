@@ -5,9 +5,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/k3rnl/cagnard/backend-go/internal/auth"
@@ -15,6 +17,7 @@ import (
 )
 
 const defaultTransferMaxBytes int64 = 64 * 1024 * 1024
+const transferTerminalRetention = time.Hour
 
 type transferAPIError struct {
 	Status int
@@ -35,11 +38,37 @@ type targetResolution struct {
 type storedTransferJob struct {
 	ownerID string
 	job     TransferJobResponse
+	request TransferRequest
 }
 
 type transferJobContext struct {
 	jobID     string
 	taskIndex int
+	taskID    string
+}
+
+type directoryChildTransfer struct {
+	source     TransferSourceRequest
+	entry      storage.StorageEntry
+	targetPath string
+	context    *transferJobContext
+}
+
+func (context *transferJobContext) effectiveTaskID() string {
+	if context == nil {
+		return ""
+	}
+	if context.taskID != "" {
+		return context.taskID
+	}
+	return transferTaskID(context.taskIndex)
+}
+
+func (context *transferJobContext) child(taskID string) *transferJobContext {
+	if context == nil {
+		return nil
+	}
+	return &transferJobContext{jobID: context.jobID, taskIndex: context.taskIndex, taskID: taskID}
 }
 
 func (s *Server) executeTransfer(identity auth.RequestIdentity, request TransferRequest) (TransferResponse, *transferAPIError) {
@@ -80,7 +109,7 @@ func (s *Server) startTransferJobRequest(identity auth.RequestIdentity, request 
 	jobID := newJobID()
 	tasks := make([]TransferJobTask, 0, len(request.Sources))
 	for idx, source := range request.Sources {
-		tasks = append(tasks, transferTask(idx, source, "planned", "queued", "Waiting to start", nil, nil))
+		tasks = append(tasks, transferTask(idx, source, "pending", "pending", "Waiting to start", nil, nil))
 	}
 	preflight := []TransferItemResult{}
 	if policy == "fail" {
@@ -90,10 +119,10 @@ func (s *Server) startTransferJobRequest(identity auth.RequestIdentity, request 
 			}
 		}
 	}
-	status := "queued"
-	message := "Transfer job queued"
+	status := "pending"
+	message := "Transfer task pending"
 	if len(request.Sources) == 0 {
-		status = "failed"
+		status = "error"
 		message = "No entries selected for transfer"
 	} else if len(preflight) > 0 {
 		status = "blocked"
@@ -113,7 +142,9 @@ func (s *Server) startTransferJobRequest(identity auth.RequestIdentity, request 
 		Results:        preflight,
 	}
 	s.transferMu.Lock()
-	s.transferJobs[jobID] = storedTransferJob{ownerID: resolved.Profile.ID, job: job}
+	s.pruneTransferJobsLocked(resolved.Profile.ID, time.Now())
+	request.ConflictPolicy = policy
+	s.transferJobs[jobID] = storedTransferJob{ownerID: resolved.Profile.ID, job: job, request: request}
 	s.transferMu.Unlock()
 	if len(preflight) == 0 && len(request.Sources) > 0 {
 		go s.runTransferJob(jobID, identity, request, destinationRoot, destinationProvider, policy)
@@ -126,6 +157,7 @@ func (s *Server) transferJobRequest(identity auth.RequestIdentity, jobID string)
 	if failure != nil {
 		return TransferJobResponse{}, authAPIError(failure)
 	}
+	s.pruneTransferJobs(resolved.Profile.ID)
 	stored, ok := s.transferJobForOwner(jobID, resolved.Profile.ID)
 	if !ok {
 		return TransferJobResponse{}, notFoundAPIError("Transfer job was not found")
@@ -138,6 +170,7 @@ func (s *Server) transferJobListRequest(identity auth.RequestIdentity) (Transfer
 	if failure != nil {
 		return TransferJobListResponse{}, authAPIError(failure)
 	}
+	s.pruneTransferJobs(resolved.Profile.ID)
 	s.transferMu.RLock()
 	jobs := make([]TransferJobResponse, 0)
 	for _, stored := range s.transferJobs {
@@ -163,18 +196,97 @@ func (s *Server) cancelTransferJobRequest(identity auth.RequestIdentity, jobID s
 	}
 	s.canceledTransferJobs[jobID] = true
 	if !terminalJobStatus(stored.job.Status) {
-		stored.job.Status = "canceling"
-		stored.job.Message = "Cancellation requested"
+		stored.job.Status = "canceled"
+		stored.job.Message = "Transfer canceled"
 		stored.job.UpdatedAt = nowString()
+		for idx := range stored.job.Tasks {
+			markTransferTaskCanceled(&stored.job.Tasks[idx])
+		}
 		s.transferJobs[jobID] = stored
 	}
 	return stored.job, nil
 }
 
+func (s *Server) resolveTransferJobRequest(identity auth.RequestIdentity, jobID string, resolve ResolveTransferJobRequest) (TransferJobResponse, *transferAPIError) {
+	resolved, failure := s.resolver.Resolve(identity)
+	if failure != nil {
+		return TransferJobResponse{}, authAPIError(failure)
+	}
+	policy := normalizeConflictPolicy(resolve.ConflictPolicy)
+	if policy == "fail" {
+		return TransferJobResponse{}, badRequestAPIError("invalid_conflict_policy", "Choose Skip, Keep both, or Replace to resolve the blocked transfer")
+	}
+
+	s.transferMu.RLock()
+	stored, ok := s.transferJobs[jobID]
+	if !ok || stored.ownerID != resolved.Profile.ID {
+		s.transferMu.RUnlock()
+		return TransferJobResponse{}, notFoundAPIError("Transfer job was not found")
+	}
+	if stored.job.Status != "blocked" {
+		s.transferMu.RUnlock()
+		return TransferJobResponse{}, badRequestAPIError("task_not_blocked", "Transfer task is not waiting for a conflict decision")
+	}
+	request := stored.request
+	s.transferMu.RUnlock()
+
+	request.ConflictPolicy = policy
+	destinationRoot, destinationProvider, apiErr := s.destinationForTransfer(identity, request.Destination)
+	if apiErr != nil {
+		return TransferJobResponse{}, apiErr
+	}
+
+	s.transferMu.Lock()
+	stored, ok = s.transferJobs[jobID]
+	if !ok || stored.ownerID != resolved.Profile.ID {
+		s.transferMu.Unlock()
+		return TransferJobResponse{}, notFoundAPIError("Transfer job was not found")
+	}
+	if stored.job.Status != "blocked" {
+		s.transferMu.Unlock()
+		return TransferJobResponse{}, badRequestAPIError("task_not_blocked", "Transfer task is not waiting for a conflict decision")
+	}
+	delete(s.canceledTransferJobs, jobID)
+	stored.request = request
+	stored.job.Status = "pending"
+	stored.job.Message = "Transfer conflict resolved"
+	stored.job.UpdatedAt = nowString()
+	stored.job.ConflictPolicy = policy
+	stored.job.Results = nil
+	stored.job.Tasks = pendingTransferTasks(request.Sources)
+	s.transferJobs[jobID] = stored
+	job := stored.job
+	s.transferMu.Unlock()
+
+	go s.runTransferJob(jobID, identity, request, destinationRoot, destinationProvider, policy)
+	return job, nil
+}
+
+func (s *Server) clearTransferJobsRequest(identity auth.RequestIdentity) (OperationResponse, *transferAPIError) {
+	resolved, failure := s.resolver.Resolve(identity)
+	if failure != nil {
+		return OperationResponse{}, authAPIError(failure)
+	}
+	removed := 0
+	s.transferMu.Lock()
+	for id, stored := range s.transferJobs {
+		if stored.ownerID == resolved.Profile.ID && terminalJobStatus(stored.job.Status) {
+			delete(s.transferJobs, id)
+			delete(s.canceledTransferJobs, id)
+			removed++
+		}
+	}
+	s.transferMu.Unlock()
+	return OperationResponse{Success: true, Message: fmt.Sprintf("Cleared %d task%s", removed, pluralSuffix(removed))}, nil
+}
+
 func (s *Server) runTransferJob(jobID string, identity auth.RequestIdentity, request TransferRequest, destinationRoot storage.ResolvedStorageRoot, destinationProvider storage.StorageProvider, conflictPolicy string) {
 	s.updateJob(jobID, func(job TransferJobResponse) TransferJobResponse {
+		if job.Status == "canceled" {
+			return job
+		}
 		job.Status = "running"
-		job.Message = "Transfer job running"
+		job.Message = "Transfer task running"
 		job.UpdatedAt = nowString()
 		return job
 	})
@@ -187,16 +299,14 @@ func (s *Server) runTransferJob(jobID string, identity auth.RequestIdentity, req
 			results = append(results, canceled)
 			continue
 		}
-		s.updateJobTask(jobID, idx, "running", "running", "Transfer task running", nil)
-		result := s.transferOne(identity, source, destinationRoot, destinationProvider, request.Destination.Path, conflictPolicy, &transferJobContext{jobID: jobID, taskIndex: idx})
-		phase := "failed"
-		status := result.Status
+		s.updateJobTask(jobID, idx, "running", "running", "Transfer item running", nil)
+		result := s.transferOne(identity, source, destinationRoot, destinationProvider, request.Destination.Path, conflictPolicy, &transferJobContext{jobID: jobID, taskIndex: idx, taskID: transferTaskID(idx)})
+		phase := "error"
+		status := taskStatusFromResult(result)
 		if resultSucceeded(result) {
 			phase = "completed"
 		} else if result.Status == "canceled" {
 			phase = "canceled"
-		} else if result.Status == "partial" {
-			phase = "partial"
 		} else if hasConflict(result) {
 			phase = "blocked"
 			status = "blocked"
@@ -205,22 +315,26 @@ func (s *Server) runTransferJob(jobID string, identity auth.RequestIdentity, req
 		results = append(results, result)
 	}
 	response := transferResponseFromResults(results)
-	finalStatus := "failed"
+	finalStatus := "error"
 	if s.isCanceled(jobID) || anyStatus(results, "canceled") {
 		finalStatus = "canceled"
-		response.Message = "Transfer job canceled"
+		response.Message = "Transfer canceled"
 	} else if response.Success {
 		finalStatus = "completed"
 	} else if anyConflict(results) {
 		finalStatus = "blocked"
-	} else if countSucceeded(results) > 0 {
-		finalStatus = "partial"
 	}
 	s.updateJob(jobID, func(job TransferJobResponse) TransferJobResponse {
+		if job.Status == "canceled" {
+			return job
+		}
 		job.Status = finalStatus
 		job.Message = response.Message
 		job.UpdatedAt = nowString()
 		job.Results = results
+		if finalStatus == "error" {
+			log.Printf("transfer job %s failed: %s", jobID, response.Message)
+		}
 		return job
 	})
 }
@@ -318,7 +432,7 @@ func (s *Server) transferOne(identity auth.RequestIdentity, source TransferSourc
 	if sameRoot && context.entry.Kind == "directory" && targetPath != context.entry.Path && isDescendantPath(targetPath, context.entry.Path) {
 		return failedResult(source, &targetPath, "Cannot transfer a directory into itself")
 	}
-	if sameRoot && context.entry.Kind == "file" {
+	if sameRoot && context.entry.Kind == "file" && (source.Intent != "copy" || jobContext == nil || !streamTransferSupported(context.provider, context.root, destinationProvider, destinationRoot)) {
 		return s.transferSameRootFile(source, context, targetPath, conflictPolicy)
 	}
 	copied := s.copyTree(withIntent(source, "copy"), context.provider, context.root, context.entry, destinationProvider, destinationRoot, targetPath, conflictPolicy, jobContext)
@@ -433,7 +547,7 @@ func (s *Server) streamCopyFile(source TransferSourceRequest, sourceProvider sto
 	entry, writeErr := destinationProvider.StreamWrite(destinationRoot, target.path, reader, info, target.overwrite, func(delta int64) {
 		bytesTransferred += delta
 		if jobContext != nil {
-			s.updateJobTaskProgress(jobContext.jobID, jobContext.taskIndex, bytesTransferred, info.Size, 0)
+			s.updateJobTaskProgress(jobContext.jobID, jobContext.effectiveTaskID(), bytesTransferred, info.Size, 0)
 			if s.isCanceled(jobContext.jobID) {
 				canceled = true
 				_ = reader.CloseWithError(fmt.Errorf("Transfer job was canceled"))
@@ -458,7 +572,7 @@ func (s *Server) streamCopyFile(source TransferSourceRequest, sourceProvider sto
 		verifyInfo.Size = read.info.Size
 	}
 	if jobContext != nil {
-		s.updateJobTaskProgress(jobContext.jobID, jobContext.taskIndex, bytesTransferred, verifyInfo.Size, 0)
+		s.updateJobTaskProgress(jobContext.jobID, jobContext.effectiveTaskID(), bytesTransferred, verifyInfo.Size, 0)
 	}
 	if err := verifyWrittenEntry(verifyInfo, entry); err != nil {
 		return storage.StorageEntry{}, err
@@ -484,7 +598,7 @@ func (s *Server) bufferedCopyFile(source TransferSourceRequest, sourceProvider s
 		return storage.StorageEntry{}, fmt.Errorf("File exceeds buffered transfer limit of %d bytes and no streaming transfer path is available", maxBytes)
 	}
 	if jobContext != nil {
-		s.updateJobTaskProgress(jobContext.jobID, jobContext.taskIndex, actualSize, &actualSize, 0)
+		s.updateJobTaskProgress(jobContext.jobID, jobContext.effectiveTaskID(), actualSize, &actualSize, 0)
 	}
 	if jobContext != nil && s.isCanceled(jobContext.jobID) {
 		return storage.StorageEntry{}, fmt.Errorf("Transfer job was canceled")
@@ -511,11 +625,63 @@ func (s *Server) copyDirectory(source TransferSourceRequest, sourceProvider stor
 			return failedResult(source, &target.path, err.Error())
 		}
 	}
-	children := make([]TransferItemResult, 0, len(entries))
-	for _, child := range entries {
+	children := make([]TransferItemResult, len(entries))
+	plans := make([]directoryChildTransfer, 0, len(entries))
+	parentTaskID := ""
+	if jobContext != nil {
+		parentTaskID = jobContext.effectiveTaskID()
+	}
+	for idx, child := range entries {
 		childSource := source
 		childSource.Path = child.Path
-		children = append(children, s.copyTree(childSource, sourceProvider, sourceRoot, child, destinationProvider, destinationRoot, joinTransferPath(target.path, child.Name), conflictPolicy, jobContext))
+		childTargetPath := joinTransferPath(target.path, child.Name)
+		var childContext *transferJobContext
+		if jobContext != nil {
+			childID := fmt.Sprintf("%s.%d", parentTaskID, idx+1)
+			childContext = jobContext.child(childID)
+			s.addJobTaskChild(jobContext.jobID, parentTaskID, taskFromStorageEntry(childID, childSource, child, childTargetPath))
+		}
+		plans = append(plans, directoryChildTransfer{source: childSource, entry: child, targetPath: childTargetPath, context: childContext})
+	}
+	copyChild := func(idx int) {
+		plan := plans[idx]
+		if plan.context != nil {
+			s.updateJobTaskByID(plan.context.jobID, plan.context.effectiveTaskID(), "running", "running", "Transfer item running", nil)
+		}
+		result := s.copyTree(plan.source, sourceProvider, sourceRoot, plan.entry, destinationProvider, destinationRoot, plan.targetPath, conflictPolicy, plan.context)
+		if plan.context != nil {
+			phase := "error"
+			status := taskStatusFromResult(result)
+			if resultSucceeded(result) {
+				phase = "completed"
+			} else if result.Status == "canceled" {
+				phase = "canceled"
+			} else if hasConflict(result) {
+				phase = "blocked"
+				status = "blocked"
+			}
+			s.updateJobTaskByID(plan.context.jobID, plan.context.effectiveTaskID(), phase, status, result.Message, &result)
+		}
+		children[idx] = result
+	}
+	concurrency := min(s.transferConcurrency(), len(plans))
+	if concurrency <= 1 {
+		for idx := range plans {
+			copyChild(idx)
+		}
+	} else {
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, concurrency)
+		for idx := range plans {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				copyChild(idx)
+			}(idx)
+		}
+		wg.Wait()
 	}
 	ok := true
 	for _, child := range children {
@@ -867,12 +1033,41 @@ func operationName(sources []TransferSourceRequest) string {
 func transferTask(index int, source TransferSourceRequest, phase string, status string, message string, targetPath *string, result *TransferItemResult) TransferJobTask {
 	progress := TransferTaskProgress{TotalItems: intPtr(1)}
 	if result != nil {
-		progress.ItemsCompleted = boolInt(resultSucceeded(*result))
-		if result.Entry != nil {
-			progress.TotalBytes = result.Entry.Metadata.Size
-		}
+		progress = progressFromTransferResult(*result, progress)
 	}
-	return TransferJobTask{ID: fmt.Sprintf("task-%d", index+1), Intent: source.Intent, SourceTunnel: source.Tunnel, SourceRootID: source.RootID, SourcePath: source.Path, TargetPath: targetPath, Phase: phase, Status: status, Message: message, Progress: progress, Result: result, Children: resultToTaskChildren(fmt.Sprintf("task-%d", index+1), result)}
+	id := transferTaskID(index)
+	return TransferJobTask{ID: id, Intent: source.Intent, SourceTunnel: source.Tunnel, SourceRootID: source.RootID, SourcePath: source.Path, TargetPath: targetPath, Phase: phase, Status: status, Message: message, Progress: progress, Result: result, Children: resultToTaskChildren(id, result)}
+}
+
+func transferTaskID(index int) string {
+	return fmt.Sprintf("task-%d", index+1)
+}
+
+func taskFromStorageEntry(id string, source TransferSourceRequest, entry storage.StorageEntry, targetPath string) TransferJobTask {
+	progress := TransferTaskProgress{TotalItems: intPtr(1)}
+	if entry.Kind == "file" && entry.Metadata.Size != nil {
+		progress.TotalBytes = entry.Metadata.Size
+	}
+	return TransferJobTask{
+		ID:           id,
+		Intent:       source.Intent,
+		SourceTunnel: source.Tunnel,
+		SourceRootID: source.RootID,
+		SourcePath:   entry.Path,
+		TargetPath:   taskStringPtr(targetPath),
+		Phase:        "pending",
+		Status:       "pending",
+		Message:      "Waiting to start",
+		Progress:     progress,
+	}
+}
+
+func pendingTransferTasks(sources []TransferSourceRequest) []TransferJobTask {
+	tasks := make([]TransferJobTask, 0, len(sources))
+	for idx, source := range sources {
+		tasks = append(tasks, transferTask(idx, source, "pending", "pending", "Waiting to start", nil, nil))
+	}
+	return tasks
 }
 
 func tasksFromResults(sources []TransferSourceRequest, results []TransferItemResult) []TransferJobTask {
@@ -886,11 +1081,11 @@ func tasksFromResults(sources []TransferSourceRequest, results []TransferItemRes
 			}
 		}
 		if result == nil {
-			tasks = append(tasks, transferTask(idx, source, "planned", "queued", "Waiting to start", nil, nil))
+			tasks = append(tasks, transferTask(idx, source, "pending", "pending", "Waiting to start", nil, nil))
 			continue
 		}
-		status := result.Status
-		if hasConflict(*result) && status != "conflict" {
+		status := taskStatusFromResult(*result)
+		if hasConflict(*result) {
 			status = "blocked"
 		}
 		tasks = append(tasks, transferTask(idx, source, status, status, result.Message, result.TargetPath, result))
@@ -906,13 +1101,51 @@ func resultToTaskChildren(parentID string, result *TransferItemResult) []Transfe
 	for idx := range result.Children {
 		child := result.Children[idx]
 		id := fmt.Sprintf("%s.%d", parentID, idx+1)
-		progress := TransferTaskProgress{ItemsCompleted: boolInt(resultSucceeded(child)), TotalItems: intPtr(1)}
-		if child.Entry != nil {
-			progress.TotalBytes = child.Entry.Metadata.Size
-		}
-		children = append(children, TransferJobTask{ID: id, Intent: child.Intent, SourceTunnel: child.SourceTunnel, SourceRootID: child.SourceRootID, SourcePath: child.SourcePath, TargetPath: child.TargetPath, Phase: child.Status, Status: child.Status, Message: child.Message, Progress: progress, Result: &child, Children: resultToTaskChildren(id, &child)})
+		progress := progressFromTransferResult(child, TransferTaskProgress{TotalItems: intPtr(1)})
+		status := taskStatusFromResult(child)
+		children = append(children, TransferJobTask{ID: id, Intent: child.Intent, SourceTunnel: child.SourceTunnel, SourceRootID: child.SourceRootID, SourcePath: child.SourcePath, TargetPath: child.TargetPath, Phase: status, Status: status, Message: child.Message, Progress: progress, Result: &child, Children: resultToTaskChildren(id, &child)})
 	}
 	return children
+}
+
+func progressFromTransferResult(result TransferItemResult, existing TransferTaskProgress) TransferTaskProgress {
+	progress := existing
+	if progress.TotalItems == nil {
+		progress.TotalItems = intPtr(1)
+	}
+	if result.Entry != nil && result.Entry.Metadata.Size != nil {
+		progress.TotalBytes = result.Entry.Metadata.Size
+	}
+	if resultSucceeded(result) {
+		if progress.TotalItems != nil {
+			progress.ItemsCompleted = *progress.TotalItems
+		} else {
+			progress.ItemsCompleted = 1
+		}
+		if progress.TotalBytes != nil {
+			progress.BytesTransferred = *progress.TotalBytes
+		}
+	}
+	return progress
+}
+
+func taskStatusFromResult(result TransferItemResult) string {
+	if resultSucceeded(result) {
+		return "completed"
+	}
+	if hasConflict(result) {
+		return "blocked"
+	}
+	switch result.Status {
+	case "canceled":
+		return "canceled"
+	case "running":
+		return "running"
+	case "pending":
+		return "pending"
+	default:
+		return "error"
+	}
 }
 
 func (s *Server) transferJobForOwner(jobID string, ownerID string) (storedTransferJob, bool) {
@@ -943,23 +1176,52 @@ func (s *Server) updateJobTask(jobID string, index int, phase string, status str
 			if result != nil {
 				task.TargetPath = result.TargetPath
 				task.Result = result
+				task.Progress = progressFromTransferResult(*result, task.Progress)
 				task.Children = resultToTaskChildren(task.ID, result)
 			}
 			job.Tasks[index] = task
 		}
+		recomputeTransferTaskProgress(job.Tasks)
 		job.UpdatedAt = nowString()
 		return job
 	})
 }
 
-func (s *Server) updateJobTaskProgress(jobID string, index int, bytesTransferred int64, totalBytes *int64, itemsCompleted int) {
+func (s *Server) addJobTaskChild(jobID string, parentID string, child TransferJobTask) {
 	s.updateJob(jobID, func(job TransferJobResponse) TransferJobResponse {
-		if index >= 0 && index < len(job.Tasks) {
-			task := job.Tasks[index]
-			if task.Phase == "planned" || task.Phase == "queued" {
+		job.Tasks, _ = addTaskChild(job.Tasks, parentID, child)
+		job.UpdatedAt = nowString()
+		return job
+	})
+}
+
+func (s *Server) updateJobTaskByID(jobID string, taskID string, phase string, status string, message string, result *TransferItemResult) {
+	s.updateJob(jobID, func(job TransferJobResponse) TransferJobResponse {
+		job.Tasks, _ = updateTaskByID(job.Tasks, taskID, func(task TransferJobTask) TransferJobTask {
+			task.Phase = phase
+			task.Status = status
+			task.Message = message
+			if result != nil {
+				task.TargetPath = result.TargetPath
+				task.Result = result
+				task.Progress = progressFromTransferResult(*result, task.Progress)
+				task.Children = mergeTransferTaskChildren(task.Children, resultToTaskChildren(task.ID, result))
+			}
+			return task
+		})
+		recomputeTransferTaskProgress(job.Tasks)
+		job.UpdatedAt = nowString()
+		return job
+	})
+}
+
+func (s *Server) updateJobTaskProgress(jobID string, taskID string, bytesTransferred int64, totalBytes *int64, itemsCompleted int) {
+	s.updateJob(jobID, func(job TransferJobResponse) TransferJobResponse {
+		job.Tasks, _ = updateTaskByID(job.Tasks, taskID, func(task TransferJobTask) TransferJobTask {
+			if task.Phase == "planned" || task.Phase == "queued" || task.Phase == "pending" {
 				task.Phase = "running"
 			}
-			if task.Status == "queued" {
+			if task.Status == "queued" || task.Status == "pending" {
 				task.Status = "running"
 			}
 			task.Progress.BytesTransferred = bytesTransferred
@@ -967,11 +1229,112 @@ func (s *Server) updateJobTaskProgress(jobID string, index int, bytesTransferred
 				task.Progress.TotalBytes = totalBytes
 			}
 			task.Progress.ItemsCompleted = itemsCompleted
-			job.Tasks[index] = task
-		}
+			return task
+		})
+		recomputeTransferTaskProgress(job.Tasks)
 		job.UpdatedAt = nowString()
 		return job
 	})
+}
+
+func addTaskChild(tasks []TransferJobTask, parentID string, child TransferJobTask) ([]TransferJobTask, bool) {
+	for idx := range tasks {
+		if tasks[idx].ID == parentID {
+			for _, existing := range tasks[idx].Children {
+				if existing.ID == child.ID {
+					return tasks, true
+				}
+			}
+			tasks[idx].Children = append(tasks[idx].Children, child)
+			recomputeTransferTaskProgress(tasks)
+			return tasks, true
+		}
+		if updated, ok := addTaskChild(tasks[idx].Children, parentID, child); ok {
+			tasks[idx].Children = updated
+			recomputeTransferTaskProgress(tasks)
+			return tasks, true
+		}
+	}
+	return tasks, false
+}
+
+func updateTaskByID(tasks []TransferJobTask, taskID string, update func(TransferJobTask) TransferJobTask) ([]TransferJobTask, bool) {
+	for idx := range tasks {
+		if tasks[idx].ID == taskID {
+			tasks[idx] = update(tasks[idx])
+			return tasks, true
+		}
+		if updated, ok := updateTaskByID(tasks[idx].Children, taskID, update); ok {
+			tasks[idx].Children = updated
+			return tasks, true
+		}
+	}
+	return tasks, false
+}
+
+func mergeTransferTaskChildren(existing []TransferJobTask, incoming []TransferJobTask) []TransferJobTask {
+	if len(existing) == 0 {
+		return incoming
+	}
+	merged := make([]TransferJobTask, 0, len(existing)+len(incoming))
+	seen := map[string]bool{}
+	for _, child := range existing {
+		merged = append(merged, child)
+		seen[child.ID] = true
+	}
+	for _, child := range incoming {
+		if seen[child.ID] {
+			continue
+		}
+		merged = append(merged, child)
+	}
+	return merged
+}
+
+func recomputeTransferTaskProgress(tasks []TransferJobTask) {
+	for idx := range tasks {
+		recomputeTransferTaskProgress(tasks[idx].Children)
+		if len(tasks[idx].Children) == 0 {
+			continue
+		}
+		var bytesTransferred int64
+		var totalBytes int64
+		totalBytesKnown := false
+		itemsCompleted := 0
+		totalItems := 0
+		totalItemsKnown := false
+		for _, child := range tasks[idx].Children {
+			bytesTransferred += child.Progress.BytesTransferred
+			if child.Progress.TotalBytes != nil {
+				totalBytes += *child.Progress.TotalBytes
+				totalBytesKnown = true
+			}
+			itemsCompleted += child.Progress.ItemsCompleted
+			if child.Progress.TotalItems != nil {
+				totalItems += *child.Progress.TotalItems
+				totalItemsKnown = true
+			}
+		}
+		tasks[idx].Progress.BytesTransferred = bytesTransferred
+		if totalBytesKnown {
+			tasks[idx].Progress.TotalBytes = int64TaskPtr(totalBytes)
+		}
+		tasks[idx].Progress.ItemsCompleted = itemsCompleted
+		if totalItemsKnown {
+			tasks[idx].Progress.TotalItems = intPtr(totalItems)
+		}
+	}
+}
+
+func markTransferTaskCanceled(task *TransferJobTask) {
+	if !terminalTaskStatus(task.Status) {
+		task.Status = "canceled"
+		task.Phase = "canceled"
+		task.Message = "Canceled"
+	}
+	for idx := range task.Children {
+		markTransferTaskCanceled(&task.Children[idx])
+	}
 }
 
 func (s *Server) isCanceled(jobID string) bool {
@@ -980,13 +1343,55 @@ func (s *Server) isCanceled(jobID string) bool {
 	return s.canceledTransferJobs[jobID]
 }
 
+func (s *Server) transferConcurrency() int {
+	if s.cfg == nil || s.cfg.Tasks.MaxConcurrentTransfers <= 0 {
+		return 4
+	}
+	return s.cfg.Tasks.MaxConcurrentTransfers
+}
+
 func terminalJobStatus(status string) bool {
 	switch status {
-	case "completed", "failed", "canceled", "partial", "blocked":
+	case "completed", "canceled", "error", "failed", "partial":
 		return true
 	default:
 		return false
 	}
+}
+
+func terminalTaskStatus(status string) bool {
+	switch status {
+	case "completed", "canceled", "error", "failed", "partial":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Server) pruneTransferJobs(ownerID string) {
+	s.transferMu.Lock()
+	defer s.transferMu.Unlock()
+	s.pruneTransferJobsLocked(ownerID, time.Now())
+}
+
+func (s *Server) pruneTransferJobsLocked(ownerID string, now time.Time) {
+	for id, stored := range s.transferJobs {
+		if stored.ownerID != ownerID || !autoPrunableTransferStatus(stored.job.Status) {
+			continue
+		}
+		updated, err := time.Parse(time.RFC3339Nano, stored.job.UpdatedAt)
+		if err != nil {
+			continue
+		}
+		if now.Sub(updated) >= transferTerminalRetention {
+			delete(s.transferJobs, id)
+			delete(s.canceledTransferJobs, id)
+		}
+	}
+}
+
+func autoPrunableTransferStatus(status string) bool {
+	return status == "completed" || status == "canceled"
 }
 
 func nowString() string {
@@ -1070,6 +1475,14 @@ func boolInt(value bool) int {
 }
 
 func intPtr(value int) *int {
+	return &value
+}
+
+func int64TaskPtr(value int64) *int64 {
+	return &value
+}
+
+func taskStringPtr(value string) *string {
 	return &value
 }
 

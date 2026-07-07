@@ -43,7 +43,7 @@ import {
 
 import type { CagnardDataState, EntrySelectionMode, OpenedFileState } from "../api/useCagnardData";
 import type { EntrySortField } from "../api/useCagnardData";
-import type { EntryMetadata, StorageEntry, TransferJobResponse } from "../api/types";
+import type { EntryMetadata, StorageEntry, TransferJobResponse, TransferJobTask } from "../api/types";
 import { classifyEntry } from "../plugins/fileTypeCatalog";
 import { openerSupportsRaw } from "../plugins/fileOpeners";
 
@@ -397,20 +397,45 @@ function TransferJobsPanel({
 }: {
   state: CagnardDataState;
 }) {
+  const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(() => new Set());
+  const [detailPages, setDetailPages] = useState<Record<string, number>>({});
   const jobs = state.transferJobs;
-  const visibleJobs = jobs.slice(0, 4);
+  const visibleJobs = jobs;
   const activeCount = jobs.filter(isActiveTransferJob).length;
+  const clearableCount = jobs.filter(isTerminalTransferJob).length;
+  const toggleExpanded = (jobId: string) => {
+    setExpandedJobIds((current) => {
+      const next = new Set(current);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  };
+  const setDetailPage = (jobId: string, page: number) => {
+    setDetailPages((current) => ({ ...current, [jobId]: page }));
+  };
 
   return (
     <section className="transfer-jobs" aria-label="Transfer jobs">
       <div className="transfer-jobs-heading">
         <strong>Transfers</strong>
         <span>{activeCount > 0 ? `${activeCount} active` : `${jobs.length} recent`}</span>
+        <button className="primary-button subtle transfer-clear-button" type="button" onClick={() => void state.clearTransferJobs()} disabled={clearableCount === 0}>
+          Clear
+        </button>
       </div>
       <div className="transfer-job-list">
         {visibleJobs.map((job) => {
           const progress = aggregateJobProgress(job);
-          const canCancel = isActiveTransferJob(job);
+          const canCancel = isActiveTransferJob(job) || job.status === "blocked";
+          const canResolve = job.status === "blocked";
+          const expanded = expandedJobIds.has(job.id);
+          const details = orderedTransferTaskDetails(job);
+          const page = detailPages[job.id] ?? 0;
+          const pageSize = 8;
+          const pageCount = Math.max(1, Math.ceil(details.length / pageSize));
+          const safePage = Math.min(page, pageCount - 1);
+          const pageDetails = details.slice(safePage * pageSize, safePage * pageSize + pageSize);
           return (
             <article className={`transfer-job ${job.status}`} key={job.id}>
               <div className="transfer-job-main">
@@ -427,12 +452,52 @@ function TransferJobsPanel({
                 <span>{progress.label}</span>
                 <span>{formatTransferJobTime(job)}</span>
                 <span>{transferDestinationLabel(job, state)}</span>
+                <button className="icon-button compact" type="button" onClick={() => toggleExpanded(job.id)} title={expanded ? "Hide affected files" : "Show affected files"}>
+                  <ListTree size={14} />
+                </button>
+                {canResolve ? (
+                  <button className="primary-button subtle transfer-resolve-button" type="button" onClick={() => void state.resolveTransferJob(job.id)}>
+                    Resolve
+                  </button>
+                ) : null}
                 {canCancel ? (
                   <button className="icon-button compact" type="button" onClick={() => void state.cancelTransferJob(job.id)} title="Cancel transfer">
                     <X size={14} />
                   </button>
                 ) : null}
               </div>
+              {expanded ? (
+                <div className="transfer-task-details">
+                  {pageDetails.length === 0 ? (
+                    <p className="transfer-task-empty">No affected files reported yet.</p>
+                  ) : (
+                    pageDetails.map((task) => (
+                      <div className={`transfer-task-row ${task.status}`} key={task.id}>
+                        <div className="transfer-task-main">
+                          <strong>{transferTaskName(task)}</strong>
+                          <span>{transferTaskPath(task)}</span>
+                        </div>
+                        <span className="transfer-task-state">{task.status}</span>
+                        <div className="transfer-task-progress" aria-label={taskProgressLabel(task)}>
+                          <span style={{ width: `${taskProgressPercent(task)}%` }} />
+                        </div>
+                        <span className="transfer-task-progress-label">{taskProgressLabel(task)}</span>
+                      </div>
+                    ))
+                  )}
+                  {pageCount > 1 ? (
+                    <div className="transfer-task-pagination">
+                      <button className="primary-button subtle" type="button" onClick={() => setDetailPage(job.id, Math.max(0, safePage - 1))} disabled={safePage === 0}>
+                        Previous
+                      </button>
+                      <span>{safePage + 1} / {pageCount}</span>
+                      <button className="primary-button subtle" type="button" onClick={() => setDetailPage(job.id, Math.min(pageCount - 1, safePage + 1))} disabled={safePage >= pageCount - 1}>
+                        Next
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </article>
           );
         })}
@@ -452,7 +517,7 @@ function transferQueueSummary(jobs: TransferJobResponse[]): { icon: ReactNode; k
   }
 
   const latestJob = jobs[0];
-  if (latestJob && ["failed", "partial", "canceled", "blocked"].includes(latestJob.status)) {
+  if (latestJob && ["error", "failed", "partial", "canceled", "blocked"].includes(latestJob.status)) {
     return {
       icon: <XCircle size={16} />,
       kind: "failed",
@@ -470,10 +535,11 @@ function transferQueueSummary(jobs: TransferJobResponse[]): { icon: ReactNode; k
 function aggregateJobProgress(job: TransferJobResponse): { percent: number; label: string } {
   const totals = job.tasks.reduce(
     (acc, task) => {
-      acc.bytes += task.progress.bytesTransferred;
-      acc.totalBytes += task.progress.totalBytes ?? 0;
-      acc.items += task.progress.itemsCompleted;
-      acc.totalItems += task.progress.totalItems ?? 0;
+      const progress = normalizedTaskProgress(task);
+      acc.bytes += progress.bytesTransferred;
+      acc.totalBytes += progress.totalBytes ?? 0;
+      acc.items += progress.itemsCompleted;
+      acc.totalItems += progress.totalItems ?? 0;
       return acc;
     },
     { bytes: 0, totalBytes: 0, items: 0, totalItems: 0 }
@@ -500,11 +566,101 @@ function aggregateJobProgress(job: TransferJobResponse): { percent: number; labe
 }
 
 function isActiveTransferJob(job: TransferJobResponse): boolean {
-  return ["queued", "running", "canceling"].includes(job.status);
+  return ["pending", "running", "queued", "canceling"].includes(job.status);
 }
 
 function isTerminalTransferJob(job: TransferJobResponse): boolean {
-  return ["completed", "failed", "canceled", "partial", "blocked"].includes(job.status);
+  return ["completed", "canceled", "error", "failed", "partial"].includes(job.status);
+}
+
+function orderedTransferTaskDetails(job: TransferJobResponse): TransferJobTask[] {
+  return flattenTransferTasks(job.tasks).filter((task) => (task.children?.length ?? 0) === 0).sort((left, right) => {
+    const stateDelta = transferTaskStateRank(left.status) - transferTaskStateRank(right.status);
+    if (stateDelta !== 0) return stateDelta;
+    return transferTaskName(left).localeCompare(transferTaskName(right));
+  });
+}
+
+function flattenTransferTasks(tasks: TransferJobTask[]): TransferJobTask[] {
+  return tasks.flatMap((task) => [task, ...flattenTransferTasks(task.children ?? [])]);
+}
+
+function transferTaskStateRank(status: string): number {
+  switch (status) {
+    case "running":
+      return 0;
+    case "blocked":
+      return 1;
+    case "pending":
+    case "queued":
+      return 2;
+    case "error":
+    case "failed":
+    case "partial":
+      return 3;
+    case "canceled":
+      return 4;
+    case "completed":
+    case "copied":
+    case "moved":
+    case "skipped":
+      return 5;
+    default:
+      return 6;
+  }
+}
+
+function transferTaskName(task: TransferJobTask): string {
+  const path = task.targetPath ?? task.sourcePath;
+  const parts = path.split("/").filter(Boolean);
+  return parts[parts.length - 1] || path || "Root";
+}
+
+function transferTaskPath(task: TransferJobTask): string {
+  const target = task.targetPath ? ` -> ${task.targetPath}` : "";
+  return `${task.sourceTunnel}/${task.sourceRootId}/${task.sourcePath || "/"}${target}`;
+}
+
+function taskProgressPercent(task: TransferJobTask): number {
+  const progress = normalizedTaskProgress(task);
+  if (progress.totalBytes && progress.totalBytes > 0) {
+    return Math.min(100, Math.round((progress.bytesTransferred / progress.totalBytes) * 100));
+  }
+  if (progress.totalItems && progress.totalItems > 0) {
+    return Math.min(100, Math.round((progress.itemsCompleted / progress.totalItems) * 100));
+  }
+  return ["completed", "copied", "moved", "skipped"].includes(task.status) ? 100 : 8;
+}
+
+function taskProgressLabel(task: TransferJobTask): string {
+  const progress = normalizedTaskProgress(task);
+  if (progress.totalBytes && progress.totalBytes > 0) {
+    return `${formatSize(progress.bytesTransferred)} of ${formatSize(progress.totalBytes)}`;
+  }
+  if (progress.totalItems && progress.totalItems > 0) {
+    return `${progress.itemsCompleted} of ${progress.totalItems} items`;
+  }
+  return task.status;
+}
+
+function normalizedTaskProgress(task: TransferJobTask): TransferJobTask["progress"] {
+  const progress = { ...task.progress };
+  const completed = ["completed", "copied", "moved", "skipped"].includes(task.status) || ["copied", "moved", "skipped"].includes(task.result?.status ?? "");
+  const resultSize = task.result?.entry?.metadata.size;
+
+  if (resultSize != null && progress.totalBytes == null) {
+    progress.totalBytes = resultSize;
+  }
+  if (completed) {
+    if (progress.totalItems != null && progress.itemsCompleted < progress.totalItems) {
+      progress.itemsCompleted = progress.totalItems;
+    }
+    if (progress.totalBytes != null && progress.bytesTransferred < progress.totalBytes) {
+      progress.bytesTransferred = progress.totalBytes;
+    }
+  }
+
+  return progress;
 }
 
 function transferDestinationLabel(job: TransferJobResponse, state: CagnardDataState): string {

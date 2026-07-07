@@ -111,6 +111,12 @@ The demo verifier in `config/cagnard.example.conf` accepts `alice` / `cagnard`. 
 
 Deployments should externalize `signingSecret` and credential verifiers through HOCON substitutions, mounted secret files, Kubernetes Secrets, or another external secret system.
 
+## Task Settings
+
+`tasks` configures backend task execution:
+
+- `maxConcurrentTransfers`: maximum child transfer workers used inside recursive transfer tasks, default `4`.
+
 ## S3-Compatible Storage
 
 S3-compatible providers use `providers[].type = s3`. Provider, account, and root settings are supplied through HOCON `settings` maps so the core config model remains plugin-oriented.
@@ -122,7 +128,7 @@ Provider settings:
 - `pathStyleAccess`: set `true` for providers that require path-style bucket addressing.
 - `sslEnabled`: controls the default scheme when `endpoint` omits `http://` or `https://`.
 - `trustAllCertificates`: local/insecure escape hatch for development endpoints with untrusted certificates.
-- `maxBufferedObjectBytes`: upload/download and non-streaming backend-mediated transfer fallback limit, default `67108864` bytes. Filesystem streaming transfers can exceed this limit; providers without stream support are rejected before download when the source size is known.
+- `maxBufferedObjectBytes`: upload/download and non-streaming backend-mediated transfer fallback limit, default `67108864` bytes. Streaming provider-neutral transfers can exceed this limit; providers without stream support are rejected before download when the source size is known.
 
 Account credential modes:
 
@@ -141,6 +147,7 @@ See `config/cagnard.s3.example.conf` for a safe snippet using environment substi
 ## Current Sections
 
 - `server`: bind host and port.
+- `tasks`: backend task execution settings.
 - `auth`: authentication mode, static login provider settings, session settings, and future OIDC provider declarations.
 - `users`: local configured users for simple deployments.
 - `providers`: storage provider plugin declarations.

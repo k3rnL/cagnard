@@ -7,6 +7,7 @@ import type {
   PreviewResponse,
   SessionResponse,
   TransferRequest,
+  ResolveTransferJobRequest,
   TransferJobListResponse,
   TransferJobResponse,
   TransferResponse,
@@ -140,8 +141,18 @@ export const cagnardApi = {
     }),
   transferJobs: () => fetchJson<TransferJobListResponse>("/api/storage/transfer/jobs"),
   transferJob: (jobId: string) => fetchJson<TransferJobResponse>(`/api/storage/transfer/jobs/${encodeURIComponent(jobId)}`),
+  resolveTransferJob: (jobId: string, request: ResolveTransferJobRequest) =>
+    fetchJson<TransferJobResponse>(`/api/storage/transfer/jobs/${encodeURIComponent(jobId)}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    }),
   cancelTransferJob: (jobId: string) =>
     fetchJson<TransferJobResponse>(`/api/storage/transfer/jobs/${encodeURIComponent(jobId)}/cancel`, {
+      method: "POST"
+    }),
+  clearTransferJobs: () =>
+    fetchJson<OperationResponse>("/api/storage/transfer/jobs/clear", {
       method: "POST"
     }),
   uiPlugins: () => fetchJson<UiPluginsResponse>("/api/plugins/ui")

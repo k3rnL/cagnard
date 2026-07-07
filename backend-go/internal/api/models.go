@@ -188,6 +188,10 @@ type TransferRequest struct {
 	ConflictPolicy string                     `json:"conflictPolicy"`
 }
 
+type ResolveTransferJobRequest struct {
+	ConflictPolicy string `json:"conflictPolicy"`
+}
+
 type TransferItemResult struct {
 	Intent       string               `json:"intent"`
 	SourceTunnel string               `json:"sourceTunnel"`
