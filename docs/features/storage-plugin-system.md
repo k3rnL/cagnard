@@ -69,6 +69,8 @@ providers = [
       endpoint = ${?CAGNARD_S3_ENDPOINT}
       pathStyleAccess = true
       sslEnabled = true
+      trustAllCertificates = false
+      requestChecksumCalculation = "when_required"
       maxBufferedObjectBytes = 67108864
     }
   }

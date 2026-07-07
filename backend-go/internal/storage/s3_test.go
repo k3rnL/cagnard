@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/k3rnl/cagnard/backend-go/internal/config"
 )
 
@@ -150,6 +154,109 @@ func TestS3StreamsReadAndWriteWithProgress(t *testing.T) {
 	}
 	if !fake.has("team/docs/target.bin") || writeProgress != 96 || entry.Metadata.Size == nil || *entry.Metadata.Size != 96 {
 		t.Fatalf("unexpected stream write: progress=%d entry=%#v keys=%#v", writeProgress, entry, fake.keys())
+	}
+}
+
+func TestS3RequestChecksumCalculationDefaultsForStreamCompatibility(t *testing.T) {
+	settings, err := s3ProviderSettingsFromConfig(config.ProviderConfig{
+		ID:       "s3-main",
+		Settings: map[string]string{"region": "us-east-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.RequestChecksumCalculation != aws.RequestChecksumCalculationWhenRequired {
+		t.Fatalf("default checksum calculation = %#v", settings.RequestChecksumCalculation)
+	}
+
+	settings, err = s3ProviderSettingsFromConfig(config.ProviderConfig{
+		ID:       "s3-main",
+		Settings: map[string]string{"region": "us-east-1", "requestChecksumCalculation": "when_supported"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.RequestChecksumCalculation != aws.RequestChecksumCalculationWhenSupported {
+		t.Fatalf("override checksum calculation = %#v", settings.RequestChecksumCalculation)
+	}
+
+	if _, err := s3ProviderSettingsFromConfig(config.ProviderConfig{
+		ID:       "s3-main",
+		Settings: map[string]string{"region": "us-east-1", "requestChecksumCalculation": "always"},
+	}); err == nil {
+		t.Fatal("expected invalid checksum calculation setting to fail")
+	}
+}
+
+func TestAwsS3ObjectClientUsesProviderChecksumCalculation(t *testing.T) {
+	client, err := NewAwsS3ObjectClient(
+		S3ProviderSettings{Region: "us-east-1", RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired},
+		S3AccountSettings{CredentialMode: "static", AccessKeyID: ptr("test-access"), SecretAccessKey: ptr("test-secret")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := client.client.Options().RequestChecksumCalculation; got != aws.RequestChecksumCalculationWhenRequired {
+		t.Fatalf("client checksum calculation = %#v", got)
+	}
+}
+
+func TestAwsS3StreamPutSupportsUnseekableHTTPBody(t *testing.T) {
+	var putReceived atomic.Bool
+	endpoint := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/cagnard-test/streamed.txt":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("read request body: %v", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if string(body) != "hello" {
+				t.Errorf("request body = %q", string(body))
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			putReceived.Store(true)
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodHead && r.URL.Path == "/cagnard-test/streamed.txt":
+			w.Header().Set("Content-Length", "5")
+			w.Header().Set("Content-Type", "text/plain")
+			w.Header().Set("ETag", `"test-etag"`)
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected request %s %s to %s", r.Method, r.URL.Path, endpoint)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	endpoint = server.URL
+
+	client, err := NewAwsS3ObjectClient(
+		S3ProviderSettings{Region: "us-east-1", Endpoint: &endpoint, PathStyleAccess: true},
+		S3AccountSettings{CredentialMode: "static", AccessKeyID: ptr("test-access"), SecretAccessKey: ptr("test-secret")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reader, writer := io.Pipe()
+	go func() {
+		_, _ = writer.Write([]byte("hello"))
+		_ = writer.Close()
+	}()
+
+	size := int64(5)
+	metadata, err := client.StreamPut("cagnard-test", "streamed.txt", reader, FileContentInfo{FileName: "streamed.txt", MIMEType: ptr("text/plain"), Size: &size}, ptr("text/plain"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !putReceived.Load() {
+		t.Fatal("expected streamed put request to reach test server")
+	}
+	if metadata.Size == nil || *metadata.Size != size {
+		t.Fatalf("metadata size = %#v", metadata.Size)
 	}
 }
 

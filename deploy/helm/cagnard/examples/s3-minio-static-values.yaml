@@ -55,6 +55,7 @@ backend:
               pathStyleAccess = "true"
               sslEnabled = "false"
               trustAllCertificates = "false"
+              requestChecksumCalculation = "when_required"
               maxBufferedObjectBytes = "67108864"
             }
           }

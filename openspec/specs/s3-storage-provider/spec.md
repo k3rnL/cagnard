@@ -33,6 +33,14 @@ Cagnard SHALL expose S3-compatible connection settings required by AWS S3 and co
 - **WHEN** an administrator configures SSL/TLS enablement or local-development SSL verification behavior
 - **THEN** Cagnard SHALL apply those settings to the S3-compatible provider client and document unsafe verification overrides as insecure
 
+#### Scenario: Configure request checksum behavior
+- **WHEN** an administrator uses a non-AWS or non-TLS S3-compatible endpoint with streamed uploads
+- **THEN** Cagnard SHALL allow request checksum calculation to be configured and SHALL default to a mode compatible with unseekable streamed request bodies
+
+#### Scenario: Stream unseekable request bodies
+- **WHEN** Cagnard streams an S3 upload from a provider-neutral reader
+- **THEN** Cagnard SHALL use request signing behavior that does not require pre-reading or seeking the full object body
+
 ### Requirement: S3 credential modes
 Cagnard SHALL support common S3 credential modes while keeping credential material out of browser-visible metadata and backend-local persistent state.
 

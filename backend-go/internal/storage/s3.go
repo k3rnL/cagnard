@@ -15,11 +15,13 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	awscfg "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	smithymiddleware "github.com/aws/smithy-go/middleware"
 	"github.com/k3rnl/cagnard/backend-go/internal/config"
 )
 
@@ -32,13 +34,14 @@ type S3StorageProvider struct {
 }
 
 type S3ProviderSettings struct {
-	Endpoint               *string
-	Region                 string
-	PathStyleAccess        bool
-	SSLEnabled             bool
-	TrustAllCertificates   bool
-	MaxBufferedObjectBytes int64
-	MaxListPages           int
+	Endpoint                   *string
+	Region                     string
+	PathStyleAccess            bool
+	SSLEnabled                 bool
+	TrustAllCertificates       bool
+	RequestChecksumCalculation aws.RequestChecksumCalculation
+	MaxBufferedObjectBytes     int64
+	MaxListPages               int
 }
 
 type S3AccountSettings struct {
@@ -826,14 +829,19 @@ func s3ProviderSettingsFromConfig(provider config.ProviderConfig) (S3ProviderSet
 	}
 	sslEnabled := boolSetting(provider.Settings, "sslEnabled", true)
 	endpoint := endpointWithScheme(provider.Settings["endpoint"], sslEnabled)
+	requestChecksumCalculation, err := requestChecksumCalculationSetting(provider.Settings)
+	if err != nil {
+		return S3ProviderSettings{}, fmt.Errorf("providers.%s.settings.requestChecksumCalculation %w", provider.ID, err)
+	}
 	return S3ProviderSettings{
-		Endpoint:               endpoint,
-		Region:                 region,
-		PathStyleAccess:        boolSetting(provider.Settings, "pathStyleAccess", false) || boolSetting(provider.Settings, "pathStyle", false),
-		SSLEnabled:             sslEnabled,
-		TrustAllCertificates:   boolSetting(provider.Settings, "trustAllCertificates", false) || boolSetting(provider.Settings, "insecureTrustAllCertificates", false),
-		MaxBufferedObjectBytes: positiveInt64Setting(provider.Settings, "maxBufferedObjectBytes", defaultMaxBufferedObjectBytes),
-		MaxListPages:           max(1, int(positiveInt64Setting(provider.Settings, "maxListPages", 1000))),
+		Endpoint:                   endpoint,
+		Region:                     region,
+		PathStyleAccess:            boolSetting(provider.Settings, "pathStyleAccess", false) || boolSetting(provider.Settings, "pathStyle", false),
+		SSLEnabled:                 sslEnabled,
+		TrustAllCertificates:       boolSetting(provider.Settings, "trustAllCertificates", false) || boolSetting(provider.Settings, "insecureTrustAllCertificates", false),
+		RequestChecksumCalculation: requestChecksumCalculation,
+		MaxBufferedObjectBytes:     positiveInt64Setting(provider.Settings, "maxBufferedObjectBytes", defaultMaxBufferedObjectBytes),
+		MaxListPages:               max(1, int(positiveInt64Setting(provider.Settings, "maxListPages", 1000))),
 	}, nil
 }
 
@@ -896,6 +904,22 @@ func boolSetting(settings map[string]string, key string, fallback bool) bool {
 	return parsed
 }
 
+func requestChecksumCalculationSetting(settings map[string]string) (aws.RequestChecksumCalculation, error) {
+	value := strings.ToLower(strings.TrimSpace(settings["requestChecksumCalculation"]))
+	value = strings.ReplaceAll(value, "-", "_")
+	if value == "" {
+		return aws.RequestChecksumCalculationWhenRequired, nil
+	}
+	switch value {
+	case "when_required", "required":
+		return aws.RequestChecksumCalculationWhenRequired, nil
+	case "when_supported", "supported":
+		return aws.RequestChecksumCalculationWhenSupported, nil
+	default:
+		return aws.RequestChecksumCalculationUnset, fmt.Errorf("must be 'when_required' or 'when_supported'")
+	}
+}
+
 func positiveInt64Setting(settings map[string]string, key string, fallback int64) int64 {
 	value := strings.TrimSpace(settings[key])
 	if value == "" {
@@ -936,8 +960,13 @@ func NewAwsS3ObjectClient(provider S3ProviderSettings, account S3AccountSettings
 	if err != nil {
 		return nil, safeS3Error(err)
 	}
+	requestChecksumCalculation := provider.RequestChecksumCalculation
+	if requestChecksumCalculation == aws.RequestChecksumCalculationUnset {
+		requestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+	}
 	client := s3.NewFromConfig(awsConfig, func(options *s3.Options) {
 		options.UsePathStyle = provider.PathStyleAccess
+		options.RequestChecksumCalculation = requestChecksumCalculation
 		if provider.Endpoint != nil {
 			options.BaseEndpoint = provider.Endpoint
 		}
@@ -1028,11 +1057,17 @@ func (c *AwsS3ObjectClient) StreamPut(bucket string, key string, input io.Reader
 	if info.Size != nil {
 		put.ContentLength = info.Size
 	}
-	_, err := c.client.PutObject(context.Background(), put)
+	_, err := c.client.PutObject(context.Background(), put, s3.WithAPIOptions(useUnsignedPayload))
 	if err != nil {
 		return S3ObjectMetadata{}, safeS3Error(err)
 	}
 	return c.Head(bucket, key)
+}
+
+func useUnsignedPayload(stack *smithymiddleware.Stack) error {
+	v4.RemoveContentSHA256HeaderMiddleware(stack)
+	v4.RemoveComputePayloadSHA256Middleware(stack)
+	return v4.AddUnsignedPayloadMiddleware(stack)
 }
 
 func (c *AwsS3ObjectClient) Copy(bucket string, sourceKey string, targetKey string) (S3ObjectMetadata, error) {

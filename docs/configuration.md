@@ -128,7 +128,10 @@ Provider settings:
 - `pathStyleAccess`: set `true` for providers that require path-style bucket addressing.
 - `sslEnabled`: controls the default scheme when `endpoint` omits `http://` or `https://`.
 - `trustAllCertificates`: local/insecure escape hatch for development endpoints with untrusted certificates.
+- `requestChecksumCalculation`: controls AWS SDK request checksum behavior for S3 writes. Defaults to `when_required` so streamed uploads work with non-TLS S3-compatible endpoints; set `when_supported` to restore the SDK's eager checksum behavior.
 - `maxBufferedObjectBytes`: upload/download and non-streaming backend-mediated transfer fallback limit, default `67108864` bytes. Streaming provider-neutral transfers can exceed this limit; providers without stream support are rejected before download when the source size is known.
+
+S3 streamed uploads use unsigned payload signing because the request body is an unseekable stream. Transport security and endpoint trust should therefore be handled by the configured endpoint, TLS settings, and deployment network.
 
 Account credential modes:
 
