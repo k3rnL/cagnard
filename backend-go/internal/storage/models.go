@@ -33,6 +33,28 @@ type StorageEntry struct {
 	ProviderSpecific map[string]string
 }
 
+type ListOptions struct {
+	PageSize      int
+	Cursor        *string
+	Query         string
+	SortKey       string
+	SortDirection string
+}
+
+type ListAccuracy struct {
+	Search string
+	Sort   string
+	Total  string
+}
+
+type ListPage struct {
+	Entries       []StorageEntry
+	NextCursor    *string
+	TotalCount    *int
+	FilteredCount *int
+	Accuracy      ListAccuracy
+}
+
 type RootTarget interface {
 	rootTarget()
 }
@@ -92,6 +114,7 @@ type StorageProvider interface {
 	Descriptor() ProviderDescriptor
 	Capabilities(root ResolvedStorageRoot) []CapabilityStatus
 	List(root ResolvedStorageRoot, path string) ([]StorageEntry, error)
+	ListPage(root ResolvedStorageRoot, path string, options ListOptions) (ListPage, error)
 	Stat(root ResolvedStorageRoot, path string) (StorageEntry, error)
 	Download(root ResolvedStorageRoot, path string) (FileContent, error)
 	Preview(root ResolvedStorageRoot, path string, maxBytes int64) (TextPreview, error)

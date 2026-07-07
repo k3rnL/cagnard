@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-07-07
+goal: Collect and implement focused user experience fixes for Cagnard's browser
+  UI while preserving the existing provider-neutral storage behavior.

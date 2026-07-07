@@ -146,6 +146,36 @@ func TestStorageRouteCompatibility(t *testing.T) {
 	}
 }
 
+func TestStorageEntriesPaginationSearchAndSort(t *testing.T) {
+	server, home, _ := newTransferTestServer(t)
+	writeTestFile(t, filepath.Join(home, "docs", "beta.txt"), []byte("bb"))
+	writeTestFile(t, filepath.Join(home, "docs", "alpha.md"), []byte("aaaa"))
+	writeTestFile(t, filepath.Join(home, "docs", "gamma.json"), []byte("{}"))
+
+	first := getJSON[EntryListResponse](t, server, "/api/storage/entries?tunnel=personal&rootId=home&path=docs&pageSize=2&sortKey=size&sortDirection=desc")
+	if len(first.Entries) != 2 || first.Entries[0].Name != "alpha.md" || first.Entries[1].Name != "beta.txt" {
+		t.Fatalf("unexpected first page: %#v", first)
+	}
+	if first.Page.NextPageRef == nil || !first.Page.HasMore || first.Page.FilteredCount == nil || *first.Page.FilteredCount != 3 {
+		t.Fatalf("unexpected page metadata: %#v", first.Page)
+	}
+
+	second := getJSON[EntryListResponse](t, server, "/api/storage/entries?tunnel=personal&rootId=home&path=docs&pageSize=2&sortKey=size&sortDirection=desc&pageRef="+*first.Page.NextPageRef)
+	if len(second.Entries) != 1 || second.Entries[0].Name != "gamma.json" || second.Page.HasMore {
+		t.Fatalf("unexpected second page: %#v", second)
+	}
+
+	filtered := getJSON[EntryListResponse](t, server, "/api/storage/entries?tunnel=personal&rootId=home&path=docs&query=json&pageSize=10")
+	if len(filtered.Entries) != 1 || filtered.Entries[0].Name != "gamma.json" || filtered.Page.FilteredCount == nil || *filtered.Page.FilteredCount != 1 {
+		t.Fatalf("unexpected filtered page: %#v", filtered)
+	}
+
+	errResponse := getAPIErrorWithStatus(t, server, "/api/storage/entries?tunnel=personal&rootId=home&path=docs&pageRef=bad", "", http.StatusBadRequest)
+	if errResponse.Code != "invalid_page_ref" {
+		t.Fatalf("unexpected invalid page ref error: %#v", errResponse)
+	}
+}
+
 func TestTransferRoutes(t *testing.T) {
 	server, home, global := newTransferTestServer(t)
 	writeTestFile(t, filepath.Join(home, "docs", "hello.txt"), []byte("hello"))

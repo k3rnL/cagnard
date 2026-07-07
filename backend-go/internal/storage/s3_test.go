@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -154,6 +155,50 @@ func TestS3StreamsReadAndWriteWithProgress(t *testing.T) {
 	}
 	if !fake.has("team/docs/target.bin") || writeProgress != 96 || entry.Metadata.Size == nil || *entry.Metadata.Size != 96 {
 		t.Fatalf("unexpected stream write: progress=%d entry=%#v keys=%#v", writeProgress, entry, fake.keys())
+	}
+}
+
+func TestS3ListPageUsesContinuationToken(t *testing.T) {
+	fake := newFakeS3ObjectClient(map[string]fakeS3Object{
+		"team/docs/a.txt": fakeObject("team/docs/a.txt", []byte("a"), ptr("text/plain")),
+		"team/docs/b.txt": fakeObject("team/docs/b.txt", []byte("b"), ptr("text/plain")),
+		"team/docs/c.txt": fakeObject("team/docs/c.txt", []byte("c"), ptr("text/plain")),
+	})
+	provider := testS3Provider(fake, defaultMaxBufferedObjectBytes)
+	root := s3Root("team/docs")
+
+	first, err := provider.ListPage(root, "", ListOptions{PageSize: 2, SortKey: "name", SortDirection: "asc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Entries) != 2 || first.Entries[0].Name != "a.txt" || first.Entries[1].Name != "b.txt" || first.NextCursor == nil {
+		t.Fatalf("unexpected first page: %#v", first)
+	}
+
+	second, err := provider.ListPage(root, "", ListOptions{PageSize: 2, Cursor: first.NextCursor, SortKey: "name", SortDirection: "asc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Entries) != 1 || second.Entries[0].Name != "c.txt" || second.NextCursor != nil {
+		t.Fatalf("unexpected second page: %#v", second)
+	}
+}
+
+func TestS3ListPageScansForSearchAndNonNativeSort(t *testing.T) {
+	fake := newFakeS3ObjectClient(map[string]fakeS3Object{
+		"team/docs/small.txt": fakeObject("team/docs/small.txt", []byte("a"), ptr("text/plain")),
+		"team/docs/large.txt": fakeObject("team/docs/large.txt", []byte("large"), ptr("text/plain")),
+		"team/docs/data.json": fakeObject("team/docs/data.json", []byte("{}"), ptr("application/json")),
+	})
+	provider := testS3Provider(fake, defaultMaxBufferedObjectBytes)
+	root := s3Root("team/docs")
+
+	page, err := provider.ListPage(root, "", ListOptions{PageSize: 2, Query: "json", SortKey: "size", SortDirection: "desc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Name != "data.json" || page.FilteredCount == nil || *page.FilteredCount != 1 {
+		t.Fatalf("unexpected filtered page: %#v", page)
 	}
 }
 
@@ -342,7 +387,7 @@ func newFakeS3ObjectClient(initial map[string]fakeS3Object) *fakeS3ObjectClient 
 	return &fakeS3ObjectClient{objects: objects}
 }
 
-func (f *fakeS3ObjectClient) List(bucket string, prefix string, delimiter string, continuationToken *string) (S3ListPage, error) {
+func (f *fakeS3ObjectClient) List(bucket string, prefix string, delimiter string, continuationToken *string, maxKeys int32) (S3ListPage, error) {
 	matching := make([]string, 0)
 	for key := range f.objects {
 		if strings.HasPrefix(key, prefix) {
@@ -366,7 +411,48 @@ func (f *fakeS3ObjectClient) List(bucket string, prefix string, delimiter string
 		prefixes = append(prefixes, value)
 	}
 	sort.Strings(prefixes)
-	return S3ListPage{Objects: objects, CommonPrefixes: prefixes}, nil
+	type listed struct {
+		key    string
+		object *S3ListedObject
+		prefix *string
+	}
+	combined := make([]listed, 0, len(objects)+len(prefixes))
+	for _, object := range objects {
+		value := object
+		combined = append(combined, listed{key: object.Key, object: &value})
+	}
+	for _, prefix := range prefixes {
+		value := prefix
+		combined = append(combined, listed{key: prefix, prefix: &value})
+	}
+	sort.SliceStable(combined, func(i, j int) bool { return combined[i].key < combined[j].key })
+	start := 0
+	if continuationToken != nil && *continuationToken != "" {
+		parsed, err := strconv.Atoi(*continuationToken)
+		if err == nil && parsed > 0 {
+			start = parsed
+		}
+	}
+	end := len(combined)
+	if maxKeys > 0 && start+int(maxKeys) < end {
+		end = start + int(maxKeys)
+	}
+	pageObjects := make([]S3ListedObject, 0)
+	pagePrefixes := make([]string, 0)
+	for _, item := range combined[start:end] {
+		if item.object != nil {
+			pageObjects = append(pageObjects, *item.object)
+		}
+		if item.prefix != nil {
+			pagePrefixes = append(pagePrefixes, *item.prefix)
+		}
+	}
+	var next *string
+	if end < len(combined) {
+		value := strconv.Itoa(end)
+		next = &value
+	}
+	return S3ListPage{Objects: pageObjects, CommonPrefixes: pagePrefixes, NextContinuationToken: next}, nil
 }
 
 func (f *fakeS3ObjectClient) Head(bucket string, key string) (S3ObjectMetadata, error) {

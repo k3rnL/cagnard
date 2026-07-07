@@ -6,6 +6,7 @@ import type {
   OperationResponse,
   PreviewResponse,
   SessionResponse,
+  StorageEntry,
   TransferRequest,
   ResolveTransferJobRequest,
   TransferJobListResponse,
@@ -18,6 +19,14 @@ interface ApiResponseBody {
   message?: string;
   code?: string;
   [key: string]: unknown;
+}
+
+export interface EntryListOptions {
+  pageSize?: number;
+  pageRef?: string;
+  query?: string;
+  sortKey?: string;
+  sortDirection?: string;
 }
 
 export class ApiRequestError extends Error {
@@ -64,8 +73,18 @@ async function parseOptionalJson(response: Response): Promise<ApiResponseBody | 
   }
 }
 
-function storageParams(tunnel: string, rootId: string, path = "", extra?: Record<string, string>) {
+function storageParams(tunnel: string, rootId: string, path = "", extra?: Record<string, string | undefined>) {
   return new URLSearchParams({ tunnel, rootId, path, ...(extra ?? {}) });
+}
+
+function entryListParams(tunnel: string, rootId: string, path = "", options: EntryListOptions = {}) {
+  const params = storageParams(tunnel, rootId, path);
+  if (options.pageSize !== undefined) params.set("pageSize", String(options.pageSize));
+  if (options.pageRef) params.set("pageRef", options.pageRef);
+  if (options.query?.trim()) params.set("query", options.query.trim());
+  if (options.sortKey) params.set("sortKey", options.sortKey);
+  if (options.sortDirection) params.set("sortDirection", options.sortDirection);
+  return params;
 }
 
 function operation<T extends Record<string, unknown>>(url: string, body: T) {
@@ -98,10 +117,12 @@ export const cagnardApi = {
     }),
   session: () => fetchJson<SessionResponse>("/api/session"),
   navigation: () => fetchJson<NavigationResponse>("/api/storage/navigation"),
-  entries: (tunnel: string, rootId: string, path = "") =>
+  entries: (tunnel: string, rootId: string, path = "", options?: EntryListOptions) =>
     fetchJson<EntryListResponse>(
-      `/api/storage/entries?${storageParams(tunnel, rootId, path)}`
+      `/api/storage/entries?${entryListParams(tunnel, rootId, path, options)}`
     ),
+  stat: (tunnel: string, rootId: string, path: string) =>
+    fetchJson<StorageEntry>(`/api/storage/stat?${storageParams(tunnel, rootId, path)}`),
   preview: (tunnel: string, rootId: string, path: string) =>
     fetchJson<PreviewResponse>(`/api/storage/preview?${storageParams(tunnel, rootId, path)}`),
   upload: (tunnel: string, rootId: string, path: string, file: File, overwrite = false) =>

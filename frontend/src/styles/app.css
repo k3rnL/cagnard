@@ -727,6 +727,11 @@ button {
   background: #e5eee9;
 }
 
+.breadcrumbs button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
 .breadcrumb-separator {
   color: #8d9995;
   flex: 0 0 auto;
@@ -822,12 +827,49 @@ button {
 .selection-status {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   min-height: 38px;
   color: #60706b;
   font-size: 0.9rem;
   white-space: nowrap;
+}
+
+.pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+}
+
+.pagination-controls .page-number {
+  color: #263230;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.page-size-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  border: 1px solid #cbd5cf;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #60706b;
+  font-size: 0.82rem;
+  padding: 0 7px;
+}
+
+.page-size-control select {
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: #263230;
+  font: inherit;
+  font-weight: 650;
+  outline: 0;
 }
 
 .metadata-toggle {

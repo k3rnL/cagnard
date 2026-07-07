@@ -117,6 +117,25 @@ type EntryListResponse struct {
 	Root    NavigationRoot `json:"root"`
 	Path    string         `json:"path"`
 	Entries []StorageEntry `json:"entries"`
+	Page    EntryListPage  `json:"page"`
+}
+
+type EntryListPage struct {
+	PageSize      int               `json:"pageSize"`
+	NextPageRef   *string           `json:"nextPageRef"`
+	TotalCount    *int              `json:"totalCount"`
+	FilteredCount *int              `json:"filteredCount"`
+	HasMore       bool              `json:"hasMore"`
+	Query         string            `json:"query"`
+	SortKey       string            `json:"sortKey"`
+	SortDirection string            `json:"sortDirection"`
+	Accuracy      EntryListAccuracy `json:"accuracy"`
+}
+
+type EntryListAccuracy struct {
+	Search string `json:"search"`
+	Sort   string `json:"sort"`
+	Total  string `json:"total"`
 }
 
 type OperationResponse struct {

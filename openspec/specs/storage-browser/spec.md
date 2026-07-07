@@ -57,7 +57,7 @@ Cagnard SHALL allow the user to select one or more file or directory entries and
 - **THEN** Cagnard SHALL show a multi-selection summary and enable only actions valid for that selection
 
 ### Requirement: Breadcrumb navigation
-Cagnard SHALL show breadcrumb navigation for the current path and allow returning to any ancestor path in the active storage root.
+Cagnard SHALL show breadcrumb navigation for the current directory or opened file, allow returning to any ancestor path in the active storage root, and provide a copyable user-visible path for the current location.
 
 #### Scenario: Navigate to ancestor
 - **WHEN** the user activates a breadcrumb ancestor
@@ -70,6 +70,49 @@ Cagnard SHALL show breadcrumb navigation for the current path and allow returnin
 #### Scenario: Label root breadcrumb
 - **WHEN** the active storage root has a display label or nice name
 - **THEN** Cagnard SHALL use that label for the root breadcrumb instead of a generic root label
+
+#### Scenario: Show opened file in breadcrumb
+- **WHEN** the user opens a file in the page-level opener
+- **THEN** Cagnard SHALL show the opened file name as the final current breadcrumb segment after its containing directory path
+
+#### Scenario: Keep opened file crumb non-directory
+- **WHEN** the opened file breadcrumb segment is current
+- **THEN** Cagnard SHALL NOT treat that segment as a directory navigation target
+
+#### Scenario: Reveal copy path action
+- **WHEN** the user hovers or focuses the breadcrumb area
+- **THEN** Cagnard SHALL reveal a copy-path action at the end of the breadcrumb trail without shifting breadcrumb layout
+
+#### Scenario: Copy current readable path
+- **WHEN** the user activates the breadcrumb copy-path action while browsing a directory or viewing a page-level opened file
+- **THEN** Cagnard SHALL copy the current full user-visible path to the browser clipboard using the displayed storage root name and real path segment names
+
+#### Scenario: Report clipboard failure
+- **WHEN** browser clipboard access fails
+- **THEN** Cagnard SHALL notify the user without changing the current browser selection or location
+
+### Requirement: Native browser history navigation
+Cagnard SHALL integrate storage-browser navigation with native browser Back and Forward controls.
+
+#### Scenario: Navigate back through directories
+- **WHEN** the user navigates across storage roots or directories and then activates the browser Back button
+- **THEN** Cagnard SHALL restore the previous accessible storage root and path instead of leaving the UI unchanged
+
+#### Scenario: Navigate forward after back
+- **WHEN** the user has gone back through Cagnard navigation history and then activates the browser Forward button
+- **THEN** Cagnard SHALL restore the next accessible storage root and path
+
+#### Scenario: Restore opened file view
+- **WHEN** browser history points to a page-level opened file view
+- **THEN** Cagnard SHALL restore the containing storage location and open that file when it remains accessible
+
+#### Scenario: Fallback from inaccessible history target
+- **WHEN** a browser history entry references a root, directory, or opened file that the current user cannot access
+- **THEN** Cagnard SHALL route to an accessible fallback location and show a non-blocking error
+
+#### Scenario: Avoid duplicate history entries
+- **WHEN** Cagnard restores state from the URL or from a native browser history event
+- **THEN** it SHALL NOT immediately push duplicate history entries for the restored state
 
 ### Requirement: Capability-driven browser actions
 Cagnard SHALL enable search, open, download, upload, create file, create folder, rename, add-to-pasteboard, paste-copy, paste-move, and delete actions only when the selected provider, account, storage entry, active destination, and registered UI capabilities expose the required capabilities.
@@ -144,15 +187,61 @@ Cagnard SHALL support search through provider-native search when available and t
 - **THEN** Cagnard SHALL restrict search to an available fallback scope and identify that limitation to the user
 
 ### Requirement: Current-directory filtering and sorting
-Cagnard SHALL allow the user to filter and sort the entries currently loaded for the active directory without changing the active storage root or path.
+Cagnard SHALL allow the user to search and sort the active directory through backend listing options without changing the active storage root or path.
 
 #### Scenario: Filter current directory
 - **WHEN** the user enters a current-directory search term
-- **THEN** Cagnard SHALL restrict the displayed entries to matching loaded entries and show the filtered count
+- **THEN** Cagnard SHALL ask the backend for a filtered listing page and show the filtered result count when it is known
 
 #### Scenario: Sort by metadata column
 - **WHEN** the user sorts by name, type, size, modified time, MIME type, or file category
-- **THEN** Cagnard SHALL reorder the current listing by that column while preserving selection semantics
+- **THEN** Cagnard SHALL ask the backend for a listing page ordered by that column while preserving page-scoped selection semantics
+
+### Requirement: Paginated file browsing
+Cagnard SHALL browse the active directory through backend-provided pages rather than requiring the frontend to load every entry in that directory.
+
+#### Scenario: Load first page
+- **WHEN** the user opens a storage root or directory
+- **THEN** Cagnard SHALL request the first backend page for that location and render only the entries returned for that page
+
+#### Scenario: Navigate to next page
+- **WHEN** the backend reports that another page is available
+- **THEN** the browser SHALL allow the user to load the next page using the opaque page reference returned by the backend
+
+#### Scenario: Navigate to previous page
+- **WHEN** the user has already navigated forward through paginated results
+- **THEN** the browser SHALL allow returning to previously visited pages without requiring provider-native backward pagination
+
+#### Scenario: Unknown total count
+- **WHEN** the provider cannot return an exact total count cheaply
+- **THEN** the browser SHALL display the current page range and indicate that the total is unknown rather than showing a misleading zero or complete count
+
+#### Scenario: Page-scoped selection
+- **WHEN** the user selects all visible entries in a paginated directory
+- **THEN** Cagnard SHALL select the entries on the current page only unless a future explicit cross-page selection mode is implemented
+
+### Requirement: Backend-driven current-directory search and sorting
+Cagnard SHALL apply current-directory search and sorting on the backend before page slicing so results describe the full current directory scope.
+
+#### Scenario: Search full current directory
+- **WHEN** the user enters a current-directory search term
+- **THEN** the backend SHALL apply the search to the current directory scope before returning the first page of matching entries
+
+#### Scenario: Sort full current directory
+- **WHEN** the user sorts by name, kind, type, size, modified time, MIME type, or file category
+- **THEN** the backend SHALL apply the requested sort to the current directory scope before returning the requested page
+
+#### Scenario: Reset page on search or sort change
+- **WHEN** the user changes the search term, sort key, sort direction, page size, active root, or active path
+- **THEN** the browser SHALL discard current page references, clear page-scoped selection, and request the first page for the new criteria
+
+#### Scenario: Avoid page-only transforms
+- **WHEN** only one page of a larger result set is loaded
+- **THEN** Cagnard SHALL NOT sort or filter only that loaded page and present it as a full-directory result
+
+#### Scenario: Report unsupported or degraded criteria
+- **WHEN** a provider cannot complete the requested search or sort exactly within configured limits
+- **THEN** Cagnard SHALL show a safe error or explicit degraded-state message instead of silently returning partial results
 
 ### Requirement: File open behavior
 Cagnard SHALL open supported files and objects through an explicit user action based on normalized metadata, content type, file category, size limits, storage capabilities, and registered file opener plugins.

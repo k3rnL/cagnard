@@ -102,6 +102,25 @@ export interface EntryListResponse {
   root: NavigationRoot;
   path: string;
   entries: StorageEntry[];
+  page: EntryListPage;
+}
+
+export interface EntryListPage {
+  pageSize: number;
+  nextPageRef?: string | null;
+  totalCount?: number | null;
+  filteredCount?: number | null;
+  hasMore: boolean;
+  query: string;
+  sortKey: string;
+  sortDirection: string;
+  accuracy: EntryListAccuracy;
+}
+
+export interface EntryListAccuracy {
+  search: string;
+  sort: string;
+  total: string;
 }
 
 export interface OperationResponse {

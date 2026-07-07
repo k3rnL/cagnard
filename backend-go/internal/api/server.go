@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -15,6 +16,8 @@ import (
 )
 
 const previewMaxBytes = 256 * 1024
+const defaultEntryPageSize = 100
+const maxEntryPageSize = 500
 
 type Server struct {
 	cfg                  *config.CagnardConfig
@@ -167,13 +170,23 @@ func (s *Server) listEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := queryValue(r, "path")
-	entries, err := provider.List(root, path)
+	listOptions, err := s.listOptionsForRequest(r, root, path)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, APIError{Code: "invalid_page_ref", Message: err.Error()})
+		return
+	}
+	page, err := provider.ListPage(root, path, listOptions)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, APIError{Code: "storage_list_failed", Message: err.Error()})
+		return
+	}
+	pageMetadata, err := s.entryListPageMetadata(r, root, path, listOptions, page)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, APIError{Code: "storage_list_failed", Message: err.Error()})
 		return
 	}
 	capabilities, _ := s.registry.NavigationRoot(root)
-	writeJSON(w, http.StatusOK, EntryListResponse{Root: navigationRoot(root, capabilities), Path: path, Entries: storageEntries(entries)})
+	writeJSON(w, http.StatusOK, EntryListResponse{Root: navigationRoot(root, capabilities), Path: path, Entries: storageEntries(page.Entries), Page: pageMetadata})
 }
 
 func (s *Server) statEntry(w http.ResponseWriter, r *http.Request) {
@@ -511,6 +524,77 @@ func queryValue(r *http.Request, key string) string {
 func queryBool(r *http.Request, key string) bool {
 	value := strings.TrimSpace(r.URL.Query().Get(key))
 	return value == "true" || value == "1" || value == "yes"
+}
+
+func (s *Server) listOptionsForRequest(r *http.Request, root storage.ResolvedStorageRoot, path string) (storage.ListOptions, error) {
+	pageSize := defaultEntryPageSize
+	if value := strings.TrimSpace(queryValue(r, "pageSize")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed <= 0 {
+			return storage.ListOptions{}, fmt.Errorf("Page size must be a positive number")
+		}
+		pageSize = parsed
+	}
+	if pageSize > maxEntryPageSize {
+		pageSize = maxEntryPageSize
+	}
+	query := strings.TrimSpace(queryValue(r, "query"))
+	sortKey := strings.TrimSpace(queryValue(r, "sortKey"))
+	if sortKey == "" {
+		sortKey = storage.DefaultListSortKey
+	}
+	sortDirection := strings.TrimSpace(queryValue(r, "sortDirection"))
+	if sortDirection == "" {
+		sortDirection = storage.DefaultListSortDirection
+	}
+	options := storage.ListOptions{PageSize: pageSize, Query: query, SortKey: sortKey, SortDirection: sortDirection}
+	if pageRef := strings.TrimSpace(queryValue(r, "pageRef")); pageRef != "" {
+		ref, err := s.decodePageRef(pageRef)
+		if err != nil {
+			return storage.ListOptions{}, err
+		}
+		if err := ref.validate(root, path, query, sortKey, sortDirection, pageSize); err != nil {
+			return storage.ListOptions{}, err
+		}
+		options.Cursor = ref.Cursor
+	}
+	return options, nil
+}
+
+func (s *Server) entryListPageMetadata(r *http.Request, root storage.ResolvedStorageRoot, path string, options storage.ListOptions, page storage.ListPage) (EntryListPage, error) {
+	var nextRef *string
+	if page.NextCursor != nil && *page.NextCursor != "" {
+		value, err := s.encodePageRef(entryPageRef{
+			Version:       1,
+			Tunnel:        root.Tunnel,
+			RootID:        root.ID,
+			Path:          path,
+			Query:         options.Query,
+			SortKey:       options.SortKey,
+			SortDirection: options.SortDirection,
+			PageSize:      options.PageSize,
+			Cursor:        page.NextCursor,
+		})
+		if err != nil {
+			return EntryListPage{}, err
+		}
+		nextRef = &value
+	}
+	return EntryListPage{
+		PageSize:      options.PageSize,
+		NextPageRef:   nextRef,
+		TotalCount:    page.TotalCount,
+		FilteredCount: page.FilteredCount,
+		HasMore:       nextRef != nil,
+		Query:         options.Query,
+		SortKey:       options.SortKey,
+		SortDirection: options.SortDirection,
+		Accuracy:      entryListAccuracy(page.Accuracy),
+	}, nil
+}
+
+func entryListAccuracy(accuracy storage.ListAccuracy) EntryListAccuracy {
+	return EntryListAccuracy{Search: accuracy.Search, Sort: accuracy.Sort, Total: accuracy.Total}
 }
 
 func operationError(err error) APIError {

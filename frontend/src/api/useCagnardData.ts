@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { cagnardApi, isUnauthorizedError } from "./client";
+import { ApiRequestError, cagnardApi, isUnauthorizedError } from "./client";
 import type {
   AuthProviderMetadata,
   EntryListResponse,
@@ -13,7 +13,6 @@ import type {
   TransferJobResponse,
   UiPluginManifest
 } from "./types";
-import { classifyEntry } from "../plugins/fileTypeCatalog";
 import { canWriteBack, openerBlockedReason, resolveFileOpener } from "../plugins/fileOpeners";
 import type { FileOpenerMatch, OpenerView } from "../plugins/fileOpeners";
 
@@ -35,6 +34,34 @@ export interface OpenedFileState {
   viewMode: OpenedFileViewMode;
   dirty: boolean;
 }
+
+export interface EntryPageState {
+  pageSize: number;
+  currentPage: number;
+  hasMore: boolean;
+  canGoPrevious: boolean;
+  canGoNext: boolean;
+  totalCount?: number | null;
+  filteredCount?: number | null;
+  searchAccuracy: string;
+  sortAccuracy: string;
+  totalAccuracy: string;
+}
+
+export interface BreadcrumbItem {
+  label: string;
+  path: string;
+  navigable: boolean;
+  kind: "directory" | "file";
+}
+
+interface RequestedStorageLocation {
+  root: NavigationRoot;
+  path: string;
+  openedFilePath?: string;
+}
+
+type LocationHistoryMode = "replace" | "push" | "none";
 
 export type BrowserModalResult = string | boolean | ConflictModalResult | undefined;
 
@@ -112,9 +139,12 @@ export interface CagnardDataState {
   navigation?: NavigationResponse;
   selectedRoot?: NavigationRoot;
   currentPath: string;
-  breadcrumbs: Array<{ label: string; path: string }>;
+  breadcrumbs: BreadcrumbItem[];
   entries: StorageEntry[];
   totalEntryCount: number;
+  filteredEntryCount: number;
+  entryPage: EntryPageState;
+  entryPageSize: number;
   filterQuery: string;
   sortField: EntrySortField;
   sortDirection: EntrySortDirection;
@@ -142,6 +172,9 @@ export interface CagnardDataState {
   clearSelection: () => void;
   setFilterQuery: (query: string) => void;
   setSort: (field: EntrySortField) => void;
+  setEntryPageSize: (size: number) => void;
+  goToNextEntryPage: () => void;
+  goToPreviousEntryPage: () => void;
   openEntry: (entry: StorageEntry) => Promise<void>;
   openInlineEntry: (entry: StorageEntry) => Promise<void>;
   openSelected: () => Promise<void>;
@@ -185,11 +218,18 @@ export function useCagnardData(): CagnardDataState {
   const [filterQuery, setFilterQueryState] = useState("");
   const [sortField, setSortField] = useState<EntrySortField>("name");
   const [sortDirection, setSortDirection] = useState<EntrySortDirection>("asc");
+  const [entryPageSize, setEntryPageSizeState] = useState(100);
+  const [entryPageNavigation, setEntryPageNavigation] = useState<{
+    criteriaKey: string;
+    currentPageRef?: string;
+    history: Array<string | undefined>;
+  }>({ criteriaKey: "", history: [] });
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
   const [activeEntryId, setActiveEntryId] = useState<string>();
   const [lastSelectedEntryId, setLastSelectedEntryId] = useState<string>();
   const [uiPlugins, setUiPlugins] = useState<UiPluginManifest[]>([]);
   const [openedFile, setOpenedFile] = useState<OpenedFileState>();
+  const [restoreOpenedFilePath, setRestoreOpenedFilePath] = useState<string>();
   const [modal, setModal] = useState<BrowserModalState>();
   const [pasteboardItems, setPasteboardItems] = useState<PasteboardItem[]>([]);
   const [pasteboardBusy, setPasteboardBusy] = useState(false);
@@ -209,6 +249,7 @@ export function useCagnardData(): CagnardDataState {
   const transferJobsRef = useRef<TransferJobResponse[]>([]);
   const transferPollingStartedAt = useRef<number>();
   const urlRestoredRef = useRef(false);
+  const locationHistoryModeRef = useRef<LocationHistoryMode>("replace");
 
   const pasteboardSelectedCount = useMemo(
     () => pasteboardItems.filter((item) => item.selected).length,
@@ -220,21 +261,43 @@ export function useCagnardData(): CagnardDataState {
   );
 
   const sourceEntries = useMemo(() => entryResponse?.entries ?? [], [entryResponse]);
-  const normalizedFilter = filterQuery.trim().toLowerCase();
-  const filteredEntries = useMemo(() => {
-    if (!normalizedFilter) return sourceEntries;
-    const terms = normalizedFilter.split(/\s+/).filter(Boolean);
-    return sourceEntries.filter((entry) => {
-      const haystack = entrySearchHaystack(entry);
-      return terms.every((term) => haystack.includes(term));
-    });
-  }, [normalizedFilter, sourceEntries]);
-  const entries = useMemo(
-    () => sortEntries(filteredEntries, sortField, sortDirection),
-    [filteredEntries, sortDirection, sortField]
+  const debouncedFilterQuery = useDebouncedValue(filterQuery, 250);
+  const entries = sourceEntries;
+  const listingCriteriaKey = useMemo(
+    () => [
+      selectedRoot?.tunnel ?? "",
+      selectedRoot?.id ?? "",
+      currentPath,
+      debouncedFilterQuery.trim(),
+      sortField,
+      sortDirection,
+      entryPageSize
+    ].join("\u0000"),
+    [currentPath, debouncedFilterQuery, entryPageSize, selectedRoot?.id, selectedRoot?.tunnel, sortDirection, sortField]
   );
+  const activePageNavigation = useMemo(
+    () => entryPageNavigation.criteriaKey === listingCriteriaKey
+      ? entryPageNavigation
+      : { criteriaKey: listingCriteriaKey, history: [] as Array<string | undefined> },
+    [entryPageNavigation, listingCriteriaKey]
+  );
+  const entryPageMetadata = entryResponse?.page;
+  const totalEntryCount = entryPageMetadata?.totalCount ?? sourceEntries.length;
+  const filteredEntryCount = entryPageMetadata?.filteredCount ?? entryPageMetadata?.totalCount ?? sourceEntries.length;
+  const entryPage: EntryPageState = {
+    pageSize: entryPageMetadata?.pageSize ?? entryPageSize,
+    currentPage: activePageNavigation.history.length + 1,
+    hasMore: Boolean(entryPageMetadata?.hasMore),
+    canGoPrevious: activePageNavigation.history.length > 0,
+    canGoNext: Boolean(entryPageMetadata?.nextPageRef),
+    totalCount: entryPageMetadata?.totalCount,
+    filteredCount: entryPageMetadata?.filteredCount,
+    searchAccuracy: entryPageMetadata?.accuracy.search ?? "unknown",
+    sortAccuracy: entryPageMetadata?.accuracy.sort ?? "unknown",
+    totalAccuracy: entryPageMetadata?.accuracy.total ?? "unknown"
+  };
   const filteredEntryIds = useMemo(() => new Set(entries.map((entry) => entry.id)), [entries]);
-  const entriesById = useMemo(() => new Map(sourceEntries.map((entry) => [entry.id, entry])), [sourceEntries]);
+  const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
   const selectedEntries = useMemo(
     () => selectedEntryIds.flatMap((id) => entriesById.get(id) ?? []),
     [entriesById, selectedEntryIds]
@@ -243,8 +306,6 @@ export function useCagnardData(): CagnardDataState {
     if (activeEntryId) return entriesById.get(activeEntryId) ?? selectedEntries[0];
     return selectedEntries[0];
   }, [activeEntryId, entriesById, selectedEntries]);
-  const effectivePath = entryResponse?.path ?? currentPath;
-
   useEffect(() => {
     pasteboardItemsRef.current = pasteboardItems;
   }, [pasteboardItems]);
@@ -288,8 +349,10 @@ export function useCagnardData(): CagnardDataState {
     setSelectedRoot(undefined);
     setCurrentPath("");
     setEntryResponse(undefined);
+    setEntryPageNavigation({ criteriaKey: "", history: [] });
     setUiPlugins([]);
     setOpenedFile(undefined);
+    setRestoreOpenedFilePath(undefined);
     modalResolver.current?.(undefined);
     modalResolver.current = undefined;
     setModal(undefined);
@@ -307,6 +370,25 @@ export function useCagnardData(): CagnardDataState {
       return true;
     },
     [resetAuthenticatedState]
+  );
+
+  const queueLocationHistoryPush = useCallback(() => {
+    locationHistoryModeRef.current = "push";
+  }, []);
+
+  const applyStorageLocation = useCallback(
+    (location: RequestedStorageLocation, historyMode: LocationHistoryMode = "none") => {
+      locationHistoryModeRef.current = historyMode;
+      setSelectedRoot(location.root);
+      setCurrentPath(location.path);
+      setFilterQueryState("");
+      setEntryPageNavigation({ criteriaKey: "", history: [] });
+      setOperationMessage(undefined);
+      setOpenedFile(undefined);
+      setRestoreOpenedFilePath(location.openedFilePath);
+      clearSelection();
+    },
+    [clearSelection]
   );
 
   const refreshTransferJobs = useCallback(async () => {
@@ -406,17 +488,42 @@ export function useCagnardData(): CagnardDataState {
       return;
     }
 
-    setSelectedRoot(requestedLocation.root);
-    setCurrentPath(requestedLocation.path);
-    setFilterQueryState("");
-    setOpenedFile(undefined);
-    clearSelection();
-  }, [clearSelection, navigation, session]);
+    applyStorageLocation(requestedLocation, "replace");
+  }, [applyStorageLocation, navigation, session]);
 
   useEffect(() => {
     if (!session || !selectedRoot || !urlRestoredRef.current) return;
-    replaceStorageLocationURL(selectedRoot, effectivePath);
-  }, [effectivePath, selectedRoot, session]);
+    const openedFilePath = openedFile?.placement === "page" ? openedFile.entry.path : restoreOpenedFilePath;
+    const mode = locationHistoryModeRef.current;
+    locationHistoryModeRef.current = "replace";
+    if (mode === "none") return;
+    writeStorageLocationURL(selectedRoot, currentPath, openedFilePath, mode);
+  }, [currentPath, openedFile?.entry.path, openedFile?.placement, restoreOpenedFilePath, selectedRoot, session]);
+
+  useEffect(() => {
+    if (!session || !navigation || !urlRestoredRef.current) return;
+
+    const handlePopState = () => {
+      const requestedLocation = requestedStorageLocation(navigation);
+      const fallback = firstRoot(navigation);
+
+      if (!requestedLocation) {
+        if (fallback) applyStorageLocation({ root: fallback, path: "" }, "none");
+        return;
+      }
+
+      if ("error" in requestedLocation) {
+        setError(requestedLocation.error);
+        if (fallback) applyStorageLocation({ root: fallback, path: "" }, "none");
+        return;
+      }
+
+      applyStorageLocation(requestedLocation, "none");
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [applyStorageLocation, navigation, session]);
 
   useEffect(() => {
     if (!session?.user.id || typeof BroadcastChannel === "undefined") return;
@@ -463,9 +570,16 @@ export function useCagnardData(): CagnardDataState {
     if (!session || !selectedRoot) return;
     let active = true;
     setLoading(true);
+    const currentPageRef = activePageNavigation.currentPageRef;
 
     cagnardApi
-      .entries(selectedRoot.tunnel, selectedRoot.id, currentPath)
+      .entries(selectedRoot.tunnel, selectedRoot.id, currentPath, {
+        pageSize: entryPageSize,
+        pageRef: currentPageRef,
+        query: debouncedFilterQuery,
+        sortKey: sortField,
+        sortDirection
+      })
       .then((nextEntries) => {
         if (!active) return;
         setEntryResponse(nextEntries);
@@ -474,7 +588,13 @@ export function useCagnardData(): CagnardDataState {
       })
       .catch((caught: Error) => {
         if (!active) return;
-        if (!handleUnauthorized(caught)) setError(caught.message);
+        if (handleUnauthorized(caught)) return;
+        if (caught instanceof ApiRequestError && caught.code === "invalid_page_ref" && currentPageRef) {
+          setEntryPageNavigation({ criteriaKey: listingCriteriaKey, history: [] });
+          setError("The page reference expired. Showing the first page again.");
+          return;
+        }
+        setError(caught.message);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -483,7 +603,20 @@ export function useCagnardData(): CagnardDataState {
     return () => {
       active = false;
     };
-  }, [clearSelection, currentPath, handleUnauthorized, selectedRoot, session, refreshTick]);
+  }, [
+    activePageNavigation.currentPageRef,
+    clearSelection,
+    currentPath,
+    debouncedFilterQuery,
+    entryPageSize,
+    handleUnauthorized,
+    listingCriteriaKey,
+    selectedRoot,
+    session,
+    refreshTick,
+    sortDirection,
+    sortField
+  ]);
 
   useEffect(() => {
     setSelectedEntryIds((ids) => {
@@ -501,15 +634,18 @@ export function useCagnardData(): CagnardDataState {
   }, [openedFile?.blobUrl]);
 
   const selectRoot = useCallback((root: NavigationRoot) => {
+    queueLocationHistoryPush();
     setSelectedRoot(root);
     setCurrentPath("");
     setFilterQueryState("");
+    setEntryPageNavigation({ criteriaKey: "", history: [] });
     setOperationMessage(undefined);
     setOpenedFile(undefined);
+    setRestoreOpenedFilePath(undefined);
     setSelectedEntryIds([]);
     setActiveEntryId(undefined);
     setLastSelectedEntryId(undefined);
-  }, []);
+  }, [queueLocationHistoryPush]);
 
   const selectEntry = useCallback(
     (entry: StorageEntry, mode: EntrySelectionMode = "replace") => {
@@ -547,6 +683,34 @@ export function useCagnardData(): CagnardDataState {
     });
   }, []);
 
+  const setEntryPageSize = useCallback((size: number) => {
+    const normalized = [25, 50, 100, 250, 500].includes(size) ? size : 100;
+    setEntryPageSizeState(normalized);
+    setEntryPageNavigation({ criteriaKey: "", history: [] });
+    setOperationMessage(undefined);
+  }, []);
+
+  const goToNextEntryPage = useCallback(() => {
+    const nextPageRef = entryResponse?.page.nextPageRef;
+    if (!nextPageRef) return;
+    setEntryPageNavigation({
+      criteriaKey: listingCriteriaKey,
+      currentPageRef: nextPageRef,
+      history: [...activePageNavigation.history, activePageNavigation.currentPageRef]
+    });
+    setOperationMessage(undefined);
+  }, [activePageNavigation.currentPageRef, activePageNavigation.history, entryResponse?.page.nextPageRef, listingCriteriaKey]);
+
+  const goToPreviousEntryPage = useCallback(() => {
+    if (activePageNavigation.history.length === 0) return;
+    setEntryPageNavigation({
+      criteriaKey: listingCriteriaKey,
+      currentPageRef: activePageNavigation.history[activePageNavigation.history.length - 1],
+      history: activePageNavigation.history.slice(0, -1)
+    });
+    setOperationMessage(undefined);
+  }, [activePageNavigation.history, listingCriteriaKey]);
+
   const requireRoot = useCallback(() => {
     if (!selectedRoot) throw new Error("No storage root selected");
     return selectedRoot;
@@ -563,8 +727,14 @@ export function useCagnardData(): CagnardDataState {
   }, [selectedEntries]);
 
   const openFile = useCallback(
-    async (entry: StorageEntry, placement: OpenedFilePlacement) => {
-      const root = requireRoot();
+    async (
+      entry: StorageEntry,
+      placement: OpenedFilePlacement,
+      options: { history?: LocationHistoryMode; root?: NavigationRoot } = {}
+    ) => {
+      const root = options.root ?? requireRoot();
+      if (placement === "page" && options.history !== "none") queueLocationHistoryPush();
+      setRestoreOpenedFilePath(undefined);
       const match = resolveFileOpener(entry, uiPlugins);
       if (!match) {
         setOpenedFile({
@@ -620,13 +790,44 @@ export function useCagnardData(): CagnardDataState {
         });
       }
     },
-    [handleUnauthorized, requireRoot, uiPlugins]
+    [handleUnauthorized, queueLocationHistoryPush, requireRoot, uiPlugins]
   );
+
+  useEffect(() => {
+    if (!session || !selectedRoot || !restoreOpenedFilePath) return;
+    let active = true;
+    const filePath = restoreOpenedFilePath;
+
+    cagnardApi
+      .stat(selectedRoot.tunnel, selectedRoot.id, filePath)
+      .then(async (entry) => {
+        if (!active) return;
+        if (entry.kind === "directory") {
+          setError("The URL points to a directory where a file view was expected.");
+          return;
+        }
+        await openFile(entry, "page", { history: "none", root: selectedRoot });
+      })
+      .catch((caught: Error) => {
+        if (!active) return;
+        if (!handleUnauthorized(caught)) setError(caught.message);
+      })
+      .finally(() => {
+        if (!active) return;
+        setRestoreOpenedFilePath((current) => (current === filePath ? undefined : current));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [handleUnauthorized, openFile, restoreOpenedFilePath, selectedRoot, session]);
 
   const openEntry = useCallback(
     async (entry: StorageEntry) => {
       if (entry.kind === "directory") {
+        queueLocationHistoryPush();
         setOpenedFile(undefined);
+        setRestoreOpenedFilePath(undefined);
         setCurrentPath(entry.path);
         setFilterQueryState("");
         return;
@@ -634,13 +835,15 @@ export function useCagnardData(): CagnardDataState {
 
       await openFile(entry, "page");
     },
-    [openFile]
+    [openFile, queueLocationHistoryPush]
   );
 
   const openInlineEntry = useCallback(
     async (entry: StorageEntry) => {
       if (entry.kind === "directory") {
+        queueLocationHistoryPush();
         setOpenedFile(undefined);
+        setRestoreOpenedFilePath(undefined);
         setCurrentPath(entry.path);
         setFilterQueryState("");
         return;
@@ -648,7 +851,7 @@ export function useCagnardData(): CagnardDataState {
 
       await openFile(entry, "inline");
     },
-    [openFile]
+    [openFile, queueLocationHistoryPush]
   );
 
   const openSelected = useCallback(async () => {
@@ -657,8 +860,10 @@ export function useCagnardData(): CagnardDataState {
   }, [openEntry, requireSingleSelected]);
 
   const closeOpenedFile = useCallback(() => {
+    queueLocationHistoryPush();
     setOpenedFile(undefined);
-  }, []);
+    setRestoreOpenedFilePath(undefined);
+  }, [queueLocationHistoryPush]);
 
   const setOpenedFileViewMode = useCallback((mode: OpenedFileViewMode) => {
     setOpenedFile((current) => (current ? { ...current, viewMode: mode } : current));
@@ -718,27 +923,33 @@ export function useCagnardData(): CagnardDataState {
 
   const openDirectory = useCallback((entry: StorageEntry) => {
     if (entry.kind === "directory") {
+      queueLocationHistoryPush();
       setOpenedFile(undefined);
+      setRestoreOpenedFilePath(undefined);
       setCurrentPath(entry.path);
       setFilterQueryState("");
     }
-  }, []);
+  }, [queueLocationHistoryPush]);
 
   const navigateToPath = useCallback((path: string) => {
+    queueLocationHistoryPush();
     setOpenedFile(undefined);
+    setRestoreOpenedFilePath(undefined);
     setCurrentPath(path);
     setFilterQueryState("");
-  }, []);
+  }, [queueLocationHistoryPush]);
 
   const goUp = useCallback(() => {
+    queueLocationHistoryPush();
     setOpenedFile(undefined);
+    setRestoreOpenedFilePath(undefined);
     setCurrentPath((path) => {
       if (!path) return "";
       const parts = path.split("/").filter(Boolean);
       return parts.slice(0, -1).join("/");
     });
     setFilterQueryState("");
-  }, []);
+  }, [queueLocationHistoryPush]);
 
   const refresh = useCallback(() => setRefreshTick((value) => value + 1), []);
 
@@ -1080,10 +1291,13 @@ export function useCagnardData(): CagnardDataState {
       authenticated: Boolean(session),
       navigation,
       selectedRoot,
-      currentPath: effectivePath,
-      breadcrumbs: breadcrumbs(effectivePath),
+      currentPath,
+      breadcrumbs: breadcrumbs(currentPath, openedFile),
       entries,
-      totalEntryCount: sourceEntries.length,
+      totalEntryCount,
+      filteredEntryCount,
+      entryPage,
+      entryPageSize,
       filterQuery,
       sortField,
       sortDirection,
@@ -1111,6 +1325,9 @@ export function useCagnardData(): CagnardDataState {
       clearSelection,
       setFilterQuery,
       setSort,
+      setEntryPageSize,
+      goToNextEntryPage,
+      goToPreviousEntryPage,
       openEntry,
       openInlineEntry,
       openSelected,
@@ -1153,10 +1370,15 @@ export function useCagnardData(): CagnardDataState {
       createFolder,
       deleteSelected,
       downloadSelected,
-      effectivePath,
+      currentPath,
       entries,
       error,
+      entryPage,
+      entryPageSize,
       filterQuery,
+      filteredEntryCount,
+      goToNextEntryPage,
+      goToPreviousEntryPage,
       goUp,
       login,
       loginError,
@@ -1191,12 +1413,12 @@ export function useCagnardData(): CagnardDataState {
       selectedEntryIds,
       selectedRoot,
       setFilterQuery,
+      setEntryPageSize,
       setOpenedFileViewMode,
       submitModal,
       transferJobs,
       session,
       showMessage,
-      sourceEntries.length,
       sortDirection,
       sortField,
       togglePasteboardItem,
@@ -1207,16 +1429,28 @@ export function useCagnardData(): CagnardDataState {
       saveOpenedFile,
       setSort,
       uiPlugins,
-      uploadFile
+      uploadFile,
+      totalEntryCount
     ]
   );
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timeout);
+  }, [delayMs, value]);
+
+  return debounced;
 }
 
 function firstRoot(navigation: NavigationResponse): NavigationRoot | undefined {
   return navigation.personal?.roots[0] ?? navigation.global?.roots[0];
 }
 
-function requestedStorageLocation(navigation: NavigationResponse): { root: NavigationRoot; path: string } | { error: string } | undefined {
+function requestedStorageLocation(navigation: NavigationResponse): RequestedStorageLocation | { error: string } | undefined {
   const params = new URLSearchParams(window.location.search);
   const tunnel = params.get("tunnel");
   const rootId = params.get("rootId");
@@ -1225,7 +1459,12 @@ function requestedStorageLocation(navigation: NavigationResponse): { root: Navig
   if (rootId) {
     const root = roots.find((candidate) => candidate.id === rootId && (!tunnel || candidate.tunnel === tunnel));
     if (!root) return { error: "The URL points to a storage root that is not available to this user." };
-    return { root, path: normalizeBrowserPath(params.get("path") ?? "") };
+    const openedFilePath = normalizeBrowserPath(params.get("openedFilePath") ?? "");
+    return {
+      root,
+      path: openedFilePath ? parentPath(openedFilePath) : normalizeBrowserPath(params.get("path") ?? ""),
+      openedFilePath: openedFilePath || undefined
+    };
   }
 
   const readableLocation = parseReadableLocationHash();
@@ -1241,21 +1480,38 @@ function requestedStorageLocation(navigation: NavigationResponse): { root: Navig
   return { error: "The URL points to a storage root that is not available to this user." };
 }
 
-function replaceStorageLocationURL(root: NavigationRoot, path: string) {
+function writeStorageLocationURL(root: NavigationRoot, path: string, openedFilePath: string | undefined, mode: Exclude<LocationHistoryMode, "none">) {
+  const normalizedPath = normalizeBrowserPath(path);
+  const normalizedOpenedFilePath = openedFilePath ? normalizeBrowserPath(openedFilePath) : undefined;
   const params = new URLSearchParams(window.location.search);
   params.set("tunnel", root.tunnel);
   params.set("rootId", root.id);
-  if (path) params.set("path", path);
+  if (normalizedPath) params.set("path", normalizedPath);
   else params.delete("path");
+  if (normalizedOpenedFilePath) params.set("openedFilePath", normalizedOpenedFilePath);
+  else params.delete("openedFilePath");
 
   const search = params.toString();
-  const nextURL = `${window.location.pathname}${search ? `?${search}` : ""}${readableLocationHash(root, path)}`;
+  const nextURL = `${window.location.pathname}${search ? `?${search}` : ""}${readableLocationHash(root, normalizedPath, normalizedOpenedFilePath)}`;
   const currentURL = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  if (nextURL !== currentURL) window.history.replaceState(null, "", nextURL);
+  const state = {
+    cagnard: true,
+    tunnel: root.tunnel,
+    rootId: root.id,
+    path: normalizedPath,
+    openedFilePath: normalizedOpenedFilePath
+  };
+  if (nextURL === currentURL) {
+    window.history.replaceState(state, "", nextURL);
+    return;
+  }
+  if (mode === "push") window.history.pushState(state, "", nextURL);
+  else window.history.replaceState(state, "", nextURL);
 }
 
-function readableLocationHash(root: NavigationRoot, path: string): string {
-  const segments = [root.tunnel, root.label, ...path.split("/").filter(Boolean)];
+function readableLocationHash(root: NavigationRoot, path: string, openedFilePath?: string): string {
+  const displayPath = openedFilePath || path;
+  const segments = [root.tunnel, root.label, ...displayPath.split("/").filter(Boolean)];
   return `#/${segments.map(encodeURIComponent).join("/")}`;
 }
 
@@ -1294,15 +1550,28 @@ function normalizeBrowserPath(path: string): string {
   return path.split("/").filter(Boolean).join("/");
 }
 
-function breadcrumbs(path: string): Array<{ label: string; path: string }> {
-  const parts = path.split("/").filter(Boolean);
-  return [
-    { label: "/", path: "" },
+function parentPath(path: string): string {
+  const parts = normalizeBrowserPath(path).split("/").filter(Boolean);
+  return parts.slice(0, -1).join("/");
+}
+
+function breadcrumbs(path: string, openedFile?: OpenedFileState): BreadcrumbItem[] {
+  const pageOpenedFile = openedFile?.placement === "page" ? openedFile.entry : undefined;
+  const directoryPath = pageOpenedFile ? parentPath(pageOpenedFile.path) : path;
+  const parts = directoryPath.split("/").filter(Boolean);
+  const items: BreadcrumbItem[] = [
+    { label: "/", path: "", navigable: true, kind: "directory" },
     ...parts.map((part, index) => ({
       label: part,
-      path: parts.slice(0, index + 1).join("/")
+      path: parts.slice(0, index + 1).join("/"),
+      navigable: true,
+      kind: "directory" as const
     }))
   ];
+  if (pageOpenedFile) {
+    items.push({ label: pageOpenedFile.name, path: pageOpenedFile.path, navigable: false, kind: "file" });
+  }
+  return items;
 }
 
 function buildNextSelection(
@@ -1328,83 +1597,8 @@ function buildNextSelection(
   return [entryId];
 }
 
-function entrySearchHaystack(entry: StorageEntry): string {
-  const classification = classifyEntry(entry);
-  return [
-    entry.name,
-    entry.path,
-    entry.kind,
-    classification.category,
-    classification.label,
-    entry.metadata.mimeType,
-    entry.metadata.fileCategory,
-    entry.metadata.owner,
-    entry.metadata.permissions,
-    entry.metadata.modifiedTime,
-    entry.metadata.version,
-    entry.metadata.retention,
-    entry.metadata.encryption,
-    ...entry.capabilities.map((capability) => `${capability.name} ${capability.status}`),
-    ...Object.values(entry.providerSpecific)
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
 function arraysEqual(first: string[], second: string[]): boolean {
   return first.length === second.length && first.every((value, index) => value === second[index]);
-}
-
-function sortEntries(entries: StorageEntry[], field: EntrySortField, direction: EntrySortDirection): StorageEntry[] {
-  const multiplier = direction === "asc" ? 1 : -1;
-  return [...entries].sort((left, right) => {
-    const missingComparison = compareMissing(left, right, field);
-    if (missingComparison !== 0) return missingComparison;
-    const fieldComparison = compareByField(left, right, field);
-    if (fieldComparison !== 0) return fieldComparison * multiplier;
-    return compareText(left.name, right.name);
-  });
-}
-
-function compareMissing(left: StorageEntry, right: StorageEntry, field: EntrySortField): number {
-  const leftMissing = missingValue(left, field);
-  const rightMissing = missingValue(right, field);
-  if (leftMissing === rightMissing) return 0;
-  return leftMissing ? 1 : -1;
-}
-
-function missingValue(entry: StorageEntry, field: EntrySortField): boolean {
-  switch (field) {
-    case "size":
-      return entry.metadata.size === undefined || entry.metadata.size === null;
-    case "modifiedTime":
-      return !entry.metadata.modifiedTime;
-    case "mimeType":
-      return !entry.metadata.mimeType;
-    case "fileCategory":
-      return !classifyEntry(entry).category;
-    default:
-      return false;
-  }
-}
-
-function compareByField(left: StorageEntry, right: StorageEntry, field: EntrySortField): number {
-  switch (field) {
-    case "kind":
-      return compareText(left.kind, right.kind);
-    case "size":
-      return compareNumber(left.metadata.size, right.metadata.size);
-    case "modifiedTime":
-      return compareTime(left.metadata.modifiedTime, right.metadata.modifiedTime);
-    case "mimeType":
-      return compareText(left.metadata.mimeType ?? "", right.metadata.mimeType ?? "");
-    case "fileCategory":
-      return compareText(classifyEntry(left).label, classifyEntry(right).label);
-    case "name":
-    default:
-      return compareText(left.name, right.name);
-  }
 }
 
 function defaultViewMode(view: OpenerView): OpenedFileViewMode {
@@ -1425,24 +1619,6 @@ function defaultViewMode(view: OpenerView): OpenedFileViewMode {
     default:
       return "source";
   }
-}
-
-function compareText(left: string, right: string): number {
-  return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
-}
-
-function compareNumber(left?: number | null, right?: number | null): number {
-  if (left === right) return 0;
-  if (left === undefined || left === null) return 1;
-  if (right === undefined || right === null) return -1;
-  return left - right;
-}
-
-function compareTime(left?: string | null, right?: string | null): number {
-  if (left === right) return 0;
-  if (!left) return 1;
-  if (!right) return -1;
-  return new Date(left).getTime() - new Date(right).getTime();
 }
 
 function validateEntryName(value: string): string | undefined {

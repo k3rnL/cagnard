@@ -53,7 +53,7 @@ type S3AccountSettings struct {
 }
 
 type S3ObjectClient interface {
-	List(bucket string, prefix string, delimiter string, continuationToken *string) (S3ListPage, error)
+	List(bucket string, prefix string, delimiter string, continuationToken *string, maxKeys int32) (S3ListPage, error)
 	Head(bucket string, key string) (S3ObjectMetadata, error)
 	Exists(bucket string, key string) (bool, error)
 	Get(bucket string, key string) (S3ObjectContent, error)
@@ -158,6 +158,41 @@ func (p *S3StorageProvider) List(root ResolvedStorageRoot, path string) ([]Stora
 		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
 	})
 	return entries, nil
+}
+
+func (p *S3StorageProvider) ListPage(root ResolvedStorageRoot, path string, options ListOptions) (ListPage, error) {
+	target, err := objectTarget(root)
+	if err != nil {
+		return ListPage{}, err
+	}
+	client, err := p.client(root)
+	if err != nil {
+		return ListPage{}, err
+	}
+	currentPath, err := normalizeObjectPath(path)
+	if err != nil {
+		return ListPage{}, err
+	}
+	prefix := keyFor(target, currentPath, true)
+	if s3NativeListing(options) {
+		page, err := client.List(target.Bucket, prefix, "/", options.Cursor, int32(options.PageSize))
+		if err != nil {
+			return ListPage{}, err
+		}
+		entries := p.entriesFromListing(root, target, page)
+		SortEntries(entries, "name", "asc")
+		return ListPage{
+			Entries:    entries,
+			NextCursor: page.NextContinuationToken,
+			Accuracy:   ExactListAccuracy(false),
+		}, nil
+	}
+	page, err := p.listAll(client, target.Bucket, prefix, nil, 0)
+	if err != nil {
+		return ListPage{}, err
+	}
+	entries := p.entriesFromListing(root, target, page)
+	return FilterSortAndSliceEntries(entries, options)
 }
 
 func (p *S3StorageProvider) Stat(root ResolvedStorageRoot, path string) (StorageEntry, error) {
@@ -533,7 +568,7 @@ func (p *S3StorageProvider) listAll(client S3ObjectClient, bucket string, prefix
 	if pagesSeen >= p.settings.MaxListPages {
 		return S3ListPage{}, fmt.Errorf("S3 listing exceeded configured page limit of %d", p.settings.MaxListPages)
 	}
-	page, err := client.List(bucket, prefix, "/", token)
+	page, err := client.List(bucket, prefix, "/", token, 0)
 	if err != nil {
 		return S3ListPage{}, err
 	}
@@ -545,6 +580,18 @@ func (p *S3StorageProvider) listAll(client S3ObjectClient, bucket string, prefix
 		return S3ListPage{}, err
 	}
 	return S3ListPage{Objects: append(page.Objects, tail.Objects...), CommonPrefixes: append(page.CommonPrefixes, tail.CommonPrefixes...)}, nil
+}
+
+func s3NativeListing(options ListOptions) bool {
+	sortKey := strings.TrimSpace(options.SortKey)
+	if sortKey == "" {
+		sortKey = DefaultListSortKey
+	}
+	sortDirection := strings.TrimSpace(options.SortDirection)
+	if sortDirection == "" {
+		sortDirection = DefaultListSortDirection
+	}
+	return strings.TrimSpace(options.Query) == "" && sortKey == "name" && sortDirection == "asc"
 }
 
 func (p *S3StorageProvider) entriesFromListing(root ResolvedStorageRoot, target ObjectStoreRootTarget, page S3ListPage) []StorageEntry {
@@ -977,8 +1024,12 @@ func NewAwsS3ObjectClient(provider S3ProviderSettings, account S3AccountSettings
 	return &AwsS3ObjectClient{client: client}, nil
 }
 
-func (c *AwsS3ObjectClient) List(bucket string, prefix string, delimiter string, continuationToken *string) (S3ListPage, error) {
-	out, err := c.client.ListObjectsV2(context.Background(), &s3.ListObjectsV2Input{Bucket: &bucket, Prefix: &prefix, Delimiter: &delimiter, ContinuationToken: continuationToken})
+func (c *AwsS3ObjectClient) List(bucket string, prefix string, delimiter string, continuationToken *string, maxKeys int32) (S3ListPage, error) {
+	input := &s3.ListObjectsV2Input{Bucket: &bucket, Prefix: &prefix, Delimiter: &delimiter, ContinuationToken: continuationToken}
+	if maxKeys > 0 {
+		input.MaxKeys = &maxKeys
+	}
+	out, err := c.client.ListObjectsV2(context.Background(), input)
 	if err != nil {
 		return S3ListPage{}, safeS3Error(err)
 	}

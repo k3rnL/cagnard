@@ -9,6 +9,7 @@ The implemented providers are the Unix filesystem provider and the S3-compatible
 The Unix filesystem provider supports:
 
 - list and stat
+- exact paginated listing with backend-side current-directory search and sorting
 - raw-byte download
 - full and bounded content reads
 - streaming read and streaming write
@@ -31,6 +32,8 @@ The S3-compatible provider supports:
 - custom endpoint, region, path-style addressing, SSL/TLS, and local unsafe certificate options
 - bucket and optional prefix roots
 - list and stat
+- native continuation-token listing for default name-ascending browsing
+- provider-neutral paginated search and non-native sorting through bounded prefix scanning
 - raw-byte download and upload with a configurable buffered object limit
 - full and bounded content reads within the buffered object limit
 - bounded text preview
@@ -85,11 +88,13 @@ providers = [
 - Filesystem operations run with the backend process permissions.
 - Provider capabilities determine which browser actions are available.
 - The `recursive-list` and `transfer` capabilities indicate that a provider can participate in pasteboard transfer planning.
+- Listing providers return page metadata, optional opaque next-page references, and accuracy flags for search, sort, and total counts.
 - Content access capabilities distinguish `full-read`, `bounded-read`, `range-read`, `stream-read`, and `stream-write`.
 - The filesystem provider exposes supported `stream-read` and `stream-write` capabilities.
 - S3 exposes supported `stream-read` and `stream-write` capabilities; `multipart-upload` remains planned. Provider-neutral S3 transfer streams object bytes through the backend when both endpoints support streaming.
 - Write-back is represented through `overwrite` and is disabled for read-only roots.
 - S3 upload/download and provider-neutral buffered fallback transfer buffer object bytes and default to a 64 MiB limit; streaming transfers are not bounded by that buffer limit.
+- S3 default listing uses provider continuation tokens and reports unknown total counts until pages are traversed. Search or non-name sorting may require scanning the configured root prefix before returning a page.
 - MinIO-compatible integration tests are opt-in through `CAGNARD_S3_INTEGRATION=true` and S3-specific environment variables.
 
 ## Known Limitations

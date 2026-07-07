@@ -6,6 +6,7 @@ import {
   Braces,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Clipboard,
   ClipboardPaste,
@@ -78,7 +79,10 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
   const allVisibleSelected = state.entries.length > 0 && visibleSelectedCount === state.entries.length;
   const partiallyVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
   const rootBreadcrumbLabel = state.selectedRoot?.label ?? "Root";
-  const readablePath = useMemo(() => readableStoragePath(rootBreadcrumbLabel, state.currentPath), [rootBreadcrumbLabel, state.currentPath]);
+  const readablePath = useMemo(
+    () => readableStoragePath(rootBreadcrumbLabel, state.breadcrumbs.slice(1).map((crumb) => crumb.label).join("/")),
+    [rootBreadcrumbLabel, state.breadcrumbs]
+  );
 
   const dismissToast = useCallback((id: number) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
@@ -173,12 +177,16 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
         <span className="path-scope">{state.selectedRoot?.tunnel ?? "storage"}</span>
         <nav className="breadcrumbs" aria-label="Breadcrumb">
           {state.breadcrumbs.map((crumb, index) => (
-            <Fragment key={crumb.path || "root"}>
+            <Fragment key={`${crumb.kind}:${crumb.path || "root"}:${index}`}>
               {index > 0 ? <ChevronRight className="breadcrumb-separator" size={14} aria-hidden="true" /> : null}
               <button
                 className={index === state.breadcrumbs.length - 1 ? "current" : undefined}
+                disabled={!crumb.navigable}
                 type="button"
-                onClick={() => state.navigateToPath(crumb.path)}
+                onClick={() => {
+                  if (crumb.navigable) state.navigateToPath(crumb.path);
+                }}
+                aria-current={index === state.breadcrumbs.length - 1 ? "page" : undefined}
               >
                 {index === 0 ? <Home size={14} aria-hidden="true" /> : null}
                 <span>{index === 0 ? rootBreadcrumbLabel : crumb.label}</span>
@@ -234,7 +242,7 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
           ) : null}
 
           {!state.loading && state.entries.length === 0 ? (
-            <div className="empty-row">{state.totalEntryCount === 0 ? "No entries" : "No matches"}</div>
+            <div className="empty-row">{state.filterQuery.trim() ? "No matches" : "No entries"}</div>
           ) : null}
 
           {state.entries.map((entry) => (
@@ -1161,6 +1169,7 @@ function BrowserControls({
         ) : null}
       </label>
       <div className="selection-status">
+        <PaginationControls state={state} />
         <button
           className={metadataOpen ? "metadata-toggle active" : "metadata-toggle"}
           type="button"
@@ -1170,11 +1179,7 @@ function BrowserControls({
           <Info size={15} />
           <span>Metadata</span>
         </button>
-        <span>
-          {state.selectionCount > 0
-            ? `${state.selectionCount} selected`
-            : `${state.entries.length} of ${state.totalEntryCount}`}
-        </span>
+        <span>{browserCountLabel(state)}</span>
         {state.selectionCount > 0 ? (
           <button className="icon-button compact" type="button" onClick={state.clearSelection} title="Clear selection">
             <X size={15} />
@@ -1183,6 +1188,53 @@ function BrowserControls({
       </div>
     </section>
   );
+}
+
+function PaginationControls({ state }: { state: CagnardDataState }) {
+  return (
+    <div className="pagination-controls" aria-label="Directory pagination">
+      <button
+        className="icon-button compact"
+        type="button"
+        onClick={state.goToPreviousEntryPage}
+        disabled={!state.entryPage.canGoPrevious || state.loading}
+        title="Previous page"
+      >
+        <ChevronLeft size={15} />
+      </button>
+      <span className="page-number">Page {state.entryPage.currentPage}</span>
+      <button
+        className="icon-button compact"
+        type="button"
+        onClick={state.goToNextEntryPage}
+        disabled={!state.entryPage.canGoNext || state.loading}
+        title="Next page"
+      >
+        <ChevronRight size={15} />
+      </button>
+      <label className="page-size-control" title="Entries per page">
+        <span>Rows</span>
+        <select value={state.entryPageSize} onChange={(event) => state.setEntryPageSize(Number(event.target.value))}>
+          {[25, 50, 100, 250, 500].map((size) => (
+            <option value={size} key={size}>{size}</option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+function browserCountLabel(state: CagnardDataState): string {
+  if (state.selectionCount > 0) return `${state.selectionCount} selected on this page`;
+  const pageCount = state.entries.length;
+  if (state.entryPage.filteredCount !== undefined && state.entryPage.filteredCount !== null) {
+    if (state.entryPage.totalCount !== undefined && state.entryPage.totalCount !== null && state.entryPage.filteredCount !== state.entryPage.totalCount) {
+      return `${pageCount} of ${state.entryPage.filteredCount} matches`;
+    }
+    return `${pageCount} of ${state.entryPage.filteredCount}`;
+  }
+  if (state.entryPage.hasMore) return `${pageCount} shown`;
+  return `${pageCount} entries`;
 }
 
 function SortHeader({ field, label, state }: { field: EntrySortField; label: string; state: CagnardDataState }) {

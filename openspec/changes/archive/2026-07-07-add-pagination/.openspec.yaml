@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-07-07
+goal: Add backend-driven pagination to file browsing, with provider-neutral page
+  references and backend-applied search and sorting so large directories and S3
+  prefixes remain correct and usable.

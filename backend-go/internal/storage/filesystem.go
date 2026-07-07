@@ -65,6 +65,14 @@ func (p *FilesystemProvider) List(root ResolvedStorageRoot, path string) ([]Stor
 	return out, nil
 }
 
+func (p *FilesystemProvider) ListPage(root ResolvedStorageRoot, path string, options ListOptions) (ListPage, error) {
+	entries, err := p.List(root, path)
+	if err != nil {
+		return ListPage{}, err
+	}
+	return FilterSortAndSliceEntries(entries, options)
+}
+
 func (p *FilesystemProvider) Stat(root ResolvedStorageRoot, path string) (StorageEntry, error) {
 	target, err := p.resolve(root, path)
 	if err != nil {
