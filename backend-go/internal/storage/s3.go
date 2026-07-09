@@ -59,6 +59,7 @@ type S3ObjectClient interface {
 	Get(bucket string, key string) (S3ObjectContent, error)
 	Put(bucket string, key string, body []byte, contentType *string) (S3ObjectMetadata, error)
 	StreamGet(bucket string, key string, output io.Writer, onBytes func(int64)) (S3ObjectMetadata, error)
+	RangeGet(bucket string, key string, offset int64, length int64) (io.ReadCloser, S3ObjectMetadata, error)
 	StreamPut(bucket string, key string, input io.Reader, info FileContentInfo, contentType *string, onBytes func(int64)) (S3ObjectMetadata, error)
 	Copy(bucket string, sourceKey string, targetKey string) (S3ObjectMetadata, error)
 	Delete(bucket string, key string) error
@@ -269,7 +270,7 @@ func (p *S3StorageProvider) ContentInfo(root ResolvedStorageRoot, path string) (
 	return FileContentInfo{FileName: fileName(relative), MIMEType: metadata.ContentType, Size: metadata.Size}, nil
 }
 
-func (p *S3StorageProvider) Preview(root ResolvedStorageRoot, path string, maxBytes int64) (TextPreview, error) {
+func (p *S3StorageProvider) Preview(root ResolvedStorageRoot, path string, offset int64, maxBytes int64) (TextPreview, error) {
 	target, client, relative, err := p.objectRequest(root, path, "Cannot preview S3 storage root")
 	if err != nil {
 		return TextPreview{}, err
@@ -279,21 +280,31 @@ func (p *S3StorageProvider) Preview(root ResolvedStorageRoot, path string, maxBy
 	if err != nil {
 		return TextPreview{}, err
 	}
-	size := int64Value(metadata.Size)
-	if size > maxBytes {
-		return TextPreview{}, fmt.Errorf("File exceeds preview limit of %d bytes", maxBytes)
-	}
-	if err := p.enforceLimit(root, size); err != nil {
-		return TextPreview{}, err
-	}
 	if !isTextLike(relative, metadata.ContentType) {
 		return TextPreview{}, errors.New("File type is not supported for text preview")
 	}
-	content, err := client.Get(target.Bucket, key)
-	if err != nil {
-		return TextPreview{}, err
+	size := int64Value(metadata.Size)
+	// offset == size is a valid position: follow mode polls from EOF and an
+	// empty, non-truncated page means "nothing new yet".
+	if offset < 0 || offset > size {
+		return TextPreview{}, fmt.Errorf("Preview offset %d is outside object size %d", offset, size)
 	}
-	return TextPreview{Path: relative, MIMEType: content.Metadata.ContentType, Content: string(content.Bytes), Truncated: false}, nil
+	chunk := []byte{}
+	if offset < size {
+		want := min(maxBytes, size-offset)
+		if err := p.enforceLimit(root, want); err != nil {
+			return TextPreview{}, err
+		}
+		body, _, err := client.RangeGet(target.Bucket, key, offset, want)
+		if err != nil {
+			return TextPreview{}, err
+		}
+		defer body.Close()
+		if chunk, err = io.ReadAll(body); err != nil {
+			return TextPreview{}, err
+		}
+	}
+	return textPreviewPage(relative, metadata.ContentType, chunk, offset, size), nil
 }
 
 func (p *S3StorageProvider) Upload(root ResolvedStorageRoot, path string, body []byte, overwrite bool) (StorageEntry, error) {
@@ -435,6 +446,75 @@ func (p *S3StorageProvider) StreamRead(root ResolvedStorageRoot, path string, ou
 		return FileContentInfo{}, err
 	}
 	return FileContentInfo{FileName: fileName(relative), MIMEType: metadata.ContentType, Size: metadata.Size}, nil
+}
+
+func (p *S3StorageProvider) RangeRead(root ResolvedStorageRoot, path string, offset int64, length int64) (io.ReadCloser, FileContentInfo, error) {
+	target, client, relative, err := p.objectRequest(root, path, "Cannot read S3 storage root")
+	if err != nil {
+		return nil, FileContentInfo{}, err
+	}
+	key := keyFor(target, relative, false)
+	metadata, err := client.Head(target.Bucket, key)
+	if err != nil {
+		return nil, FileContentInfo{}, err
+	}
+	size := int64Value(metadata.Size)
+	if offset < 0 || offset >= size {
+		return nil, FileContentInfo{}, fmt.Errorf("Range offset %d is outside object size %d", offset, size)
+	}
+	if length < 0 || offset+length > size {
+		length = size - offset
+	}
+	body, _, err := client.RangeGet(target.Bucket, key, offset, length)
+	if err != nil {
+		return nil, FileContentInfo{}, err
+	}
+	return body, FileContentInfo{FileName: fileName(relative), MIMEType: metadata.ContentType, Size: metadata.Size}, nil
+}
+
+var s3WatchPollInterval = 3 * time.Second
+
+func (p *S3StorageProvider) Watch(root ResolvedStorageRoot, path string, cancel <-chan struct{}) (<-chan FileWatchEvent, error) {
+	target, client, relative, err := p.objectRequest(root, path, "Cannot watch S3 storage root")
+	if err != nil {
+		return nil, err
+	}
+	key := keyFor(target, relative, false)
+	metadata, err := client.Head(target.Bucket, key)
+	if err != nil {
+		return nil, err
+	}
+	events := make(chan FileWatchEvent, 16)
+	go func() {
+		defer close(events)
+		state := newWatchState(int64Value(metadata.Size), stringPtrValue(metadata.ETag))
+		ticker := time.NewTicker(s3WatchPollInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-cancel:
+				return
+			case <-ticker.C:
+			}
+			var event *FileWatchEvent
+			if exists, err := client.Exists(target.Bucket, key); err != nil {
+				continue
+			} else if !exists {
+				event = state.observeMissing()
+			} else if current, err := client.Head(target.Bucket, key); err == nil {
+				event = state.observe(int64Value(current.Size), stringPtrValue(current.ETag))
+			}
+			if event == nil {
+				continue
+			}
+			select {
+			case events <- *event:
+			case <-cancel:
+				return
+			}
+		}
+	}()
+	return events, nil
 }
 
 func (p *S3StorageProvider) StreamWrite(root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error) {
@@ -1100,6 +1180,18 @@ func (c *AwsS3ObjectClient) StreamGet(bucket string, key string, output io.Write
 		return S3ObjectMetadata{}, err
 	}
 	return metadataFromGet(key, out), nil
+}
+
+func (c *AwsS3ObjectClient) RangeGet(bucket string, key string, offset int64, length int64) (io.ReadCloser, S3ObjectMetadata, error) {
+	rangeSpec := fmt.Sprintf("bytes=%d-", offset)
+	if length >= 0 {
+		rangeSpec = fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)
+	}
+	out, err := c.client.GetObject(context.Background(), &s3.GetObjectInput{Bucket: &bucket, Key: &key, Range: &rangeSpec})
+	if err != nil {
+		return nil, S3ObjectMetadata{}, safeS3Error(err)
+	}
+	return out.Body, metadataFromGet(key, out), nil
 }
 
 func (c *AwsS3ObjectClient) StreamPut(bucket string, key string, input io.Reader, info FileContentInfo, contentType *string, onBytes func(int64)) (S3ObjectMetadata, error) {

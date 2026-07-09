@@ -1,6 +1,6 @@
 {
   "name": "@cagnard/frontend",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,11 +12,13 @@
   "dependencies": {
     "@refinedev/core": "^4.57.10",
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11",
-    "typescript": "^5.7.2",
+    "highlight.js": "^11.11.1",
+    "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "lucide-react": "^0.468.0"
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

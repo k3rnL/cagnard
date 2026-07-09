@@ -19,7 +19,7 @@ import type { FileOpenerMatch, OpenerView } from "../plugins/fileOpeners";
 export type EntrySelectionMode = "replace" | "toggle" | "range";
 export type EntrySortField = "name" | "kind" | "fileCategory" | "size" | "modifiedTime" | "mimeType";
 export type EntrySortDirection = "asc" | "desc";
-export type OpenedFileViewMode = "archive" | "media" | "pdf" | "rendered" | "source" | "table" | "tree";
+export type OpenedFileViewMode = "archive" | "diff" | "log" | "media" | "pdf" | "rendered" | "source" | "table" | "tree";
 export type OpenedFilePlacement = "page" | "inline";
 
 export interface OpenedFileState {
@@ -30,9 +30,13 @@ export interface OpenedFileState {
   error?: string;
   content?: string;
   editedContent?: string;
-  blobUrl?: string;
+  contentUrl?: string;
   viewMode: OpenedFileViewMode;
   dirty: boolean;
+  truncated?: boolean;
+  nextOffset?: number;
+  totalSize?: number | null;
+  loadingMore?: boolean;
 }
 
 export interface EntryPageState {
@@ -184,6 +188,8 @@ export interface CagnardDataState {
   prettifyOpenedJson: () => void;
   minifyOpenedJson: () => void;
   saveOpenedFile: () => Promise<void>;
+  loadMoreOpenedFile: (force?: boolean) => Promise<void>;
+  reloadOpenedFile: () => Promise<void>;
   openDirectory: (entry: StorageEntry) => void;
   navigateToPath: (path: string) => void;
   goUp: () => void;
@@ -629,9 +635,9 @@ export function useCagnardData(): CagnardDataState {
 
   useEffect(() => {
     return () => {
-      if (openedFile?.blobUrl) URL.revokeObjectURL(openedFile.blobUrl);
+      if (openedFile?.contentUrl?.startsWith("blob:")) URL.revokeObjectURL(openedFile.contentUrl);
     };
-  }, [openedFile?.blobUrl]);
+  }, [openedFile?.contentUrl]);
 
   const selectRoot = useCallback((root: NavigationRoot) => {
     queueLocationHistoryPush();
@@ -769,14 +775,25 @@ export function useCagnardData(): CagnardDataState {
             content: preview.content,
             editedContent: preview.content,
             viewMode,
-            dirty: false
+            dirty: false,
+            truncated: preview.truncated,
+            nextOffset: preview.nextOffset,
+            totalSize: preview.size
           });
           return;
         }
 
+        if (match.opener.view === "media") {
+          // Media streams straight from the endpoint so the browser can issue
+          // its own Range requests for seeking; no blob prefetch.
+          const contentUrl = cagnardApi.contentUrl(root.tunnel, root.id, entry.path);
+          setOpenedFile({ entry, match, placement, loading: false, contentUrl, viewMode, dirty: false });
+          return;
+        }
+
         const blob = await cagnardApi.download(root.tunnel, root.id, entry.path);
-        const blobUrl = URL.createObjectURL(blob);
-        setOpenedFile({ entry, match, placement, loading: false, blobUrl, viewMode, dirty: false });
+        const contentUrl = URL.createObjectURL(blob);
+        setOpenedFile({ entry, match, placement, loading: false, contentUrl, viewMode, dirty: false });
       } catch (caught) {
         if (handleUnauthorized(caught)) return;
         setOpenedFile({
@@ -897,10 +914,72 @@ export function useCagnardData(): CagnardDataState {
     });
   }, []);
 
+  const loadMoreOpenedFile = useCallback(async (force = false) => {
+    const root = requireRoot();
+    const current = openedFile;
+    if (!current?.match || current.loadingMore || current.nextOffset === undefined) return;
+    if (!current.truncated && !force) return;
+    setOpenedFile({ ...current, loadingMore: true });
+    try {
+      const preview = await cagnardApi.preview(root.tunnel, root.id, current.entry.path, current.nextOffset);
+      setOpenedFile((existing) => {
+        if (!existing || existing.entry.path !== current.entry.path) return existing;
+        const content = (existing.content ?? "") + preview.content;
+        return {
+          ...existing,
+          content,
+          // Editing is disabled while content is truncated, so the edit
+          // buffer can track the appended content directly.
+          editedContent: content,
+          loadingMore: false,
+          truncated: preview.truncated,
+          nextOffset: preview.nextOffset,
+          totalSize: preview.size
+        };
+      });
+    } catch (caught) {
+      if (handleUnauthorized(caught)) return;
+      setOpenedFile((existing) =>
+        existing ? { ...existing, loadingMore: false, error: caught instanceof Error ? caught.message : String(caught) } : existing
+      );
+    }
+  }, [handleUnauthorized, openedFile, requireRoot]);
+
+  const reloadOpenedFile = useCallback(async () => {
+    const root = requireRoot();
+    const current = openedFile;
+    if (!current?.match || current.match.opener.readStrategy !== "bounded") return;
+    try {
+      const preview = await cagnardApi.preview(root.tunnel, root.id, current.entry.path);
+      setOpenedFile((existing) => {
+        if (!existing || existing.entry.path !== current.entry.path) return existing;
+        return {
+          ...existing,
+          content: preview.content,
+          editedContent: preview.content,
+          dirty: false,
+          error: undefined,
+          truncated: preview.truncated,
+          nextOffset: preview.nextOffset,
+          totalSize: preview.size
+        };
+      });
+    } catch (caught) {
+      if (handleUnauthorized(caught)) return;
+      setOpenedFile((existing) =>
+        existing ? { ...existing, error: caught instanceof Error ? caught.message : String(caught) } : existing
+      );
+    }
+  }, [handleUnauthorized, openedFile, requireRoot]);
+
   const saveOpenedFile = useCallback(async () => {
     const root = requireRoot();
     const current = openedFile;
     if (!current?.match) throw new Error("No opened file to save");
+    if (current.truncated) {
+      setOpenedFile({ ...current, error: "This file is only partially loaded and cannot be saved." });
+      return;
+    }
     if (!canWriteBack(current.entry, root.readOnly)) {
       setOpenedFile({ ...current, error: "This storage entry does not support write-back." });
       return;
@@ -1337,6 +1416,8 @@ export function useCagnardData(): CagnardDataState {
       prettifyOpenedJson,
       minifyOpenedJson,
       saveOpenedFile,
+      loadMoreOpenedFile,
+      reloadOpenedFile,
       openDirectory,
       navigateToPath,
       goUp,
@@ -1427,6 +1508,8 @@ export function useCagnardData(): CagnardDataState {
       prettifyOpenedJson,
       minifyOpenedJson,
       saveOpenedFile,
+      loadMoreOpenedFile,
+      reloadOpenedFile,
       setSort,
       uiPlugins,
       uploadFile,
@@ -1607,7 +1690,12 @@ function defaultViewMode(view: OpenerView): OpenedFileViewMode {
       return "archive";
     case "csv":
       return "table";
+    case "diff":
+      return "diff";
+    case "log":
+      return "log";
     case "json":
+    case "yaml":
       return "tree";
     case "markdown":
       return "rendered";

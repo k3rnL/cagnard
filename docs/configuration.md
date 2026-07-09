@@ -157,7 +157,7 @@ See `config/cagnard.s3.example.conf` for a safe snippet using environment substi
 - `accounts`: provider account declarations.
 - `personalStorage`: per-user storage roots.
 - `globalStorage`: administrator-defined shared storage roots.
-- `uiPlugins`: frontend plugin declarations.
+- `uiPlugins`: frontend opener plugin declarations. Each entry declares a target rendering `view` (defaulting to `text`) alongside its MIME/extension/category matchers and priority; see [ui-plugin-system.md](features/ui-plugin-system.md).
 
 ## Known Limitations
 

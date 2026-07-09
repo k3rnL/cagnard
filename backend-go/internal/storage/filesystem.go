@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
+
 	"github.com/k3rnl/cagnard/backend-go/internal/config"
 )
 
@@ -119,7 +121,7 @@ func (p *FilesystemProvider) ContentInfo(root ResolvedStorageRoot, path string) 
 	return FileContentInfo{FileName: filepath.Base(target), MIMEType: p.mimeType(target), Size: &size}, nil
 }
 
-func (p *FilesystemProvider) Preview(root ResolvedStorageRoot, path string, maxBytes int64) (TextPreview, error) {
+func (p *FilesystemProvider) Preview(root ResolvedStorageRoot, path string, offset int64, maxBytes int64) (TextPreview, error) {
 	target, err := p.resolve(root, path)
 	if err != nil {
 		return TextPreview{}, err
@@ -131,18 +133,31 @@ func (p *FilesystemProvider) Preview(root ResolvedStorageRoot, path string, maxB
 	if !info.Mode().IsRegular() {
 		return TextPreview{}, fmt.Errorf("Path is not a regular file: %s", path)
 	}
-	if info.Size() > maxBytes {
-		return TextPreview{}, fmt.Errorf("File exceeds preview limit of %d bytes", maxBytes)
-	}
 	mimeType := p.mimeType(target)
 	if !isTextLike(filepath.Base(target), mimeType) {
 		return TextPreview{}, errors.New("File type is not supported for text preview")
 	}
-	bytes, err := os.ReadFile(target)
+	size := info.Size()
+	// offset == size is a valid position: follow mode polls from EOF and an
+	// empty, non-truncated page means "nothing new yet".
+	if offset < 0 || offset > size {
+		return TextPreview{}, fmt.Errorf("Preview offset %d is outside file size %d", offset, size)
+	}
+	input, err := os.Open(target)
 	if err != nil {
 		return TextPreview{}, err
 	}
-	return TextPreview{Path: path, MIMEType: mimeType, Content: string(bytes), Truncated: false}, nil
+	defer input.Close()
+	if offset > 0 {
+		if _, err := input.Seek(offset, io.SeekStart); err != nil {
+			return TextPreview{}, err
+		}
+	}
+	chunk, err := io.ReadAll(io.LimitReader(input, maxBytes))
+	if err != nil {
+		return TextPreview{}, err
+	}
+	return textPreviewPage(path, mimeType, chunk, offset, size), nil
 }
 
 func (p *FilesystemProvider) Upload(root ResolvedStorageRoot, path string, bytes []byte, overwrite bool) (StorageEntry, error) {
@@ -337,6 +352,42 @@ func (p *FilesystemProvider) StreamRead(root ResolvedStorageRoot, path string, o
 	return info, nil
 }
 
+func (p *FilesystemProvider) RangeRead(root ResolvedStorageRoot, path string, offset int64, length int64) (io.ReadCloser, FileContentInfo, error) {
+	info, err := p.ContentInfo(root, path)
+	if err != nil {
+		return nil, FileContentInfo{}, err
+	}
+	size := int64Value(info.Size)
+	if offset < 0 || offset >= size {
+		return nil, FileContentInfo{}, fmt.Errorf("Range offset %d is outside file size %d", offset, size)
+	}
+	if length < 0 || offset+length > size {
+		length = size - offset
+	}
+	target, err := p.resolve(root, path)
+	if err != nil {
+		return nil, FileContentInfo{}, err
+	}
+	input, err := os.Open(target)
+	if err != nil {
+		return nil, FileContentInfo{}, err
+	}
+	if _, err := input.Seek(offset, io.SeekStart); err != nil {
+		_ = input.Close()
+		return nil, FileContentInfo{}, err
+	}
+	return &limitedReadCloser{reader: io.LimitReader(input, length), closer: input}, info, nil
+}
+
+type limitedReadCloser struct {
+	reader io.Reader
+	closer io.Closer
+}
+
+func (l *limitedReadCloser) Read(p []byte) (int, error) { return l.reader.Read(p) }
+
+func (l *limitedReadCloser) Close() error { return l.closer.Close() }
+
 func (p *FilesystemProvider) StreamWrite(root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error) {
 	if err := ensureWritable(root); err != nil {
 		return StorageEntry{}, err
@@ -369,6 +420,78 @@ func (p *FilesystemProvider) StreamWrite(root ResolvedStorageRoot, path string, 
 		return StorageEntry{}, err
 	}
 	return p.Stat(root, path)
+}
+
+var filesystemWatchFallbackInterval = 5 * time.Second
+
+func (p *FilesystemProvider) Watch(root ResolvedStorageRoot, path string, cancel <-chan struct{}) (<-chan FileWatchEvent, error) {
+	target, err := p.resolve(root, path)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return nil, fmt.Errorf("Path does not exist: %s", path)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("Path is not a regular file: %s", path)
+	}
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
+	}
+	// Watch the parent directory so rotation (rename + recreate) and removal
+	// of the file itself keep producing events.
+	if err := watcher.Add(filepath.Dir(target)); err != nil {
+		_ = watcher.Close()
+		return nil, err
+	}
+	events := make(chan FileWatchEvent, 16)
+	go func() {
+		defer close(events)
+		defer watcher.Close()
+		state := newWatchState(info.Size(), info.ModTime().String())
+		ticker := time.NewTicker(filesystemWatchFallbackInterval)
+		defer ticker.Stop()
+		check := func() *FileWatchEvent {
+			current, err := os.Stat(target)
+			if err != nil {
+				return state.observeMissing()
+			}
+			return state.observe(current.Size(), current.ModTime().String())
+		}
+		for {
+			var event *FileWatchEvent
+			select {
+			case <-cancel:
+				return
+			case notification, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				if filepath.Clean(notification.Name) != target {
+					continue
+				}
+				event = check()
+			case _, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				continue
+			case <-ticker.C:
+				event = check()
+			}
+			if event == nil {
+				continue
+			}
+			select {
+			case events <- *event:
+			case <-cancel:
+				return
+			}
+		}
+	}()
+	return events, nil
 }
 
 func (p *FilesystemProvider) resolve(root ResolvedStorageRoot, relative string) (string, error) {

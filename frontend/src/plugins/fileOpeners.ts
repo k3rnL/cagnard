@@ -4,7 +4,7 @@ import type { FileCategory, FileTypeInfo } from "./fileTypeCatalog";
 
 export type OpenerReadStrategy = "metadata" | "bounded" | "download";
 export type OpenerMode = "viewer" | "editor";
-export type OpenerView = "archive" | "csv" | "json" | "markdown" | "media" | "pdf" | "text";
+export type OpenerView = "archive" | "csv" | "diff" | "json" | "log" | "markdown" | "media" | "pdf" | "text" | "yaml";
 
 export interface FileOpener {
   id: string;
@@ -30,130 +30,152 @@ export interface FileOpenerMatch {
 
 const textLimit = 512 * 1024;
 const tableLimit = 2 * 1024 * 1024;
-const mediaLimit = 48 * 1024 * 1024;
+const pdfLimit = 48 * 1024 * 1024;
 
-export const builtInOpeners: FileOpener[] = [
+const firstPartyDefaults = {
+  kind: "opener",
+  apiVersion: "1",
+  mimeTypes: [] as string[],
+  extensions: [] as string[],
+  permissions: ["read"]
+};
+
+// First-party openers are ordinary manifests: the same shape the backend
+// serves for configured plugins, resolved through the same mapping.
+export const firstPartyOpenerManifests: UiPluginManifest[] = [
   {
+    ...firstPartyDefaults,
     id: "markdown",
     label: "Markdown",
     priority: 10,
-    mode: "editor",
     view: "markdown",
-    readStrategy: "bounded",
+    mode: "editor",
     editMode: "text",
+    readStrategy: "bounded",
     saveStrategy: "overwrite",
     maxSizeBytes: textLimit,
-    categories: ["markdown"],
-    requiredCapabilities: ["bounded-read"]
+    categories: ["markdown"]
   },
   {
+    ...firstPartyDefaults,
     id: "json",
     label: "JSON",
     priority: 20,
-    mode: "editor",
     view: "json",
-    readStrategy: "bounded",
+    mode: "editor",
     editMode: "structured",
+    readStrategy: "bounded",
     saveStrategy: "overwrite",
     maxSizeBytes: textLimit,
-    categories: ["json"],
-    requiredCapabilities: ["bounded-read"]
+    categories: ["json"]
   },
   {
+    ...firstPartyDefaults,
     id: "csv",
     label: "CSV table",
     priority: 30,
-    mode: "viewer",
     view: "csv",
     readStrategy: "bounded",
-    editMode: "none",
-    saveStrategy: "none",
     maxSizeBytes: tableLimit,
-    categories: ["csv"],
-    requiredCapabilities: ["bounded-read"]
+    categories: ["csv"]
   },
   {
+    ...firstPartyDefaults,
+    id: "yaml",
+    label: "YAML",
+    priority: 40,
+    view: "yaml",
+    mode: "editor",
+    editMode: "text",
+    readStrategy: "bounded",
+    saveStrategy: "overwrite",
+    maxSizeBytes: textLimit,
+    categories: ["yaml"]
+  },
+  {
+    ...firstPartyDefaults,
+    id: "diff",
+    label: "Diff",
+    priority: 45,
+    view: "diff",
+    readStrategy: "bounded",
+    maxSizeBytes: textLimit,
+    extensions: [".diff", ".patch"]
+  },
+  {
+    ...firstPartyDefaults,
+    id: "log",
+    label: "Log explorer",
+    priority: 48,
+    view: "log",
+    readStrategy: "bounded",
+    maxSizeBytes: textLimit,
+    categories: ["log"]
+  },
+  {
+    ...firstPartyDefaults,
     id: "source-text",
     label: "Text editor",
     priority: 50,
-    mode: "editor",
     view: "text",
-    readStrategy: "bounded",
+    mode: "editor",
     editMode: "text",
+    readStrategy: "bounded",
     saveStrategy: "overwrite",
     maxSizeBytes: textLimit,
-    categories: ["code", "config", "log", "text", "xml", "yaml"],
-    requiredCapabilities: ["bounded-read"]
+    categories: ["code", "config", "log", "text", "xml", "yaml"]
   },
   {
+    ...firstPartyDefaults,
     id: "image",
     label: "Image viewer",
     priority: 80,
-    mode: "viewer",
     view: "media",
     readStrategy: "download",
-    editMode: "none",
-    saveStrategy: "none",
-    maxSizeBytes: mediaLimit,
-    categories: ["image"],
-    requiredCapabilities: ["download"]
+    categories: ["image"]
   },
   {
+    ...firstPartyDefaults,
     id: "pdf",
     label: "PDF viewer",
     priority: 90,
-    mode: "viewer",
     view: "pdf",
     readStrategy: "download",
-    editMode: "none",
-    saveStrategy: "none",
-    maxSizeBytes: mediaLimit,
-    categories: ["pdf"],
-    requiredCapabilities: ["download"]
+    maxSizeBytes: pdfLimit,
+    categories: ["pdf"]
   },
   {
+    ...firstPartyDefaults,
     id: "audio",
     label: "Audio player",
     priority: 100,
-    mode: "viewer",
     view: "media",
     readStrategy: "download",
-    editMode: "none",
-    saveStrategy: "none",
-    maxSizeBytes: mediaLimit,
-    categories: ["audio"],
-    requiredCapabilities: ["download"]
+    categories: ["audio"]
   },
   {
+    ...firstPartyDefaults,
     id: "video",
     label: "Video player",
     priority: 110,
-    mode: "viewer",
     view: "media",
     readStrategy: "download",
-    editMode: "none",
-    saveStrategy: "none",
-    maxSizeBytes: mediaLimit,
-    categories: ["video"],
-    requiredCapabilities: ["download"]
+    categories: ["video"]
   },
   {
+    ...firstPartyDefaults,
     id: "archive-metadata",
     label: "Archive metadata",
     priority: 200,
-    mode: "viewer",
     view: "archive",
     readStrategy: "metadata",
-    editMode: "none",
-    saveStrategy: "none",
-    categories: ["archive"],
-    requiredCapabilities: []
+    categories: ["archive"]
   }
 ];
 
 export function resolveFileOpener(entry: StorageEntry, plugins: UiPluginManifest[]): FileOpenerMatch | undefined {
   const classification = classifyEntry(entry);
-  const candidates = [...builtInOpeners, ...pluginOpeners(plugins)]
+  const candidates = registeredOpeners(plugins)
     .filter((opener) => openerMatches(opener, entry, classification))
     .filter((opener) => capabilitiesAvailable(entry.capabilities, opener.requiredCapabilities))
     .filter((opener) => sizeAllowed(entry, opener))
@@ -171,7 +193,7 @@ export function resolveFileOpener(entry: StorageEntry, plugins: UiPluginManifest
 
 export function openerBlockedReason(entry: StorageEntry, plugins: UiPluginManifest[]): string | undefined {
   const classification = classifyEntry(entry);
-  const candidates = [...builtInOpeners, ...pluginOpeners(plugins)].filter((opener) => openerMatches(opener, entry, classification));
+  const candidates = registeredOpeners(plugins).filter((opener) => openerMatches(opener, entry, classification));
   const sizeBlocked = candidates.find((opener) => !sizeAllowed(entry, opener));
   if (sizeBlocked?.maxSizeBytes) return `File exceeds ${formatLimit(sizeBlocked.maxSizeBytes)} opener limit.`;
   const capabilityBlocked = candidates.find((opener) => !capabilitiesAvailable(entry.capabilities, opener.requiredCapabilities));
@@ -185,27 +207,62 @@ export function canWriteBack(entry: StorageEntry, readOnlyRoot: boolean): boolea
 }
 
 export function openerSupportsRaw(opener: FileOpener): boolean {
-  return opener.view === "json" || opener.view === "csv" || opener.view === "markdown" || opener.view === "text";
+  return (
+    opener.view === "json" ||
+    opener.view === "csv" ||
+    opener.view === "markdown" ||
+    opener.view === "text" ||
+    opener.view === "yaml" ||
+    opener.view === "diff" ||
+    opener.view === "log"
+  );
 }
 
-function pluginOpeners(plugins: UiPluginManifest[]): FileOpener[] {
-  return plugins
-    .filter((plugin) => plugin.kind === "opener" || plugin.kind === "preview")
-    .map((plugin) => ({
-      id: plugin.id,
-      label: plugin.label,
-      priority: plugin.priority + 500,
-      mode: plugin.mode === "editor" ? "editor" : "viewer",
-      view: "text",
-      readStrategy: plugin.readStrategy === "download" ? "download" : "bounded",
-      editMode: plugin.editMode === "text" ? "text" : "none",
-      saveStrategy: plugin.saveStrategy === "overwrite" ? "overwrite" : "none",
-      maxSizeBytes: plugin.maxSizeBytes ?? textLimit,
-      mimeTypes: plugin.mimeTypes,
-      extensions: plugin.extensions,
-      categories: plugin.categories as FileCategory[] | undefined,
-      requiredCapabilities: plugin.requiredCapabilities?.length ? plugin.requiredCapabilities : ["bounded-read"]
-    }));
+const openerViews: OpenerView[] = ["archive", "csv", "diff", "json", "log", "markdown", "media", "pdf", "text", "yaml"];
+
+function registeredOpeners(plugins: UiPluginManifest[]): FileOpener[] {
+  return [...firstPartyOpenerManifests, ...plugins]
+    .filter((manifest) => manifest.kind === "opener" || manifest.kind === "preview")
+    .map(manifestToOpener);
+}
+
+function manifestToOpener(manifest: UiPluginManifest): FileOpener {
+  const view = openerViews.includes(manifest.view as OpenerView) ? (manifest.view as OpenerView) : "text";
+  const readStrategy: OpenerReadStrategy =
+    manifest.readStrategy === "download" ? "download" : manifest.readStrategy === "metadata" ? "metadata" : "bounded";
+  return {
+    id: manifest.id,
+    label: manifest.label,
+    priority: manifest.priority,
+    mode: manifest.mode === "editor" ? "editor" : "viewer",
+    view,
+    readStrategy,
+    editMode:
+      manifest.editMode === "text" || manifest.editMode === "structured" || manifest.editMode === "export-only"
+        ? manifest.editMode
+        : "none",
+    saveStrategy: manifest.saveStrategy === "overwrite" || manifest.saveStrategy === "export-only" ? manifest.saveStrategy : "none",
+    maxSizeBytes: defaultSizeLimit(manifest.maxSizeBytes, readStrategy),
+    mimeTypes: manifest.mimeTypes,
+    extensions: manifest.extensions,
+    categories: manifest.categories as FileCategory[] | undefined,
+    requiredCapabilities: manifest.requiredCapabilities?.length
+      ? manifest.requiredCapabilities
+      : defaultCapabilities(readStrategy)
+  };
+}
+
+function defaultSizeLimit(declared: number | undefined, readStrategy: OpenerReadStrategy): number | undefined {
+  if (declared && declared > 0) return declared;
+  // Bounded openers buffer content in the browser, so an undeclared limit
+  // falls back to the text cap; streamed and metadata reads need none.
+  return readStrategy === "bounded" ? textLimit : undefined;
+}
+
+function defaultCapabilities(readStrategy: OpenerReadStrategy): string[] {
+  if (readStrategy === "download") return ["download"];
+  if (readStrategy === "metadata") return [];
+  return ["bounded-read"];
 }
 
 function openerMatches(opener: FileOpener, entry: StorageEntry, classification: FileTypeInfo): boolean {

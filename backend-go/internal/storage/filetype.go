@@ -24,6 +24,8 @@ var extensionTypes = map[string]fileTypeDefinition{
 	".csv":   textType("text/csv", "csv", "table"),
 	".tsv":   textType("text/tab-separated-values", "csv", "table"),
 	".xml":   textType("application/xml", "xml", "file-code"),
+	".diff":  textType("text/x-diff", "code", "file-code"),
+	".patch": textType("text/x-diff", "code", "file-code"),
 	".yaml":  textType("application/yaml", "yaml", "file-cog"),
 	".yml":   textType("application/yaml", "yaml", "file-cog"),
 	".toml":  textType("application/toml", "config", "file-cog"),
@@ -102,6 +104,18 @@ func fallbackMIMEType(fileName string, providerMIMEType *string) *string {
 
 func isTextLike(fileName string, mimeType *string) bool {
 	return classify(fileName, mimeType).textLike
+}
+
+// IsTextLike reports whether a file classifies as text content, for callers
+// outside the storage package such as content search.
+func IsTextLike(fileName string, mimeType *string) bool {
+	return isTextLike(fileName, mimeType)
+}
+
+// MIMETypeFor returns the catalog MIME type inferred from a file name, for
+// callers outside the storage package such as archive entry delivery.
+func MIMETypeFor(fileName string) *string {
+	return fallbackMIMEType(fileName, nil)
 }
 
 func classify(fileName string, providerMIMEType *string) fileTypeDefinition {

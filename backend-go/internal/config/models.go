@@ -94,15 +94,23 @@ type StorageRootConfig struct {
 }
 
 type UIPluginConfig struct {
-	ID          string
-	Label       string
-	Kind        string
-	APIVersion  string
-	Enabled     bool
-	MIMETypes   []string
-	Extensions  []string
-	Permissions []string
-	Priority    int
+	ID                   string
+	Label                string
+	Kind                 string
+	APIVersion           string
+	Enabled              bool
+	MIMETypes            []string
+	Extensions           []string
+	Permissions          []string
+	Priority             int
+	View                 string
+	Categories           []string
+	Mode                 string
+	EditMode             string
+	ReadStrategy         string
+	SaveStrategy         string
+	MaxSizeBytes         int64
+	RequiredCapabilities []string
 }
 
 func (c CagnardConfig) AuthMode() string {

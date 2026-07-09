@@ -217,6 +217,36 @@ export interface PreviewResponse {
   mimeType?: string;
   content: string;
   truncated: boolean;
+  offset: number;
+  nextOffset: number;
+  size?: number | null;
+}
+
+export interface ArchiveEntry {
+  path: string;
+  name: string;
+  kind: string;
+  size?: number | null;
+}
+
+export interface ArchiveEntriesResponse {
+  path: string;
+  entryPath?: string;
+  entries: ArchiveEntry[];
+}
+
+export interface ContentSearchMatch {
+  line: number;
+  offset: number;
+  text: string;
+}
+
+export interface ContentSearchResponse {
+  path: string;
+  matches: ContentSearchMatch[];
+  more: boolean;
+  nextOffset: number;
+  nextLine: number;
 }
 
 export interface UiPluginManifest {
@@ -228,6 +258,7 @@ export interface UiPluginManifest {
   extensions: string[];
   permissions: string[];
   priority: number;
+  view?: string;
   categories?: string[];
   mode?: string;
   editMode?: string;

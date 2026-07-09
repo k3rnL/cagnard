@@ -52,6 +52,8 @@ const extensionDefinitions: Record<string, FileTypeDefinition> = {
   ".csv": text("text/csv", "CSV", "csv", "table"),
   ".tsv": text("text/tab-separated-values", "TSV", "csv", "table"),
   ".xml": text("application/xml", "XML", "xml", "file-code"),
+  ".diff": text("text/x-diff", "Diff", "code", "file-code"),
+  ".patch": text("text/x-diff", "Patch", "code", "file-code"),
   ".yaml": text("application/yaml", "YAML", "yaml", "file-cog"),
   ".yml": text("application/yaml", "YAML", "yaml", "file-cog"),
   ".toml": text("application/toml", "TOML", "config", "file-cog"),
@@ -180,6 +182,40 @@ export function extensionOf(name: string): string | undefined {
   return Object.keys(extensionDefinitions)
     .sort((left, right) => right.length - left.length)
     .find((extension) => lowerName.endsWith(extension));
+}
+
+const highlightLanguages: Record<string, string> = {
+  ".css": "css",
+  ".diff": "diff",
+  ".go": "go",
+  ".html": "xml",
+  ".ini": "ini",
+  ".java": "java",
+  ".js": "javascript",
+  ".json": "json",
+  ".jsonl": "json",
+  ".jsx": "javascript",
+  ".md": "markdown",
+  ".markdown": "markdown",
+  ".patch": "diff",
+  ".properties": "properties",
+  ".py": "python",
+  ".rb": "ruby",
+  ".rs": "rust",
+  ".scala": "scala",
+  ".sh": "bash",
+  ".sql": "sql",
+  ".toml": "ini",
+  ".ts": "typescript",
+  ".tsx": "typescript",
+  ".xml": "xml",
+  ".yaml": "yaml",
+  ".yml": "yaml"
+};
+
+export function highlightLanguageOf(name: string): string | undefined {
+  const extension = extensionOf(name);
+  return extension ? highlightLanguages[extension] : undefined;
 }
 
 export function isTextCategory(category: string | undefined): boolean {

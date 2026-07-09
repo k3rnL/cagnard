@@ -16,14 +16,16 @@ The browser now opens content only through an explicit user action. Selecting a 
 
 ## Built-In Openers
 
-The first built-in opener set is bundled through the same registry model used for future UI plugins:
+First-party openers are registered as manifests through the same registry model as configured UI plugins:
 
-- text/source/config/log editor with bounded reads and write-back when authorized
+- text/source/config editor with bounded reads, syntax highlighting, in-file search, pagination, and write-back when authorized
+- log explorer with level-based coloring, in-file search, and live follow (tail) for providers that support change notification
 - Markdown rendered/source views with editing when authorized
-- JSON tree/source views with prettify and minify actions
+- JSON and YAML tree/source views (JSON adds prettify and minify actions)
+- diff/patch view with colorized added/removed lines
 - CSV/TSV table view with raw fallback and row sampling
-- browser-native image, PDF, audio, and video viewers for files within opener limits
-- archive metadata view without extraction
+- browser-native image, PDF, audio, and video viewers; media streams directly from the byte-range content endpoint so playback can seek without a full download
+- archive browsing (zip, tar, tar.gz/tgz, gz) with nested entry preview through the same opener registry; `.rar`/`.7z` fall back to metadata only
 
 Unsupported or oversized files show type metadata and keep safe storage actions available.
 
@@ -36,6 +38,7 @@ The default example storage includes a fixture directory at `examples/storage/ho
 File openers declare constraints before Cagnard routes files to them:
 
 - MIME patterns, extensions, categories, priority, and mode
+- target `view` (rendering surface); an unrecognized view falls back to the text view
 - read strategy: metadata, bounded, or download in the current implementation
 - edit and save strategy
 - maximum file size
@@ -45,9 +48,9 @@ Plugins receive only scoped access mediated by Cagnard. They do not receive raw 
 
 ## Large File Notes
 
-Current built-in text and structured openers use bounded reads. Large JSON, CSV, logs, datasets, and media files may be refused by the opener before content is loaded.
+Text and structured openers use bounded reads and paginate: a file past the bounded read limit returns its first page with `truncated` set, and the opener loads further pages on demand rather than refusing to open. Editing and save are disabled while a file is only partially loaded.
 
-The storage capability model now distinguishes `full-read`, `bounded-read`, `range-read`, and `stream-read`. Range and stream opening are planned capability surfaces and are not implemented yet.
+The storage capability model distinguishes `full-read`, `bounded-read`, `range-read`, and `stream-read`. Range reads are implemented for both the filesystem and S3 providers: the content endpoint honors `Range` requests with `206 Partial Content`, which backs seekable media playback and archive entry reads without buffering whole files server-side.
 
 ## Known Limitations
 

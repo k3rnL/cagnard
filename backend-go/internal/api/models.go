@@ -145,10 +145,40 @@ type OperationResponse struct {
 }
 
 type PreviewResponse struct {
-	Path      string  `json:"path"`
-	MIMEType  *string `json:"mimeType"`
-	Content   string  `json:"content"`
-	Truncated bool    `json:"truncated"`
+	Path       string  `json:"path"`
+	MIMEType   *string `json:"mimeType"`
+	Content    string  `json:"content"`
+	Truncated  bool    `json:"truncated"`
+	Offset     int64   `json:"offset"`
+	NextOffset int64   `json:"nextOffset"`
+	Size       *int64  `json:"size"`
+}
+
+type ContentSearchMatch struct {
+	Line   int64  `json:"line"`
+	Offset int64  `json:"offset"`
+	Text   string `json:"text"`
+}
+
+type ContentSearchResponse struct {
+	Path       string               `json:"path"`
+	Matches    []ContentSearchMatch `json:"matches"`
+	More       bool                 `json:"more"`
+	NextOffset int64                `json:"nextOffset"`
+	NextLine   int64                `json:"nextLine"`
+}
+
+type ArchiveEntryResponse struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	Size *int64 `json:"size"`
+}
+
+type ArchiveEntriesResponse struct {
+	Path      string                 `json:"path"`
+	EntryPath string                 `json:"entryPath,omitempty"`
+	Entries   []ArchiveEntryResponse `json:"entries"`
 }
 
 type CreateFolderRequest struct {
@@ -273,12 +303,20 @@ type UIPluginsResponse struct {
 }
 
 type UIPluginManifest struct {
-	ID          string   `json:"id"`
-	Label       string   `json:"label"`
-	Kind        string   `json:"kind"`
-	APIVersion  string   `json:"apiVersion"`
-	MIMETypes   []string `json:"mimeTypes"`
-	Extensions  []string `json:"extensions"`
-	Permissions []string `json:"permissions"`
-	Priority    int      `json:"priority"`
+	ID                   string   `json:"id"`
+	Label                string   `json:"label"`
+	Kind                 string   `json:"kind"`
+	APIVersion           string   `json:"apiVersion"`
+	MIMETypes            []string `json:"mimeTypes"`
+	Extensions           []string `json:"extensions"`
+	Permissions          []string `json:"permissions"`
+	Priority             int      `json:"priority"`
+	View                 string   `json:"view,omitempty"`
+	Categories           []string `json:"categories,omitempty"`
+	Mode                 string   `json:"mode,omitempty"`
+	EditMode             string   `json:"editMode,omitempty"`
+	ReadStrategy         string   `json:"readStrategy,omitempty"`
+	SaveStrategy         string   `json:"saveStrategy,omitempty"`
+	MaxSizeBytes         int64    `json:"maxSizeBytes,omitempty"`
+	RequiredCapabilities []string `json:"requiredCapabilities,omitempty"`
 }

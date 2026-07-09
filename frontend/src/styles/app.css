@@ -656,6 +656,12 @@ button {
   color: #8f2d24;
 }
 
+.icon-button.active {
+  border-color: #255f54;
+  background: #e5eee9;
+  color: #255f54;
+}
+
 .icon-button.compact {
   width: 30px;
   height: 30px;
@@ -1684,6 +1690,210 @@ button {
 .source-editor {
   display: block;
   resize: vertical;
+}
+
+.source-view.hljs {
+  background: #fbfbf8;
+  color: #263230;
+}
+
+.diff-view .diff-line {
+  display: block;
+}
+
+.diff-view .diff-add {
+  background: #e4f2e7;
+  color: #1c5a2c;
+}
+
+.diff-view .diff-remove {
+  background: #f8e4e1;
+  color: #8f2d24;
+}
+
+.diff-view .diff-hunk {
+  color: #4a5f8a;
+  font-weight: 600;
+}
+
+.diff-view .diff-file,
+.diff-view .diff-meta {
+  color: #6c7a72;
+  font-weight: 600;
+}
+
+.archive-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.archive-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.archive-crumbs {
+  color: #55635c;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.archive-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #d8ddd5;
+  border-radius: 8px;
+  background: #fbfbf8;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.archive-list li + li {
+  border-top: 1px solid #eef0ea;
+}
+
+.archive-list button {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+  color: #263230;
+}
+
+.archive-list button:hover,
+.archive-list button.active {
+  background: #e5eee9;
+}
+
+.archive-entry-path {
+  overflow-wrap: anywhere;
+}
+
+.archive-entry-size {
+  flex: none;
+  color: #6c7a72;
+  font-size: 0.8rem;
+}
+
+.archive-entry-preview h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.log-view-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.log-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #55635c;
+  font-size: 0.9rem;
+}
+
+.log-removed {
+  color: #8f2d24;
+  font-size: 0.85rem;
+}
+
+.log-view .log-line {
+  display: block;
+}
+
+.log-view .log-error {
+  color: #8f2d24;
+  font-weight: 600;
+}
+
+.log-view .log-warn {
+  color: #8a6116;
+}
+
+.log-view .log-info {
+  color: #2b5d8a;
+}
+
+.log-view .log-debug {
+  color: #6c7a72;
+}
+
+.load-more-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.content-search {
+  border-bottom: 1px solid #e7e9e3;
+  background: #fbfbf8;
+  padding: 10px 12px;
+}
+
+.content-search-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.content-search-controls input[type="search"] {
+  flex: 1;
+  min-width: 180px;
+  height: 34px;
+  border: 1px solid #cbd5cf;
+  border-radius: 7px;
+  padding: 0 10px;
+  background: #ffffff;
+}
+
+.content-search-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #55635c;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.content-search-count {
+  min-width: 64px;
+  text-align: right;
+  color: #55635c;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+mark.search-hit {
+  background: #fde68a;
+  color: inherit;
+  border-radius: 2px;
+}
+
+mark.search-hit.current {
+  background: #f59e0b;
+  color: #1a1207;
 }
 
 .markdown-view {

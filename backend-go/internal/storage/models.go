@@ -104,10 +104,13 @@ type FileContentInfo struct {
 }
 
 type TextPreview struct {
-	Path      string
-	MIMEType  *string
-	Content   string
-	Truncated bool
+	Path       string
+	MIMEType   *string
+	Content    string
+	Truncated  bool
+	Offset     int64
+	NextOffset int64
+	TotalSize  *int64
 }
 
 type StorageProvider interface {
@@ -117,7 +120,10 @@ type StorageProvider interface {
 	ListPage(root ResolvedStorageRoot, path string, options ListOptions) (ListPage, error)
 	Stat(root ResolvedStorageRoot, path string) (StorageEntry, error)
 	Download(root ResolvedStorageRoot, path string) (FileContent, error)
-	Preview(root ResolvedStorageRoot, path string, maxBytes int64) (TextPreview, error)
+	// Preview returns up to maxBytes of text content starting at the byte
+	// offset. When more content follows, Truncated is true and NextOffset is
+	// the rune-aligned offset to continue from.
+	Preview(root ResolvedStorageRoot, path string, offset int64, maxBytes int64) (TextPreview, error)
 	Upload(root ResolvedStorageRoot, path string, bytes []byte, overwrite bool) (StorageEntry, error)
 	CreateFolder(root ResolvedStorageRoot, parentPath string, name string) (StorageEntry, error)
 	Rename(root ResolvedStorageRoot, path string, newName string) (StorageEntry, error)
@@ -126,5 +132,12 @@ type StorageProvider interface {
 	Move(root ResolvedStorageRoot, sourcePath string, targetPath string, overwrite bool) (StorageEntry, error)
 	ContentInfo(root ResolvedStorageRoot, path string) (FileContentInfo, error)
 	StreamRead(root ResolvedStorageRoot, path string, output io.Writer, onBytes func(int64)) (FileContentInfo, error)
+	// RangeRead returns a reader over [offset, offset+length) of the file content.
+	// A negative length reads to the end of the file. The returned FileContentInfo
+	// reports the total file size, not the range length.
+	RangeRead(root ResolvedStorageRoot, path string, offset int64, length int64) (io.ReadCloser, FileContentInfo, error)
+	// Watch emits change events for one file until cancel is closed. The
+	// returned channel is closed by the provider when watching stops.
+	Watch(root ResolvedStorageRoot, path string, cancel <-chan struct{}) (<-chan FileWatchEvent, error)
 	StreamWrite(root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error)
 }

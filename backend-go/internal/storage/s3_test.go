@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -124,6 +125,111 @@ func TestS3MetadataLimitAndMutations(t *testing.T) {
 	}
 	if fake.has("team/docs/renamed.txt") {
 		t.Fatalf("delete keys = %#v", fake.keys())
+	}
+}
+
+func TestS3PreviewPagination(t *testing.T) {
+	fake := newFakeS3ObjectClient(map[string]fakeS3Object{
+		"team/docs/big.txt": fakeObject("team/docs/big.txt", []byte("0123456789"), ptr("text/plain")),
+	})
+	provider := testS3Provider(fake, 4)
+	root := s3Root("team/docs")
+
+	first, err := provider.Preview(root, "big.txt", 0, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Content != "0123" || !first.Truncated || first.NextOffset != 4 {
+		t.Fatalf("first page = %#v", first)
+	}
+
+	second, err := provider.Preview(root, "big.txt", first.NextOffset, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Content != "4567" || !second.Truncated {
+		t.Fatalf("second page = %#v", second)
+	}
+
+	last, err := provider.Preview(root, "big.txt", second.NextOffset, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last.Content != "89" || last.Truncated || last.NextOffset != 10 {
+		t.Fatalf("last page = %#v", last)
+	}
+}
+
+func TestS3Watch(t *testing.T) {
+	previousInterval := s3WatchPollInterval
+	s3WatchPollInterval = 10 * time.Millisecond
+	defer func() { s3WatchPollInterval = previousInterval }()
+
+	fake := newFakeS3ObjectClient(map[string]fakeS3Object{
+		"team/docs/app.log": fakeObject("team/docs/app.log", []byte("one\n"), ptr("text/plain")),
+	})
+	provider := testS3Provider(fake, defaultMaxBufferedObjectBytes)
+	root := s3Root("team/docs")
+
+	cancel := make(chan struct{})
+	defer close(cancel)
+	events, err := provider.Watch(root, "app.log", cancel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := fake.Put("bucket", "team/docs/app.log", []byte("one\ntwo\n"), ptr("text/plain")); err != nil {
+		t.Fatal(err)
+	}
+	appended := nextWatchEvent(t, events)
+	if appended.Kind != WatchEventAppended || appended.Offset != 4 || appended.Length != 4 {
+		t.Fatalf("appended event = %#v", appended)
+	}
+
+	if err := fake.Delete("bucket", "team/docs/app.log"); err != nil {
+		t.Fatal(err)
+	}
+	removed := nextWatchEvent(t, events)
+	if removed.Kind != WatchEventRemoved {
+		t.Fatalf("removed event = %#v", removed)
+	}
+}
+
+func TestS3RangeRead(t *testing.T) {
+	fake := newFakeS3ObjectClient(map[string]fakeS3Object{
+		"team/docs/clip.bin": fakeObject("team/docs/clip.bin", []byte("0123456789"), ptr("application/octet-stream")),
+	})
+	provider := testS3Provider(fake, 4)
+	root := s3Root("team/docs")
+
+	reader, info, err := provider.RangeRead(root, "clip.bin", 2, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	middle, err := io.ReadAll(reader)
+	_ = reader.Close()
+	if err != nil || string(middle) != "2345" {
+		t.Fatalf("mid-range read = %q err = %v", middle, err)
+	}
+	if info.Size == nil || *info.Size != 10 {
+		t.Fatalf("range info should report total size: %#v", info)
+	}
+
+	reader, _, err = provider.RangeRead(root, "clip.bin", 4, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tail, err := io.ReadAll(reader)
+	_ = reader.Close()
+	if err != nil || string(tail) != "456789" {
+		t.Fatalf("open-ended read = %q err = %v", tail, err)
+	}
+
+	if _, _, err := provider.RangeRead(root, "clip.bin", 10, 1); err == nil {
+		t.Fatal("expected out-of-range offset to fail")
+	}
+	if _, _, err := provider.RangeRead(root, "missing.bin", 0, 1); err == nil {
+		t.Fatal("expected missing object to fail")
 	}
 }
 
@@ -376,6 +482,7 @@ type fakeS3Object struct {
 }
 
 type fakeS3ObjectClient struct {
+	mu      sync.Mutex
 	objects map[string]fakeS3Object
 }
 
@@ -388,6 +495,8 @@ func newFakeS3ObjectClient(initial map[string]fakeS3Object) *fakeS3ObjectClient 
 }
 
 func (f *fakeS3ObjectClient) List(bucket string, prefix string, delimiter string, continuationToken *string, maxKeys int32) (S3ListPage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	matching := make([]string, 0)
 	for key := range f.objects {
 		if strings.HasPrefix(key, prefix) {
@@ -456,6 +565,8 @@ func (f *fakeS3ObjectClient) List(bucket string, prefix string, delimiter string
 }
 
 func (f *fakeS3ObjectClient) Head(bucket string, key string) (S3ObjectMetadata, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	obj, ok := f.objects[key]
 	if !ok {
 		return S3ObjectMetadata{}, errorsForFakeS3("Path does not exist")
@@ -464,11 +575,15 @@ func (f *fakeS3ObjectClient) Head(bucket string, key string) (S3ObjectMetadata, 
 }
 
 func (f *fakeS3ObjectClient) Exists(bucket string, key string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	_, ok := f.objects[key]
 	return ok, nil
 }
 
 func (f *fakeS3ObjectClient) Get(bucket string, key string) (S3ObjectContent, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	obj, ok := f.objects[key]
 	if !ok {
 		return S3ObjectContent{}, errorsForFakeS3("Path does not exist")
@@ -477,12 +592,16 @@ func (f *fakeS3ObjectClient) Get(bucket string, key string) (S3ObjectContent, er
 }
 
 func (f *fakeS3ObjectClient) Put(bucket string, key string, body []byte, contentType *string) (S3ObjectMetadata, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	metadata := fakeMetadata(key, int64(len(body)), contentType, nil, nil, nil)
 	f.objects[key] = fakeS3Object{bytes: append([]byte{}, body...), metadata: metadata}
 	return metadata, nil
 }
 
 func (f *fakeS3ObjectClient) StreamGet(bucket string, key string, output io.Writer, onBytes func(int64)) (S3ObjectMetadata, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	obj, ok := f.objects[key]
 	if !ok {
 		return S3ObjectMetadata{}, errorsForFakeS3("Path does not exist")
@@ -493,7 +612,27 @@ func (f *fakeS3ObjectClient) StreamGet(bucket string, key string, output io.Writ
 	return obj.metadata, nil
 }
 
+func (f *fakeS3ObjectClient) RangeGet(bucket string, key string, offset int64, length int64) (io.ReadCloser, S3ObjectMetadata, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	obj, ok := f.objects[key]
+	if !ok {
+		return nil, S3ObjectMetadata{}, errorsForFakeS3("Path does not exist")
+	}
+	size := int64(len(obj.bytes))
+	if offset < 0 || offset >= size {
+		return nil, S3ObjectMetadata{}, errorsForFakeS3("Requested range is not satisfiable")
+	}
+	end := size
+	if length >= 0 && offset+length < size {
+		end = offset + length
+	}
+	return io.NopCloser(bytes.NewReader(obj.bytes[offset:end])), obj.metadata, nil
+}
+
 func (f *fakeS3ObjectClient) StreamPut(bucket string, key string, input io.Reader, info FileContentInfo, contentType *string, onBytes func(int64)) (S3ObjectMetadata, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	var out bytes.Buffer
 	if _, err := copyWithProgress(&out, input, onBytes); err != nil {
 		return S3ObjectMetadata{}, err
@@ -504,6 +643,8 @@ func (f *fakeS3ObjectClient) StreamPut(bucket string, key string, input io.Reade
 }
 
 func (f *fakeS3ObjectClient) Copy(bucket string, sourceKey string, targetKey string) (S3ObjectMetadata, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	source, ok := f.objects[sourceKey]
 	if !ok {
 		return S3ObjectMetadata{}, errorsForFakeS3("Path does not exist")
@@ -515,16 +656,22 @@ func (f *fakeS3ObjectClient) Copy(bucket string, sourceKey string, targetKey str
 }
 
 func (f *fakeS3ObjectClient) Delete(bucket string, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	delete(f.objects, key)
 	return nil
 }
 
 func (f *fakeS3ObjectClient) has(key string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	_, ok := f.objects[key]
 	return ok
 }
 
 func (f *fakeS3ObjectClient) keys() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	out := make([]string, 0, len(f.objects))
 	for key := range f.objects {
 		out = append(out, key)

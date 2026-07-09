@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Clipboard,
   ClipboardPaste,
   CopyPlus,
@@ -42,11 +43,22 @@ import {
   XCircle
 } from "lucide-react";
 
-import type { CagnardDataState, EntrySelectionMode, OpenedFileState } from "../api/useCagnardData";
+import hljs from "highlight.js/lib/common";
+import scala from "highlight.js/lib/languages/scala";
+import properties from "highlight.js/lib/languages/properties";
+import "highlight.js/styles/github.css";
+import YAML from "yaml";
+
+hljs.registerLanguage("scala", scala);
+hljs.registerLanguage("properties", properties);
+
+import type { CagnardDataState, EntrySelectionMode, OpenedFileState, OpenedFileViewMode } from "../api/useCagnardData";
 import type { EntrySortField } from "../api/useCagnardData";
-import type { EntryMetadata, StorageEntry, TransferJobResponse, TransferJobTask } from "../api/types";
-import { classifyEntry } from "../plugins/fileTypeCatalog";
-import { openerSupportsRaw } from "../plugins/fileOpeners";
+import { useFileWatch } from "../api/useFileWatch";
+import type { ArchiveEntry, EntryMetadata, StorageEntry, TransferJobResponse, TransferJobTask, UiPluginManifest } from "../api/types";
+import { cagnardApi } from "../api/client";
+import { classifyEntry, highlightLanguageOf } from "../plugins/fileTypeCatalog";
+import { openerSupportsRaw, resolveFileOpener } from "../plugins/fileOpeners";
 
 interface StorageBrowserProps {
   state: CagnardDataState;
@@ -1325,9 +1337,59 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
   const match = opened.match;
   const classification = match?.classification ?? classifyEntry(entry);
   const content = opened.editedContent ?? opened.content ?? "";
-  const canEdit = match?.opener.mode === "editor" && match.opener.editMode !== "none";
-  const canSave = Boolean(match && match.opener.saveStrategy === "overwrite" && opened.dirty && !opened.loading && state.selectedRoot && !state.selectedRoot.readOnly);
+  const canEdit = match?.opener.mode === "editor" && match.opener.editMode !== "none" && !opened.truncated;
+  const canSave = Boolean(
+    match && match.opener.saveStrategy === "overwrite" && opened.dirty && !opened.loading && !opened.truncated && state.selectedRoot && !state.selectedRoot.readOnly
+  );
   const hasSource = Boolean(match && openerSupportsRaw(match.opener) && opened.content !== undefined);
+  const searchable = hasSource;
+
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [regex, setRegex] = useState(false);
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [currentMatch, setCurrentMatch] = useState(0);
+  const priorViewMode = useRef<OpenedFileViewMode>();
+
+  const { ranges, error: searchError } = useMemo(
+    () => findMatches(content, query, regex, caseSensitive),
+    [content, query, regex, caseSensitive]
+  );
+  const searching = searchOpen && query.trim().length > 0;
+
+  useEffect(() => {
+    setCurrentMatch(0);
+  }, [content, query, regex, caseSensitive]);
+
+  useEffect(() => {
+    setSearchOpen(false);
+    setQuery("");
+    priorViewMode.current = undefined;
+  }, [entry.path]);
+
+  const setViewMode = state.setOpenedFileViewMode;
+  const toggleSearch = useCallback(() => {
+    setSearchOpen((open) => {
+      const next = !open;
+      if (next && hasSource && opened.viewMode !== "source") {
+        priorViewMode.current = opened.viewMode;
+        setViewMode("source");
+      } else if (!next && priorViewMode.current) {
+        setViewMode(priorViewMode.current);
+        priorViewMode.current = undefined;
+      }
+      return next;
+    });
+  }, [hasSource, opened.viewMode, setViewMode]);
+
+  const gotoMatch = useCallback(
+    (step: number) => {
+      if (ranges.length === 0) return;
+      if (opened.viewMode !== "source" && hasSource) setViewMode("source");
+      setCurrentMatch((index) => (index + step + ranges.length) % ranges.length);
+    },
+    [ranges.length, opened.viewMode, hasSource, setViewMode]
+  );
 
   return (
     <section className={`${inline ? "file-opener inline-file-opener" : "file-opener page-file-opener"}${opened.loading ? " pending" : ""}`} aria-busy={opened.loading}>
@@ -1350,6 +1412,17 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
               </button>
             </>
           ) : null}
+          {searchable ? (
+            <button
+              className={searchOpen ? "icon-button active" : "icon-button"}
+              type="button"
+              onClick={toggleSearch}
+              title="Search in file"
+              aria-pressed={searchOpen}
+            >
+              <Search size={17} />
+            </button>
+          ) : null}
           <button className="icon-button" type="button" onClick={() => void state.saveOpenedFile()} disabled={!canSave} title="Save">
             <Save size={17} />
           </button>
@@ -1358,6 +1431,35 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
           </button>
         </div>
       </header>
+
+      {searchable && searchOpen ? (
+        <div className="content-search">
+          <form
+            className="content-search-controls"
+            onSubmit={(event) => {
+              event.preventDefault();
+              gotoMatch(1);
+            }}
+          >
+            <input type="search" placeholder="Search in file" value={query} autoFocus onChange={(event) => setQuery(event.target.value)} />
+            <label>
+              <input type="checkbox" checked={regex} onChange={() => setRegex((value) => !value)} /> Regex
+            </label>
+            <label>
+              <input type="checkbox" checked={caseSensitive} onChange={() => setCaseSensitive((value) => !value)} /> Match case
+            </label>
+            <span className="content-search-count">
+              {searchError ? searchError : ranges.length > 0 ? `${currentMatch + 1} / ${ranges.length}` : query.trim() ? "No matches" : ""}
+            </span>
+            <button className="icon-button compact" type="button" onClick={() => gotoMatch(-1)} disabled={ranges.length === 0} title="Previous match">
+              <ChevronUp size={16} />
+            </button>
+            <button className="icon-button compact" type="button" onClick={() => gotoMatch(1)} disabled={ranges.length === 0} title="Next match">
+              <ChevronDown size={16} />
+            </button>
+          </form>
+        </div>
+      ) : null}
 
       {match && viewTabs(match.opener.view, hasSource).length > 1 ? (
         <div className="opener-tabs">
@@ -1385,18 +1487,39 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
         ) : (
           <>
           {!match ? <UnsupportedFile entry={entry} classification={classification} /> : null}
-          {match?.opener.view === "archive" ? <ArchiveMetadata entry={entry} classification={classification} /> : null}
-          {match?.opener.view === "media" && opened.blobUrl ? <MediaViewer entry={entry} classification={classification} url={opened.blobUrl} /> : null}
-          {match?.opener.view === "pdf" && opened.blobUrl ? <iframe className="pdf-viewer" src={opened.blobUrl} title={entry.name} /> : null}
+          {match?.opener.view === "archive" ? (
+            archiveBrowsable(entry.name) && state.selectedRoot ? (
+              <ArchiveView root={state.selectedRoot} entry={entry} plugins={state.uiPlugins} />
+            ) : (
+              <ArchiveMetadata entry={entry} classification={classification} />
+            )
+          ) : null}
+          {match?.opener.view === "media" && opened.contentUrl ? <MediaViewer entry={entry} classification={classification} url={opened.contentUrl} /> : null}
+          {match?.opener.view === "pdf" && opened.contentUrl ? <iframe className="pdf-viewer" src={opened.contentUrl} title={entry.name} /> : null}
           {match?.opener.view === "markdown" && opened.viewMode === "rendered" ? <MarkdownView content={content} /> : null}
           {match?.opener.view === "json" && opened.viewMode === "tree" ? <JsonView content={content} /> : null}
+          {match?.opener.view === "yaml" && opened.viewMode === "tree" ? <YamlView content={content} /> : null}
+          {match?.opener.view === "diff" && opened.viewMode === "diff" ? <DiffView content={content} /> : null}
+          {match?.opener.view === "log" && opened.viewMode === "log" ? <LogView state={state} opened={opened} content={content} /> : null}
           {match?.opener.view === "csv" && opened.viewMode === "table" ? <CsvTable content={content} /> : null}
           {match && shouldShowSource(opened.viewMode) ? (
-            canEdit ? (
+            searching ? (
+              <SearchableSource content={content} ranges={ranges} currentIndex={currentMatch} />
+            ) : canEdit ? (
               <textarea className="source-editor" value={content} onChange={(event) => state.updateOpenedFileContent(event.target.value)} spellCheck={false} />
             ) : (
-              <pre className="source-view">{content}</pre>
+              <HighlightedSource content={content} fileName={entry.name} />
             )
+          ) : null}
+          {opened.truncated ? (
+            <div className="load-more-row">
+              <span className="muted">
+                Showing {formatSize(new Blob([opened.content ?? ""]).size)} of {formatSize(opened.totalSize ?? undefined)}
+              </span>
+              <button type="button" className="primary-button subtle" disabled={opened.loadingMore} onClick={() => void state.loadMoreOpenedFile()}>
+                {opened.loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
           ) : null}
           </>
         )}
@@ -1415,6 +1538,138 @@ function UnsupportedFile({ entry, classification }: { entry: StorageEntry; class
       </div>
     </div>
   );
+}
+
+function archiveBrowsable(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.endsWith(".zip") || lower.endsWith(".tar") || lower.endsWith(".tar.gz") || lower.endsWith(".tgz") || lower.endsWith(".gz");
+}
+
+interface InnerArchiveEntryState {
+  item: ArchiveEntry;
+  fake: StorageEntry;
+  view?: string;
+  url?: string;
+  content?: string;
+  error?: string;
+  loading?: boolean;
+}
+
+function ArchiveView({ root, entry, plugins }: { root: { tunnel: string; id: string }; entry: StorageEntry; plugins: UiPluginManifest[] }) {
+  const [entries, setEntries] = useState<ArchiveEntry[]>();
+  const [listError, setListError] = useState<string>();
+  const [stack, setStack] = useState<string[]>([]);
+  const [inner, setInner] = useState<InnerArchiveEntryState>();
+
+  useEffect(() => {
+    let active = true;
+    setEntries(undefined);
+    setListError(undefined);
+    setInner(undefined);
+    cagnardApi
+      .archiveEntries(root.tunnel, root.id, entry.path, stack.join("!/") || undefined)
+      .then((response) => {
+        if (active) setEntries(response.entries.filter((item) => item.kind === "file"));
+      })
+      .catch((caught: Error) => {
+        if (active) setListError(caught.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [entry.path, root.id, root.tunnel, stack]);
+
+  const openInner = async (item: ArchiveEntry) => {
+    if (archiveBrowsable(item.name)) {
+      setStack((current) => [...current, item.path]);
+      return;
+    }
+    const innerPath = [...stack, item.path].join("!/");
+    const fake = synthesizeArchiveEntry(item, entry.path);
+    const match = resolveFileOpener(fake, plugins);
+    if (!match) {
+      setInner({ item, fake, error: "No compatible opener is available for this archive entry." });
+      return;
+    }
+    const view = match.opener.view;
+    if (view === "media" || view === "pdf") {
+      setInner({ item, fake, view, url: cagnardApi.archiveEntryUrl(root.tunnel, root.id, entry.path, innerPath) });
+      return;
+    }
+    setInner({ item, fake, view, loading: true });
+    try {
+      const content = await cagnardApi.archiveEntryText(root.tunnel, root.id, entry.path, innerPath);
+      setInner({ item, fake, view, content });
+    } catch (caught) {
+      setInner({ item, fake, error: caught instanceof Error ? caught.message : String(caught) });
+    }
+  };
+
+  return (
+    <div className="archive-view">
+      <div className="archive-toolbar">
+        <span className="archive-crumbs">{[entry.name, ...stack].join(" / ")}</span>
+        {stack.length > 0 ? (
+          <button type="button" className="primary-button subtle" onClick={() => setStack((current) => current.slice(0, -1))}>
+            Back
+          </button>
+        ) : null}
+      </div>
+      {listError ? <div className="error-banner">{listError}</div> : null}
+      {entries === undefined && !listError ? <p className="muted">Reading archive…</p> : null}
+      {entries !== undefined && entries.length === 0 ? <p className="muted">This archive contains no files.</p> : null}
+      {entries !== undefined && entries.length > 0 ? (
+        <ul className="archive-list">
+          {entries.map((item) => (
+            <li key={item.path}>
+              <button type="button" className={inner?.item.path === item.path ? "active" : undefined} onClick={() => void openInner(item)}>
+                <span className="archive-entry-path">{item.path}</span>
+                <span className="archive-entry-size">{item.size !== null && item.size !== undefined ? formatSize(item.size) : "—"}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {inner ? <InnerArchivePreview inner={inner} /> : null}
+    </div>
+  );
+}
+
+function InnerArchivePreview({ inner }: { inner: InnerArchiveEntryState }) {
+  if (inner.error) return <div className="error-banner">{inner.error}</div>;
+  if (inner.loading) return <p className="muted">Opening {inner.item.name}…</p>;
+  const classification = classifyEntry(inner.fake);
+  return (
+    <div className="archive-entry-preview">
+      <h3>{inner.item.path}</h3>
+      {inner.view === "media" && inner.url ? <MediaViewer entry={inner.fake} classification={classification} url={inner.url} /> : null}
+      {inner.view === "pdf" && inner.url ? <iframe className="pdf-viewer" src={inner.url} title={inner.item.name} /> : null}
+      {inner.view === "markdown" && inner.content !== undefined ? <MarkdownView content={inner.content} /> : null}
+      {inner.view === "json" && inner.content !== undefined ? <JsonView content={inner.content} /> : null}
+      {inner.view === "yaml" && inner.content !== undefined ? <YamlView content={inner.content} /> : null}
+      {inner.view === "diff" && inner.content !== undefined ? <DiffView content={inner.content} /> : null}
+      {inner.view === "csv" && inner.content !== undefined ? <CsvTable content={inner.content} /> : null}
+      {inner.view === "log" && inner.content !== undefined ? <LogLines content={inner.content} /> : null}
+      {inner.view === "text" && inner.content !== undefined ? <HighlightedSource content={inner.content} fileName={inner.item.name} /> : null}
+    </div>
+  );
+}
+
+function synthesizeArchiveEntry(item: ArchiveEntry, containerPath: string): StorageEntry {
+  return {
+    id: `${containerPath}!/${item.path}`,
+    name: item.name,
+    path: `${containerPath}!/${item.path}`,
+    kind: "file",
+    metadata: { size: item.size ?? 0, unavailable: [] },
+    capabilities: [
+      { name: "open", status: "supported" },
+      { name: "download", status: "supported" },
+      { name: "bounded-read", status: "supported" },
+      { name: "full-read", status: "supported" }
+    ],
+    providerSpecific: {}
+  };
 }
 
 function ArchiveMetadata({ entry, classification }: { entry: StorageEntry; classification: ReturnType<typeof classifyEntry> }) {
@@ -1539,13 +1794,21 @@ function EntryIcon({ entry, size }: { entry: StorageEntry; size: number }) {
   }
 }
 
-function viewTabs(view: string, hasSource: boolean): Array<{ label: string; value: "archive" | "media" | "pdf" | "rendered" | "source" | "table" | "tree" }> {
+function viewTabs(
+  view: string,
+  hasSource: boolean
+): Array<{ label: string; value: "archive" | "diff" | "log" | "media" | "pdf" | "rendered" | "source" | "table" | "tree" }> {
   switch (view) {
     case "archive":
       return [{ label: "Metadata", value: "archive" }];
     case "csv":
       return [{ label: "Table", value: "table" }, ...(hasSource ? [{ label: "Raw", value: "source" as const }] : [])];
+    case "diff":
+      return [{ label: "Diff", value: "diff" }, ...(hasSource ? [{ label: "Source", value: "source" as const }] : [])];
+    case "log":
+      return [{ label: "Log", value: "log" }, ...(hasSource ? [{ label: "Source", value: "source" as const }] : [])];
     case "json":
+    case "yaml":
       return [{ label: "Tree", value: "tree" }, ...(hasSource ? [{ label: "Source", value: "source" as const }] : [])];
     case "markdown":
       return [{ label: "Rendered", value: "rendered" }, ...(hasSource ? [{ label: "Source", value: "source" as const }] : [])];
@@ -1560,6 +1823,194 @@ function viewTabs(view: string, hasSource: boolean): Array<{ label: string; valu
 
 function shouldShowSource(viewMode: string): boolean {
   return viewMode === "source";
+}
+
+const highlightLimitBytes = 256 * 1024;
+
+function HighlightedSource({ content, fileName }: { content: string; fileName: string }) {
+  const language = highlightLanguageOf(fileName);
+  const highlighted = useMemo(() => {
+    if (!language || content.length > highlightLimitBytes) return undefined;
+    try {
+      return hljs.highlight(content, { language }).value;
+    } catch {
+      return undefined;
+    }
+  }, [content, language]);
+  if (highlighted === undefined) return <pre className="source-view">{content}</pre>;
+  // highlight.js escapes the source before wrapping tokens in spans.
+  return <pre className="source-view hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />;
+}
+
+function YamlView({ content }: { content: string }) {
+  try {
+    return <JsonNode value={YAML.parse(content)} />;
+  } catch (caught) {
+    return <pre className="source-view">Invalid YAML: {caught instanceof Error ? caught.message : String(caught)}</pre>;
+  }
+}
+
+function DiffView({ content }: { content: string }) {
+  return (
+    <pre className="source-view diff-view">
+      {content.split(/\r?\n/).map((line, index) => (
+        <span className={`diff-line ${diffLineClass(line)}`} key={index}>
+          {line}
+          {"\n"}
+        </span>
+      ))}
+    </pre>
+  );
+}
+
+function diffLineClass(line: string): string {
+  if (line.startsWith("+++") || line.startsWith("---")) return "diff-file";
+  if (line.startsWith("@@")) return "diff-hunk";
+  if (line.startsWith("+")) return "diff-add";
+  if (line.startsWith("-")) return "diff-remove";
+  if (line.startsWith("diff ") || line.startsWith("index ")) return "diff-meta";
+  return "diff-context";
+}
+
+function LogView({ state, opened, content }: { state: CagnardDataState; opened: OpenedFileState; content: string }) {
+  const [follow, setFollow] = useState(false);
+  const [removed, setRemoved] = useState(false);
+  const entry = opened.entry;
+  const watchable = entry.capabilities.some((capability) => capability.name === "watch" && capability.status !== "unsupported");
+  const containerRef = useRef<HTMLPreElement>(null);
+
+  useFileWatch(follow && watchable && !removed, state.selectedRoot, entry.path, {
+    onAppended: (event) => {
+      if (event.length > 0) void state.loadMoreOpenedFile(true);
+    },
+    onReplaced: () => {
+      // Rotation or truncation: the previous offsets no longer describe this
+      // file, so reload from the start instead of appending.
+      setRemoved(false);
+      void state.reloadOpenedFile();
+    },
+    onRemoved: () => setRemoved(true)
+  });
+
+  useEffect(() => {
+    if (!follow || !opened.truncated || opened.loadingMore) return;
+    // A single append can outgrow one preview page; keep draining while
+    // following so the view catches up to the end of the file.
+    void state.loadMoreOpenedFile();
+  }, [follow, opened.loadingMore, opened.truncated, state]);
+
+  useEffect(() => {
+    if (!follow) return;
+    const container = containerRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+  }, [content, follow]);
+
+  return (
+    <div className="log-view-wrap">
+      <div className="log-toolbar">
+        {watchable ? (
+          <label>
+            <input type="checkbox" checked={follow} onChange={() => setFollow((value) => !value)} /> Follow
+          </label>
+        ) : (
+          <span className="muted">Live follow is not available for this storage provider.</span>
+        )}
+        {removed ? <span className="log-removed">The file was removed from storage.</span> : null}
+      </div>
+      <LogLines content={content} containerRef={containerRef} />
+    </div>
+  );
+}
+
+function LogLines({ content, containerRef }: { content: string; containerRef?: RefObject<HTMLPreElement> }) {
+  return (
+    <pre className="source-view log-view" ref={containerRef}>
+      {content.split(/\r?\n/).map((line, index) => (
+        <span className={`log-line ${logLineClass(line)}`} key={index}>
+          {line}
+          {"\n"}
+        </span>
+      ))}
+    </pre>
+  );
+}
+
+function logLineClass(line: string): string {
+  if (/\b(FATAL|ERROR|ERR|SEVERE)\b/i.test(line)) return "log-error";
+  if (/\b(WARN|WARNING)\b/i.test(line)) return "log-warn";
+  if (/\b(DEBUG|TRACE|FINE)\b/i.test(line)) return "log-debug";
+  if (/\b(INFO|NOTICE)\b/i.test(line)) return "log-info";
+  return "log-plain";
+}
+
+interface MatchRange {
+  start: number;
+  end: number;
+}
+
+const searchMatchLimit = 5000;
+
+// findMatches locates every occurrence of the query within the loaded content,
+// returning character ranges for inline highlighting.
+function findMatches(content: string, query: string, useRegex: boolean, caseSensitive: boolean): { ranges: MatchRange[]; error?: string } {
+  if (!query.trim() || content.length === 0) return { ranges: [] };
+  const ranges: MatchRange[] = [];
+  if (useRegex) {
+    let expression: RegExp;
+    try {
+      expression = new RegExp(query, caseSensitive ? "g" : "gi");
+    } catch {
+      return { ranges: [], error: "Invalid pattern" };
+    }
+    let found: RegExpExecArray | null;
+    while ((found = expression.exec(content)) !== null) {
+      if (found[0].length === 0) {
+        expression.lastIndex += 1;
+        continue;
+      }
+      ranges.push({ start: found.index, end: found.index + found[0].length });
+      if (ranges.length >= searchMatchLimit) break;
+    }
+  } else {
+    const haystack = caseSensitive ? content : content.toLowerCase();
+    const needle = caseSensitive ? query : query.toLowerCase();
+    let index = 0;
+    while ((index = haystack.indexOf(needle, index)) !== -1) {
+      ranges.push({ start: index, end: index + needle.length });
+      index += needle.length;
+      if (ranges.length >= searchMatchLimit) break;
+    }
+  }
+  return { ranges };
+}
+
+// SearchableSource renders raw file content with every match wrapped in a
+// <mark>, the active match emphasized, and that active match scrolled into view.
+function SearchableSource({ content, ranges, currentIndex }: { content: string; ranges: MatchRange[]; currentIndex: number }) {
+  const currentRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    currentRef.current?.scrollIntoView({ block: "center" });
+  }, [currentIndex]);
+
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  ranges.forEach((range, index) => {
+    if (range.start > cursor) nodes.push(content.slice(cursor, range.start));
+    nodes.push(
+      <mark
+        key={index}
+        ref={index === currentIndex ? currentRef : undefined}
+        className={index === currentIndex ? "search-hit current" : "search-hit"}
+      >
+        {content.slice(range.start, range.end)}
+      </mark>
+    );
+    cursor = range.end;
+  });
+  if (cursor < content.length) nodes.push(content.slice(cursor));
+
+  return <pre className="source-view">{nodes}</pre>;
 }
 
 function renderMarkdown(content: string) {

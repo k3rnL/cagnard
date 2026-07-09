@@ -1,5 +1,7 @@
 import type {
+  ArchiveEntriesResponse,
   AuthProvidersResponse,
+  ContentSearchResponse,
   EntryListResponse,
   LoginResponse,
   NavigationResponse,
@@ -74,7 +76,11 @@ async function parseOptionalJson(response: Response): Promise<ApiResponseBody | 
 }
 
 function storageParams(tunnel: string, rootId: string, path = "", extra?: Record<string, string | undefined>) {
-  return new URLSearchParams({ tunnel, rootId, path, ...(extra ?? {}) });
+  const params = new URLSearchParams({ tunnel, rootId, path });
+  for (const [key, value] of Object.entries(extra ?? {})) {
+    if (value !== undefined) params.set(key, value);
+  }
+  return params;
 }
 
 function entryListParams(tunnel: string, rootId: string, path = "", options: EntryListOptions = {}) {
@@ -123,8 +129,44 @@ export const cagnardApi = {
     ),
   stat: (tunnel: string, rootId: string, path: string) =>
     fetchJson<StorageEntry>(`/api/storage/stat?${storageParams(tunnel, rootId, path)}`),
-  preview: (tunnel: string, rootId: string, path: string) =>
-    fetchJson<PreviewResponse>(`/api/storage/preview?${storageParams(tunnel, rootId, path)}`),
+  preview: (tunnel: string, rootId: string, path: string, offset = 0) =>
+    fetchJson<PreviewResponse>(
+      `/api/storage/preview?${storageParams(tunnel, rootId, path, offset > 0 ? { offset: String(offset) } : undefined)}`
+    ),
+  contentSearch: (
+    tunnel: string,
+    rootId: string,
+    path: string,
+    query: string,
+    options: { regex?: boolean; caseSensitive?: boolean; fromOffset?: number; fromLine?: number } = {}
+  ) =>
+    fetchJson<ContentSearchResponse>(
+      `/api/storage/content/search?${storageParams(tunnel, rootId, path, {
+        query,
+        regex: options.regex ? "true" : undefined,
+        caseSensitive: options.caseSensitive ? "true" : undefined,
+        fromOffset: options.fromOffset ? String(options.fromOffset) : undefined,
+        fromLine: options.fromLine ? String(options.fromLine) : undefined
+      })}`
+    ),
+  contentUrl: (tunnel: string, rootId: string, path: string) =>
+    `/api/storage/content?${storageParams(tunnel, rootId, path, { inline: "true" })}`,
+  archiveEntries: (tunnel: string, rootId: string, path: string, entryPath?: string) =>
+    fetchJson<ArchiveEntriesResponse>(
+      `/api/storage/archive/entries?${storageParams(tunnel, rootId, path, { entryPath: entryPath || undefined })}`
+    ),
+  archiveEntryUrl: (tunnel: string, rootId: string, path: string, entryPath: string) =>
+    `/api/storage/archive/entry?${storageParams(tunnel, rootId, path, { entryPath })}`,
+  archiveEntryText: async (tunnel: string, rootId: string, path: string, entryPath: string) => {
+    const response = await fetch(`/api/storage/archive/entry?${storageParams(tunnel, rootId, path, { entryPath })}`, {
+      credentials: "same-origin"
+    });
+    if (!response.ok) {
+      const body = await parseOptionalJson(response);
+      throw new ApiRequestError(body?.message ?? `Archive read failed with ${response.status}`, response.status, body?.code);
+    }
+    return response.text();
+  },
   upload: (tunnel: string, rootId: string, path: string, file: File, overwrite = false) =>
     putStorageContent(tunnel, rootId, path, file, file.type || "application/octet-stream", overwrite),
   uploadContent: putStorageContent,

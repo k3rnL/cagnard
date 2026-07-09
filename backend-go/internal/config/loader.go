@@ -197,15 +197,23 @@ func decodeUIPlugins(values hocon.Array) []UIPluginConfig {
 			continue
 		}
 		out = append(out, UIPluginConfig{
-			ID:          stringOrDefault(obj, "id", ""),
-			Label:       stringOrDefault(obj, "label", ""),
-			Kind:        stringOrDefault(obj, "kind", ""),
-			APIVersion:  stringOrDefault(obj, "apiVersion", ""),
-			Enabled:     boolOrDefault(obj, "enabled", false),
-			MIMETypes:   stringSlice(obj, "mimeTypes"),
-			Extensions:  stringSlice(obj, "extensions"),
-			Permissions: stringSlice(obj, "permissions"),
-			Priority:    intOrDefault(obj, "priority", 0),
+			ID:                   stringOrDefault(obj, "id", ""),
+			Label:                stringOrDefault(obj, "label", ""),
+			Kind:                 stringOrDefault(obj, "kind", ""),
+			APIVersion:           stringOrDefault(obj, "apiVersion", ""),
+			Enabled:              boolOrDefault(obj, "enabled", false),
+			MIMETypes:            stringSlice(obj, "mimeTypes"),
+			Extensions:           stringSlice(obj, "extensions"),
+			Permissions:          stringSlice(obj, "permissions"),
+			Priority:             intOrDefault(obj, "priority", 0),
+			View:                 stringOrDefault(obj, "view", ""),
+			Categories:           stringSlice(obj, "categories"),
+			Mode:                 stringOrDefault(obj, "mode", ""),
+			EditMode:             stringOrDefault(obj, "editMode", ""),
+			ReadStrategy:         stringOrDefault(obj, "readStrategy", ""),
+			SaveStrategy:         stringOrDefault(obj, "saveStrategy", ""),
+			MaxSizeBytes:         int64(intOrDefault(obj, "maxSizeBytes", 0)),
+			RequiredCapabilities: stringSlice(obj, "requiredCapabilities"),
 		})
 	}
 	return out

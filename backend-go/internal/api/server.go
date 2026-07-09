@@ -60,6 +60,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/storage/content", s.downloadContent)
 	s.mux.HandleFunc("PUT /api/storage/content", s.uploadContent)
 	s.mux.HandleFunc("GET /api/storage/preview", s.previewContent)
+	s.mux.HandleFunc("GET /api/storage/content/search", s.contentSearch)
+	s.mux.HandleFunc("GET /api/storage/watch", s.watchStorage)
+	s.mux.HandleFunc("GET /api/storage/archive/entries", s.archiveEntries)
+	s.mux.HandleFunc("GET /api/storage/archive/entry", s.archiveEntryContent)
 	s.mux.HandleFunc("POST /api/storage/folders", s.createFolder)
 	s.mux.HandleFunc("POST /api/storage/rename", s.renameEntry)
 	s.mux.HandleFunc("POST /api/storage/delete", s.deleteEntry)
@@ -150,14 +154,22 @@ func (s *Server) uiPlugins(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		plugins = append(plugins, UIPluginManifest{
-			ID:          plugin.ID,
-			Label:       plugin.Label,
-			Kind:        plugin.Kind,
-			APIVersion:  plugin.APIVersion,
-			MIMETypes:   plugin.MIMETypes,
-			Extensions:  plugin.Extensions,
-			Permissions: plugin.Permissions,
-			Priority:    plugin.Priority,
+			ID:                   plugin.ID,
+			Label:                plugin.Label,
+			Kind:                 plugin.Kind,
+			APIVersion:           plugin.APIVersion,
+			MIMETypes:            plugin.MIMETypes,
+			Extensions:           plugin.Extensions,
+			Permissions:          plugin.Permissions,
+			Priority:             plugin.Priority,
+			View:                 plugin.View,
+			Categories:           plugin.Categories,
+			Mode:                 plugin.Mode,
+			EditMode:             plugin.EditMode,
+			ReadStrategy:         plugin.ReadStrategy,
+			SaveStrategy:         plugin.SaveStrategy,
+			MaxSizeBytes:         plugin.MaxSizeBytes,
+			RequiredCapabilities: plugin.RequiredCapabilities,
 		})
 	}
 	sort.SliceStable(plugins, func(i, j int) bool { return plugins[i].Priority < plugins[j].Priority })
@@ -207,19 +219,112 @@ func (s *Server) downloadContent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	content, err := provider.Download(root, queryValue(r, "path"))
+	path := queryValue(r, "path")
+	info, err := provider.ContentInfo(root, path)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, APIError{Code: "storage_download_failed", Message: err.Error()})
 		return
 	}
+	size := int64(-1)
+	if info.Size != nil {
+		size = *info.Size
+	}
+	var requested *byteRange
+	if header := r.Header.Get("Range"); header != "" && size >= 0 {
+		parsed, unsatisfiable := parseByteRange(header, size)
+		if unsatisfiable {
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
+			writeAPIError(w, http.StatusRequestedRangeNotSatisfiable, APIError{Code: "storage_range_invalid", Message: "Requested range is not satisfiable"})
+			return
+		}
+		requested = parsed
+	}
+	var rangeReader io.ReadCloser
+	if requested != nil {
+		reader, _, err := provider.RangeRead(root, path, requested.start, requested.end-requested.start+1)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, APIError{Code: "storage_download_failed", Message: err.Error()})
+			return
+		}
+		rangeReader = reader
+		defer rangeReader.Close()
+	}
 	contentType := "application/octet-stream"
-	if content.MIMEType != nil && *content.MIMEType != "" {
-		contentType = *content.MIMEType
+	if info.MIMEType != nil && *info.MIMEType != "" {
+		contentType = *info.MIMEType
+	}
+	disposition := "attachment"
+	if queryBool(r, "inline") {
+		disposition = "inline"
 	}
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, safeFileName(content.FileName)))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, safeFileName(info.FileName)))
+	w.Header().Set("Accept-Ranges", "bytes")
+	if requested != nil {
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", requested.start, requested.end, size))
+		w.Header().Set("Content-Length", strconv.FormatInt(requested.end-requested.start+1, 10))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = io.Copy(w, rangeReader)
+		return
+	}
+	if size >= 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	}
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(content.Bytes)
+	_, _ = provider.StreamRead(root, path, w, nil)
+}
+
+type byteRange struct {
+	start int64
+	end   int64
+}
+
+// parseByteRange interprets a single-range "bytes=" header against the total
+// content size. A nil range with unsatisfiable=false means the header should
+// be ignored (malformed or multi-range) and the full content served; a nil
+// range with unsatisfiable=true requires a 416 response.
+func parseByteRange(header string, size int64) (parsed *byteRange, unsatisfiable bool) {
+	spec, ok := strings.CutPrefix(strings.TrimSpace(header), "bytes=")
+	if !ok || strings.Contains(spec, ",") {
+		return nil, false
+	}
+	first, last, ok := strings.Cut(strings.TrimSpace(spec), "-")
+	if !ok {
+		return nil, false
+	}
+	first = strings.TrimSpace(first)
+	last = strings.TrimSpace(last)
+	if first == "" {
+		suffix, err := strconv.ParseInt(last, 10, 64)
+		if err != nil {
+			return nil, false
+		}
+		if suffix <= 0 || size == 0 {
+			return nil, true
+		}
+		if suffix > size {
+			suffix = size
+		}
+		return &byteRange{start: size - suffix, end: size - 1}, false
+	}
+	start, err := strconv.ParseInt(first, 10, 64)
+	if err != nil {
+		return nil, false
+	}
+	if start >= size {
+		return nil, true
+	}
+	end := size - 1
+	if last != "" {
+		parsedEnd, err := strconv.ParseInt(last, 10, 64)
+		if err != nil || parsedEnd < start {
+			return nil, false
+		}
+		if parsedEnd < end {
+			end = parsedEnd
+		}
+	}
+	return &byteRange{start: start, end: end}, false
 }
 
 func (s *Server) uploadContent(w http.ResponseWriter, r *http.Request) {
@@ -246,12 +351,20 @@ func (s *Server) previewContent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	preview, err := provider.Preview(root, queryValue(r, "path"), previewMaxBytes)
+	preview, err := provider.Preview(root, queryValue(r, "path"), queryInt64(r, "offset"), previewMaxBytes)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, APIError{Code: "storage_preview_failed", Message: err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, PreviewResponse{Path: preview.Path, MIMEType: preview.MIMEType, Content: preview.Content, Truncated: preview.Truncated})
+	writeJSON(w, http.StatusOK, PreviewResponse{
+		Path:       preview.Path,
+		MIMEType:   preview.MIMEType,
+		Content:    preview.Content,
+		Truncated:  preview.Truncated,
+		Offset:     preview.Offset,
+		NextOffset: preview.NextOffset,
+		Size:       preview.TotalSize,
+	})
 }
 
 func (s *Server) createFolder(w http.ResponseWriter, r *http.Request) {
@@ -524,6 +637,18 @@ func queryValue(r *http.Request, key string) string {
 func queryBool(r *http.Request, key string) bool {
 	value := strings.TrimSpace(r.URL.Query().Get(key))
 	return value == "true" || value == "1" || value == "yes"
+}
+
+func queryInt64(r *http.Request, key string) int64 {
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	if value == "" {
+		return 0
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || parsed < 0 {
+		return 0
+	}
+	return parsed
 }
 
 func (s *Server) listOptionsForRequest(r *http.Request, root storage.ResolvedStorageRoot, path string) (storage.ListOptions, error) {

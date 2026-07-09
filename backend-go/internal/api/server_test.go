@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -54,8 +55,11 @@ func TestHealthAndDiscoveryRoutes(t *testing.T) {
 	}
 
 	plugins := getJSONWithCookie[UIPluginsResponse](t, server, "/api/plugins/ui", cookie)
-	if len(plugins.Plugins) != 1 || plugins.Plugins[0].ID != "text-preview" {
+	if len(plugins.Plugins) != 1 || plugins.Plugins[0].ID != "jsonl-text" {
 		t.Fatalf("unexpected ui plugins: %#v", plugins)
+	}
+	if plugins.Plugins[0].View != "text" || plugins.Plugins[0].ReadStrategy != "bounded" || plugins.Plugins[0].MaxSizeBytes != 524288 {
+		t.Fatalf("plugin manifest missing extended fields: %#v", plugins.Plugins[0])
 	}
 
 	jobs := getJSONWithCookie[TransferJobListResponse](t, server, "/api/storage/transfer/jobs", cookie)
@@ -290,6 +294,117 @@ func TestTransferRoutes(t *testing.T) {
 	if missingCancel.Code != "not_found" {
 		t.Fatalf("unexpected missing cancel response: %#v", missingCancel)
 	}
+}
+
+func TestContentSearch(t *testing.T) {
+	server, home, _ := newTransferTestServer(t)
+	log := "INFO start\nWARN low disk\nERROR boom\ninfo lowercase\nERROR again\n"
+	writeTestFile(t, filepath.Join(home, "logs", "app.log"), []byte(log))
+	base := "/api/storage/content/search?tunnel=personal&rootId=home&path=logs/app.log"
+
+	insensitive := getJSON[ContentSearchResponse](t, server, base+"&query=info")
+	if len(insensitive.Matches) != 2 || insensitive.Matches[0].Line != 1 || insensitive.Matches[1].Line != 4 {
+		t.Fatalf("case-insensitive matches = %#v", insensitive.Matches)
+	}
+
+	sensitive := getJSON[ContentSearchResponse](t, server, base+"&query=info&caseSensitive=true")
+	if len(sensitive.Matches) != 1 || sensitive.Matches[0].Line != 4 {
+		t.Fatalf("case-sensitive matches = %#v", sensitive.Matches)
+	}
+
+	regex := getJSON[ContentSearchResponse](t, server, base+"&query=%5EERROR&regex=true")
+	if len(regex.Matches) != 2 || regex.Matches[0].Line != 3 || regex.Matches[1].Line != 5 {
+		t.Fatalf("regex matches = %#v", regex.Matches)
+	}
+	if regex.Matches[0].Offset != int64(len("INFO start\nWARN low disk\n")) {
+		t.Fatalf("match offset = %d", regex.Matches[0].Offset)
+	}
+
+	limited := getJSON[ContentSearchResponse](t, server, base+"&query=ERROR&maxMatches=1")
+	if len(limited.Matches) != 1 || !limited.More {
+		t.Fatalf("limited response = %#v", limited)
+	}
+	continued := getJSON[ContentSearchResponse](t, server, fmt.Sprintf("%s&query=ERROR&fromOffset=%d&fromLine=%d", base, limited.NextOffset, limited.NextLine))
+	if len(continued.Matches) != 1 || continued.Matches[0].Line != 5 || continued.More {
+		t.Fatalf("continued response = %#v", continued)
+	}
+
+	invalid := getAPIErrorWithStatus(t, server, base+"&query=%5B&regex=true", "", http.StatusBadRequest)
+	if invalid.Code != "invalid_search_pattern" {
+		t.Fatalf("invalid pattern error = %#v", invalid)
+	}
+}
+
+func TestDownloadContentRangeRequests(t *testing.T) {
+	server, home, _ := newTransferTestServer(t)
+	writeTestFile(t, filepath.Join(home, "media", "clip.bin"), []byte("0123456789"))
+	url := "/api/storage/content?tunnel=personal&rootId=home&path=media/clip.bin"
+
+	full := doContentRequest(t, server, url, "")
+	if full.Code != http.StatusOK || full.Body.String() != "0123456789" {
+		t.Fatalf("full response = %d %q", full.Code, full.Body.String())
+	}
+	if full.Header().Get("Accept-Ranges") != "bytes" {
+		t.Fatalf("missing Accept-Ranges header: %#v", full.Header())
+	}
+	if !strings.HasPrefix(full.Header().Get("Content-Disposition"), "attachment") {
+		t.Fatalf("unexpected disposition: %s", full.Header().Get("Content-Disposition"))
+	}
+
+	inline := doContentRequest(t, server, url+"&inline=true", "")
+	if !strings.HasPrefix(inline.Header().Get("Content-Disposition"), "inline") {
+		t.Fatalf("unexpected inline disposition: %s", inline.Header().Get("Content-Disposition"))
+	}
+
+	middle := doContentRequest(t, server, url, "bytes=2-5")
+	if middle.Code != http.StatusPartialContent || middle.Body.String() != "2345" {
+		t.Fatalf("mid-range response = %d %q", middle.Code, middle.Body.String())
+	}
+	if middle.Header().Get("Content-Range") != "bytes 2-5/10" || middle.Header().Get("Content-Length") != "4" {
+		t.Fatalf("mid-range headers = %#v", middle.Header())
+	}
+
+	openEnded := doContentRequest(t, server, url, "bytes=4-")
+	if openEnded.Code != http.StatusPartialContent || openEnded.Body.String() != "456789" {
+		t.Fatalf("open-ended response = %d %q", openEnded.Code, openEnded.Body.String())
+	}
+	if openEnded.Header().Get("Content-Range") != "bytes 4-9/10" {
+		t.Fatalf("open-ended headers = %#v", openEnded.Header())
+	}
+
+	suffix := doContentRequest(t, server, url, "bytes=-3")
+	if suffix.Code != http.StatusPartialContent || suffix.Body.String() != "789" {
+		t.Fatalf("suffix response = %d %q", suffix.Code, suffix.Body.String())
+	}
+
+	overshoot := doContentRequest(t, server, url, "bytes=3-99")
+	if overshoot.Code != http.StatusPartialContent || overshoot.Body.String() != "3456789" {
+		t.Fatalf("overshoot response = %d %q", overshoot.Code, overshoot.Body.String())
+	}
+
+	unsatisfiable := doContentRequest(t, server, url, "bytes=10-")
+	if unsatisfiable.Code != http.StatusRequestedRangeNotSatisfiable {
+		t.Fatalf("unsatisfiable status = %d", unsatisfiable.Code)
+	}
+	if unsatisfiable.Header().Get("Content-Range") != "bytes */10" {
+		t.Fatalf("unsatisfiable headers = %#v", unsatisfiable.Header())
+	}
+
+	malformed := doContentRequest(t, server, url, "bytes=nonsense")
+	if malformed.Code != http.StatusOK || malformed.Body.String() != "0123456789" {
+		t.Fatalf("malformed range should fall back to full body: %d %q", malformed.Code, malformed.Body.String())
+	}
+}
+
+func doContentRequest(t *testing.T, server *Server, path string, rangeHeader string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	if rangeHeader != "" {
+		request.Header.Set("Range", rangeHeader)
+	}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	return response
 }
 
 func getJSON[T any](t *testing.T, server *Server, path string) T {

@@ -12,9 +12,12 @@ The Unix filesystem provider supports:
 - exact paginated listing with backend-side current-directory search and sorting
 - raw-byte download
 - full and bounded content reads
+- byte-range reads for seeking and partial opening
 - streaming read and streaming write
 - upload
-- bounded text preview
+- paginated text preview
+- content search within a single file (regex and case-sensitivity options)
+- change notification through native filesystem events (`watch`)
 - direct overwrite/write-back where root policy allows it
 - create folder
 - rename
@@ -36,7 +39,10 @@ The S3-compatible provider supports:
 - provider-neutral paginated search and non-native sorting through bounded prefix scanning
 - raw-byte download and upload with a configurable buffered object limit
 - full and bounded content reads within the buffered object limit
-- bounded text preview
+- byte-range reads through `GetObject` range requests for seeking and partial opening
+- paginated text preview
+- content search within a single object (regex and case-sensitivity options)
+- change notification through backend-side polling (`watch`, reported as degraded)
 - direct overwrite/write-back where root policy allows it
 - folder markers for directory-like prefixes
 - implicit directory-like prefixes derived from object listing, even when no folder marker object exists
@@ -89,7 +95,8 @@ providers = [
 - Provider capabilities determine which browser actions are available.
 - The `recursive-list` and `transfer` capabilities indicate that a provider can participate in pasteboard transfer planning.
 - Listing providers return page metadata, optional opaque next-page references, and accuracy flags for search, sort, and total counts.
-- Content access capabilities distinguish `full-read`, `bounded-read`, `range-read`, `stream-read`, and `stream-write`.
+- Content access capabilities distinguish `full-read`, `bounded-read`, `range-read`, `stream-read`, and `stream-write`; `range-read` is supported for both providers.
+- The `content-search` capability indicates in-file text search; `watch` indicates per-file change notification (supported for the filesystem provider, degraded via polling for S3).
 - The filesystem provider exposes supported `stream-read` and `stream-write` capabilities.
 - S3 exposes supported `stream-read` and `stream-write` capabilities; `multipart-upload` remains planned. Provider-neutral S3 transfer streams object bytes through the backend when both endpoints support streaming.
 - Write-back is represented through `overwrite` and is disabled for read-only roots.
@@ -101,4 +108,5 @@ providers = [
 
 - Google, Azure, WebDAV, and SFTP providers are planned but not implemented.
 - Provider-native directory copy is not implemented for the Unix provider; recursive pasteboard transfer is mediated by the backend service.
-- S3 multipart upload, range reads, provider-native recursive prefix copy/rename/move, IAM/policy management, and bucket administration are future work.
+- S3 multipart upload, provider-native recursive prefix copy/rename/move, IAM/policy management, and bucket administration are future work.
+- S3 change notification is backend-side polling rather than native push, and is reported as a degraded `watch` capability.
