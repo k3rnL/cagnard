@@ -297,6 +297,11 @@ function capabilitiesAvailable(capabilities: CapabilityStatus[], required: strin
 }
 
 function sizeAllowed(entry: StorageEntry, opener: FileOpener): boolean {
+  // Bounded openers paginate: a large file opens at its first page with a
+  // "Load more" control rather than being refused. Only openers that must
+  // load the whole file up front (download strategy, e.g. PDF) enforce a hard
+  // size limit here.
+  if (opener.readStrategy !== "download") return true;
   if (!opener.maxSizeBytes) return true;
   const size = entry.metadata.size;
   return typeof size === "number" && size <= opener.maxSizeBytes;

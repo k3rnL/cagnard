@@ -767,6 +767,10 @@ export function useCagnardData(): CagnardDataState {
       try {
         if (match.opener.readStrategy === "bounded") {
           const preview = await cagnardApi.preview(root.tunnel, root.id, entry.path);
+          // Tree views cannot parse a partially loaded file, so a truncated
+          // first page opens in the raw source view (which paginates cleanly).
+          const structuredView = match.opener.view === "json" || match.opener.view === "yaml";
+          const effectiveViewMode = preview.truncated && structuredView ? "source" : viewMode;
           setOpenedFile({
             entry,
             match,
@@ -774,7 +778,7 @@ export function useCagnardData(): CagnardDataState {
             loading: false,
             content: preview.content,
             editedContent: preview.content,
-            viewMode,
+            viewMode: effectiveViewMode,
             dirty: false,
             truncated: preview.truncated,
             nextOffset: preview.nextOffset,
