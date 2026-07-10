@@ -17,6 +17,7 @@ var fallbackType = fileTypeDefinition{mimeType: "application/octet-stream", cate
 
 var extensionTypes = map[string]fileTypeDefinition{
 	".txt":   textType("text/plain", "text", "file-text"),
+	".dat":   textType("text/plain", "text", "file-text"),
 	".log":   textType("text/plain", "log", "file-text"),
 	".md":    textType("text/markdown", "markdown", "file-text"),
 	".json":  textType("application/json", "json", "file-json"),

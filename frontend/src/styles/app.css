@@ -1798,20 +1798,6 @@ button {
   min-height: 0;
 }
 
-.log-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.log-toolbar label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #55635c;
-  font-size: 0.9rem;
-}
-
 .log-removed {
   color: #8f2d24;
   font-size: 0.85rem;

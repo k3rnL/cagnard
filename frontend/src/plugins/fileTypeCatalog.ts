@@ -43,6 +43,7 @@ interface FileTypeDefinition {
 const extensionDefinitions: Record<string, FileTypeDefinition> = {
   ".txt": text("text/plain", "Text"),
   ".text": text("text/plain", "Text"),
+  ".dat": text("text/plain", "Data"),
   ".log": text("text/plain", "Log", "log", "file-text"),
   ".md": text("text/markdown", "Markdown", "markdown", "file-text"),
   ".markdown": text("text/markdown", "Markdown", "markdown", "file-text"),

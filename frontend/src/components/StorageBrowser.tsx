@@ -33,7 +33,9 @@ import {
   ListTree,
   LoaderCircle,
   MoveRight,
+  Pause,
   Pencil,
+  Play,
   RefreshCw,
   Save,
   Search,
@@ -1361,9 +1363,14 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
     setCurrentMatch(0);
   }, [content, query, regex, caseSensitive]);
 
+  const [follow, setFollow] = useState(false);
+  const isLogView = match?.opener.view === "log" && opened.viewMode === "log";
+  const canFollow = isLogView && logWatchable(entry);
+
   useEffect(() => {
     setSearchOpen(false);
     setQuery("");
+    setFollow(false);
     priorViewMode.current = undefined;
   }, [entry.path]);
 
@@ -1402,6 +1409,18 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
           </div>
         </div>
         <div className="file-opener-actions">
+          {isLogView ? (
+            <button
+              className={follow ? "icon-button active" : "icon-button"}
+              type="button"
+              onClick={() => setFollow((value) => !value)}
+              disabled={!canFollow}
+              title={!canFollow ? "Live follow is not available for this storage provider" : follow ? "Stop following" : "Follow new lines"}
+              aria-pressed={follow}
+            >
+              {follow ? <Pause size={17} /> : <Play size={17} />}
+            </button>
+          ) : null}
           {match?.opener.view === "json" ? (
             <>
               <button className="icon-button" type="button" onClick={state.prettifyOpenedJson} title="Prettify JSON">
@@ -1500,7 +1519,7 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
           {match?.opener.view === "json" && opened.viewMode === "tree" ? <JsonView content={content} /> : null}
           {match?.opener.view === "yaml" && opened.viewMode === "tree" ? <YamlView content={content} /> : null}
           {match?.opener.view === "diff" && opened.viewMode === "diff" ? <DiffView content={content} /> : null}
-          {match?.opener.view === "log" && opened.viewMode === "log" ? <LogView state={state} opened={opened} content={content} /> : null}
+          {match?.opener.view === "log" && opened.viewMode === "log" ? <LogView state={state} opened={opened} content={content} follow={follow} /> : null}
           {match?.opener.view === "csv" && opened.viewMode === "table" ? <CsvTable content={content} /> : null}
           {match && shouldShowSource(opened.viewMode) ? (
             searching ? (
@@ -1872,12 +1891,34 @@ function diffLineClass(line: string): string {
   return "diff-context";
 }
 
-function LogView({ state, opened, content }: { state: CagnardDataState; opened: OpenedFileState; content: string }) {
-  const [follow, setFollow] = useState(false);
+function logWatchable(entry: StorageEntry): boolean {
+  return entry.capabilities.some((capability) => capability.name === "watch" && capability.status !== "unsupported");
+}
+
+// scrollToBottom pins the nearest scrollable ancestor to the bottom. The log
+// view scrolls internally when opened inline but through .file-opener-body at
+// page level, so it walks up from the <pre> to whichever element scrolls.
+function scrollToBottom(start: HTMLElement | null): void {
+  let node: HTMLElement | null = start;
+  while (node) {
+    const overflowY = getComputedStyle(node).overflowY;
+    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) {
+      node.scrollTop = node.scrollHeight;
+      return;
+    }
+    node = node.parentElement;
+  }
+}
+
+function LogView({ state, opened, content, follow }: { state: CagnardDataState; opened: OpenedFileState; content: string; follow: boolean }) {
   const [removed, setRemoved] = useState(false);
   const entry = opened.entry;
-  const watchable = entry.capabilities.some((capability) => capability.name === "watch" && capability.status !== "unsupported");
+  const watchable = logWatchable(entry);
   const containerRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    setRemoved(false);
+  }, [entry.path]);
 
   useFileWatch(follow && watchable && !removed, state.selectedRoot, entry.path, {
     onAppended: (event) => {
@@ -1901,22 +1942,12 @@ function LogView({ state, opened, content }: { state: CagnardDataState; opened: 
 
   useEffect(() => {
     if (!follow) return;
-    const container = containerRef.current;
-    if (container) container.scrollTop = container.scrollHeight;
+    scrollToBottom(containerRef.current);
   }, [content, follow]);
 
   return (
     <div className="log-view-wrap">
-      <div className="log-toolbar">
-        {watchable ? (
-          <label>
-            <input type="checkbox" checked={follow} onChange={() => setFollow((value) => !value)} /> Follow
-          </label>
-        ) : (
-          <span className="muted">Live follow is not available for this storage provider.</span>
-        )}
-        {removed ? <span className="log-removed">The file was removed from storage.</span> : null}
-      </div>
+      {removed ? <div className="log-removed">The file was removed from storage.</div> : null}
       <LogLines content={content} containerRef={containerRef} />
     </div>
   );
