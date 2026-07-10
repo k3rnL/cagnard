@@ -3,5 +3,5 @@ name: cagnard
 description: Provider-neutral storage browser
 icon: https://raw.githubusercontent.com/k3rnL/cagnard/main/docs/assets/brand/cagnard-app-icon.png
 type: application
-version: 0.6.2
-appVersion: "0.6.2"
+version: 0.7.0
+appVersion: "0.7.0"
