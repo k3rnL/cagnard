@@ -3,6 +3,8 @@ import { FolderOpen, Home, LogOut, Plug, ShieldCheck } from "lucide-react";
 
 import { LoginScreen } from "./components/LoginScreen";
 import { StorageBrowser } from "./components/StorageBrowser";
+import { AppearanceSelector } from "./components/AppearanceSelector";
+import { BrandMark } from "./components/BrandMark";
 import { useCagnardData } from "./api/useCagnardData";
 
 export function App() {
@@ -19,14 +21,14 @@ export function App() {
         <div className="app-shell">
           <aside className="sidebar" aria-label="Storage navigation">
             <div className="brand">
-              <div className="brand-mark">C</div>
+              <BrandMark />
               <div>
                 <strong>Cagnard</strong>
                 <span>Storage browser</span>
               </div>
             </div>
 
-            <section className="nav-section">
+            <section className="nav-section session-section">
               <div className="nav-title">
                 <ShieldCheck size={16} />
                 Session
@@ -43,7 +45,7 @@ export function App() {
             </section>
 
             {data.navigation?.personal && data.navigation.personal.roots.length > 0 ? (
-              <section className="nav-section">
+              <section className="nav-section storage-section personal-section">
                 <div className="nav-title">
                   <Home size={16} />
                   {data.navigation.personal.label}
@@ -62,7 +64,7 @@ export function App() {
             ) : null}
 
             {data.navigation?.global && data.navigation.global.roots.length > 0 ? (
-              <section className="nav-section">
+              <section className="nav-section storage-section global-section">
                 <div className="nav-title">
                   <FolderOpen size={16} />
                   {data.navigation.global.label}
@@ -80,7 +82,7 @@ export function App() {
               </section>
             ) : null}
 
-            <section className="nav-section">
+            <section className="nav-section plugins-section">
               <div className="nav-title">
                 <Plug size={16} />
                 UI plugins
@@ -92,6 +94,10 @@ export function App() {
                 </div>
               ))}
             </section>
+
+            <div className="sidebar-appearance">
+              <AppearanceSelector />
+            </div>
           </aside>
 
           <StorageBrowser state={data} />

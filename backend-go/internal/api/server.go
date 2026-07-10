@@ -50,6 +50,7 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/health", s.health)
+	s.mux.HandleFunc("GET /api/appearance", s.appearance)
 	s.mux.HandleFunc("GET /api/session", s.session)
 	s.mux.HandleFunc("GET /api/auth/providers", s.authProviders)
 	s.mux.HandleFunc("POST /api/auth/login", s.login)
@@ -77,6 +78,15 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/storage/transfer/jobs/{jobId}/cancel", s.cancelTransferJob)
 	s.mux.HandleFunc("POST /api/storage/transfer/jobs/{jobId}/resolve", s.resolveTransferJob)
 	s.mux.HandleFunc("GET /api/plugins/ui", s.uiPlugins)
+}
+
+func (s *Server) appearance(w http.ResponseWriter, r *http.Request) {
+	appearance := s.cfg.EffectiveAppearance()
+	writeJSON(w, http.StatusOK, AppearanceResponse{
+		DefaultPalette:    string(appearance.DefaultPalette),
+		DefaultMode:       string(appearance.DefaultMode),
+		AllowUserOverride: appearance.AllowUserOverride,
+	})
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

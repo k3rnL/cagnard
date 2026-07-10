@@ -4,11 +4,14 @@
   "scripts": {
     "backend:test": "cd backend-go && go test ./...",
     "backend:go:test": "cd backend-go && go test ./...",
+    "frontend:test": "pnpm --filter @cagnard/frontend test",
     "frontend:check": "pnpm --filter @cagnard/frontend typecheck",
+    "frontend:build": "pnpm --filter @cagnard/frontend build",
     "examples:compose:check": "bash scripts/validate-compose-examples.sh",
     "examples:helm:check": "bash scripts/validate-helm-examples.sh",
     "examples:check": "pnpm examples:compose:check && pnpm examples:helm:check",
-    "check": "pnpm backend:test && pnpm --filter @cagnard/frontend typecheck"
+    "docs:check": "node scripts/validate-docs.mjs",
+    "check": "pnpm backend:test && pnpm frontend:test && pnpm frontend:check && pnpm frontend:build && pnpm examples:check && pnpm docs:check"
   },
   "packageManager": "pnpm@11.7.0"
 }

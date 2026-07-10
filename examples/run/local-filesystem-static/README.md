@@ -1,26 +1,25 @@
-# Local Filesystem With Static Users
+# Local Filesystem With Static Login
 
-This is the smallest complete Cagnard environment. It starts the Go backend and frontend, uses static login, and exposes generated Unix filesystem sample data.
+The smallest complete Cagnard environment: released frontend and backend images, one static demo user, and generated Unix filesystem content.
 
-## Start
+## Start Released Images
 
 ```bash
 cp .env.example .env
-docker compose up --build
+docker compose up -d
 ```
 
-Open `http://127.0.0.1:5173`.
+Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
-```text
-User: alice
-Password: cagnard
+`CAGNARD_VERSION` in `.env` selects the matching frontend and backend release. Ports default to frontend `5173` and backend `8080`.
+
+## Build The Current Source
+
+From this directory inside a Cagnard checkout:
+
+```bash
+docker compose -f docker-compose.yaml -f docker-compose.build.yaml up --build
 ```
-
-## What It Starts
-
-- Cagnard Go backend on `http://127.0.0.1:8080`
-- Cagnard frontend on `http://127.0.0.1:5173`
-- Local sample files mounted at `/data` in the backend container
 
 ## Cleanup
 
@@ -28,4 +27,4 @@ Password: cagnard
 docker compose down --volumes
 ```
 
-The matching Helm values are `deploy/helm/cagnard/examples/local-filesystem-static-values.yaml`.
+Kubernetes users can start from `deploy/helm/cagnard/examples/local-filesystem-static-values.yaml`.

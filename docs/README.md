@@ -1,34 +1,48 @@
 # Cagnard Documentation
 
-This directory is the maintained documentation surface for implemented Cagnard features.
+<p align="center">
+  <img src="assets/brand/cagnard-mark-transparent.png" width="112" alt="Cagnard orange C mark" />
+</p>
 
-Feature documentation is organized by spec area:
+Cagnard is a self-hosted, provider-neutral storage browser. Start with a runnable deployment, then use the guides and references that match what you want to accomplish.
 
-- [Go backend runtime](features/go-backend-runtime.md)
-- [Stateless backend configuration](features/stateless-backend-configuration.md)
-- [User login flow](features/user-login-flow.md)
-- [Storage browser](features/storage-browser.md)
-- [Browser feedback and notifications](features/browser-feedback-and-notifications.md)
-- [Browser action modals](features/browser-action-modals.md)
-- [Browser pasteboard](features/browser-pasteboard.md)
-- [Task queue](features/task-queue.md)
-- [File compatibility](features/file-compatibility.md)
-- [Storage plugin system](features/storage-plugin-system.md)
-- [Secure account management](features/secure-account-management.md)
-- [User storage access model](features/user-storage-access-model.md)
-- [UI plugin system](features/ui-plugin-system.md)
-- [Cross-provider transfer](features/cross-provider-transfer.md)
-- [Deployment packaging](features/deployment-packaging.md)
-- [Runnable example catalog](features/runnable-example-catalog.md)
-- [CI and release automation](features/ci-release-automation.md)
-- [Feature documentation](features/feature-documentation.md)
+![Cagnard Solar light theme browsing an S3-compatible storage root](assets/screenshots/storage-browser.png)
 
-Operational guides:
+## Start Here
 
-- [Backend configuration](configuration.md)
+| Goal | Guide |
+| --- | --- |
+| Try Cagnard with Docker | [Docker quick start](getting-started/docker.md) |
+| Install Cagnard on Kubernetes | [Helm quick start](getting-started/helm.md) |
+| Work on Cagnard from source | [Development setup](getting-started/development.md) |
 
-## Maintenance Rule
+## Use Cagnard
 
-Every change that adds or changes implemented behavior must update the matching feature documentation in this directory before the OpenSpec change is archived. If a change creates a new feature/spec area, add a new page under `docs/features/` and link it from this index.
+- [Browse, copy, move, and manage files](guides/browsing-and-transfers.md)
+- [Open files, search content, and use viewers](guides/file-viewers.md)
+- [Configure users and personal/global storage](guides/users-and-storage-access.md)
+- [Connect S3-compatible storage and MinIO](guides/s3-and-minio.md)
+- [Choose and configure appearance](guides/appearance.md)
 
-Changes that add storage providers or authentication methods must also update runnable examples when they affect how users start or configure Cagnard.
+## Operate Cagnard
+
+- [Configuration](operations/configuration.md)
+- [Containers, Kubernetes, and production deployment](operations/deployment.md)
+- [Authentication, secrets, and security boundaries](operations/security.md)
+- [Release artifacts and upgrades](operations/releases.md)
+
+## Understand And Extend Cagnard
+
+- [Architecture overview](architecture/overview.md)
+- [Storage providers and capabilities](architecture/storage-plugins.md)
+- [File opener and UI plugins](architecture/ui-plugins.md)
+- [Transfer task engine](architecture/transfer-jobs.md)
+- [Configuration reference](reference/configuration.md)
+- [Provider capability reference](reference/provider-capabilities.md)
+
+## Contribute
+
+- [Testing and validation](contributing/testing.md)
+- [Documentation maintenance](contributing/documentation.md)
+
+The behavior contract remains in [`openspec/specs`](../openspec/specs). OpenSpec is for engineering requirements; this documentation is organized around reader goals.

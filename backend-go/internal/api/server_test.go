@@ -27,6 +27,17 @@ func TestHealthAndDiscoveryRoutes(t *testing.T) {
 		t.Fatalf("unexpected health response: %#v", health)
 	}
 
+	appearance := getJSON[AppearanceResponse](t, server, "/api/appearance")
+	if appearance.DefaultPalette != "classic" || appearance.DefaultMode != "system" || !appearance.AllowUserOverride {
+		t.Fatalf("unexpected appearance response: %#v", appearance)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/appearance", nil)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if body := response.Body.String(); strings.Contains(body, "alice") || strings.Contains(body, "providers") || strings.Contains(body, "signingSecret") {
+		t.Fatalf("appearance response exposed protected configuration: %s", body)
+	}
+
 	auth := getJSON[AuthProvidersResponse](t, server, "/api/auth/providers")
 	if len(auth.Providers) != 1 || auth.Providers[0].ID != "static" {
 		t.Fatalf("unexpected auth providers: %#v", auth)

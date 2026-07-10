@@ -3,6 +3,8 @@ import { KeyRound, LogIn, ShieldCheck, UserRound } from "lucide-react";
 
 import type { CagnardDataState } from "../api/useCagnardData";
 import type { AuthProviderMetadata } from "../api/types";
+import { AppearanceSelector } from "./AppearanceSelector";
+import { BrandMark } from "./BrandMark";
 
 interface LoginScreenProps {
   state: CagnardDataState;
@@ -22,8 +24,11 @@ export function LoginScreen({ state }: LoginScreenProps) {
   return (
     <main className="login-shell">
       <section className="login-panel" aria-label="Sign in">
+        <div className="login-appearance">
+          <AppearanceSelector compact />
+        </div>
         <div className="brand login-brand">
-          <div className="brand-mark">C</div>
+          <BrandMark />
           <div>
             <strong>Cagnard</strong>
             <span>Storage browser</span>

@@ -12,6 +12,12 @@ type HealthResponse struct {
 	ConfiguredUsers int    `json:"configuredUsers"`
 }
 
+type AppearanceResponse struct {
+	DefaultPalette    string `json:"defaultPalette"`
+	DefaultMode       string `json:"defaultMode"`
+	AllowUserOverride bool   `json:"allowUserOverride"`
+}
+
 type UserProfile struct {
 	ID          string            `json:"id"`
 	DisplayName string            `json:"displayName"`

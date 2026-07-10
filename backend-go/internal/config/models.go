@@ -2,6 +2,7 @@ package config
 
 type CagnardConfig struct {
 	Server          ServerConfig
+	Appearance      AppearanceConfig
 	Auth            AuthConfig
 	Tasks           TaskConfig
 	Users           []ConfiguredUser
@@ -10,6 +11,49 @@ type CagnardConfig struct {
 	PersonalStorage []StorageRootConfig
 	GlobalStorage   []StorageRootConfig
 	UIPlugins       []UIPluginConfig
+}
+
+type AppearancePalette string
+
+const (
+	AppearancePaletteClassic AppearancePalette = "classic"
+	AppearancePaletteSolar   AppearancePalette = "solar"
+)
+
+type AppearanceMode string
+
+const (
+	AppearanceModeLight  AppearanceMode = "light"
+	AppearanceModeDark   AppearanceMode = "dark"
+	AppearanceModeSystem AppearanceMode = "system"
+)
+
+type AppearanceConfig struct {
+	DefaultPalette    AppearancePalette
+	DefaultMode       AppearanceMode
+	AllowUserOverride bool
+}
+
+func DefaultAppearanceConfig() AppearanceConfig {
+	return AppearanceConfig{
+		DefaultPalette:    AppearancePaletteClassic,
+		DefaultMode:       AppearanceModeSystem,
+		AllowUserOverride: true,
+	}
+}
+
+func (c CagnardConfig) EffectiveAppearance() AppearanceConfig {
+	appearance := c.Appearance
+	if appearance.DefaultPalette == "" && appearance.DefaultMode == "" {
+		return DefaultAppearanceConfig()
+	}
+	if appearance.DefaultPalette == "" {
+		appearance.DefaultPalette = AppearancePaletteClassic
+	}
+	if appearance.DefaultMode == "" {
+		appearance.DefaultMode = AppearanceModeSystem
+	}
+	return appearance
 }
 
 type ServerConfig struct {

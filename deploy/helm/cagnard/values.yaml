@@ -6,8 +6,8 @@ imagePullSecrets: []
 backend:
   replicaCount: 1
   image:
-    repository: ghcr.io/example/cagnard-backend
-    tag: ""
+    repository: ghcr.io/k3rnl/cagnard-backend
+    tag: "v0.6.2"
     pullPolicy: IfNotPresent
   podAnnotations: {}
   env: []
@@ -24,6 +24,12 @@ backend:
         server {
           host = "0.0.0.0"
           port = 8080
+        }
+
+        appearance {
+          defaultPalette = classic
+          defaultMode = system
+          allowUserOverride = true
         }
 
         auth {
@@ -86,15 +92,17 @@ backend:
 
         uiPlugins = [
           {
-            id = text-preview
-            label = "Text preview"
-            kind = preview
+            id = jsonl-text
+            label = "JSON Lines"
+            kind = opener
             apiVersion = "1"
             enabled = true
-            mimeTypes = ["text/plain", "text/markdown", "application/json"]
-            extensions = [".txt", ".md", ".json", ".csv"]
+            extensions = [".jsonl"]
             permissions = [read]
-            priority = 10
+            priority = 15
+            view = text
+            readStrategy = bounded
+            maxSizeBytes = 524288
           }
         ]
     existingConfigMap:
@@ -116,8 +124,8 @@ backend:
 frontend:
   replicaCount: 1
   image:
-    repository: ghcr.io/example/cagnard-frontend
-    tag: ""
+    repository: ghcr.io/k3rnl/cagnard-frontend
+    tag: "v0.6.2"
     pullPolicy: IfNotPresent
   podAnnotations: {}
   apiUpstream: ""
@@ -145,4 +153,3 @@ ingress:
         - path: /
           pathType: Prefix
   tls: []
-

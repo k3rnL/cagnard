@@ -1,34 +1,23 @@
-# Local Filesystem And S3 MinIO With Static Users
+# Filesystem And S3/MinIO With Static Login
 
-This example starts the Cagnard Go backend with both filesystem and S3-compatible storage roots. It is useful for testing provider-neutral browsing and transfer-ready setups.
+The representative multi-provider demo. It exposes local filesystem roots and MinIO-backed S3 roots in one browser and is suitable for testing cross-provider transfers.
 
-## Start
+## Start Released Images
 
 ```bash
 cp .env.example .env
-docker compose up --build
+docker compose up -d
 ```
 
-Open `http://127.0.0.1:5173`.
+Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
-```text
-User: alice
-Password: cagnard
+MinIO console: `http://127.0.0.1:9001`, using `cagnard` / `cagnard-secret`. The initializer creates `cagnard-combined` and seeds `documents/` and `shared/`.
+
+## Build The Current Source
+
+```bash
+docker compose -f docker-compose.yaml -f docker-compose.build.yaml up --build
 ```
-
-MinIO is available at:
-
-- API: `http://127.0.0.1:9000`
-- Console: `http://127.0.0.1:9001`
-- User: `cagnard`
-- Password: `cagnard-secret`
-
-## What It Starts
-
-- Cagnard Go backend on `http://127.0.0.1:8080`
-- Cagnard frontend on `http://127.0.0.1:5173`
-- Filesystem roots mounted at `/data`
-- MinIO bucket `cagnard-combined` with generated sample objects under `documents/` and `shared/`
 
 ## Cleanup
 
@@ -36,4 +25,4 @@ MinIO is available at:
 docker compose down --volumes
 ```
 
-The matching Helm values are `deploy/helm/cagnard/examples/local-and-s3-static-values.yaml`.
+Kubernetes users can start from `deploy/helm/cagnard/examples/local-and-s3-static-values.yaml`. That values file expects an accessible S3-compatible endpoint.

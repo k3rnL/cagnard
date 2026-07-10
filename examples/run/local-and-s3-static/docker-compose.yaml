@@ -37,10 +37,7 @@ services:
       - ./seed:/seed:ro
 
   backend:
-    image: ${CAGNARD_BACKEND_IMAGE:-cagnard-backend:local}
-    build:
-      context: ../../..
-      dockerfile: Containerfile.backend
+    image: ghcr.io/k3rnl/cagnard-backend:${CAGNARD_VERSION:-v0.6.2}
     environment:
       CAGNARD_CONFIG: /etc/cagnard/cagnard.conf
     ports:
@@ -53,10 +50,7 @@ services:
         condition: service_completed_successfully
 
   frontend:
-    image: ${CAGNARD_FRONTEND_IMAGE:-cagnard-frontend:local}
-    build:
-      context: ../../..
-      dockerfile: frontend/Containerfile
+    image: ghcr.io/k3rnl/cagnard-frontend:${CAGNARD_VERSION:-v0.6.2}
     environment:
       CAGNARD_API_UPSTREAM: http://backend:8080
     ports:

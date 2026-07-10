@@ -39,6 +39,7 @@ func Load(path string) (*CagnardConfig, error) {
 
 func decode(root hocon.Object) (*CagnardConfig, error) {
 	server := objectAt(root, "server")
+	appearance := objectAt(root, "appearance")
 	auth := objectAt(root, "auth")
 	tasks := objectAt(root, "tasks")
 
@@ -46,6 +47,11 @@ func decode(root hocon.Object) (*CagnardConfig, error) {
 		Server: ServerConfig{
 			Host: stringOrDefault(server, "host", "127.0.0.1"),
 			Port: intOrDefault(server, "port", 8080),
+		},
+		Appearance: AppearanceConfig{
+			DefaultPalette:    AppearancePalette(stringOrDefault(appearance, "defaultPalette", string(AppearancePaletteClassic))),
+			DefaultMode:       AppearanceMode(stringOrDefault(appearance, "defaultMode", string(AppearanceModeSystem))),
+			AllowUserOverride: boolOrDefault(appearance, "allowUserOverride", true),
 		},
 		Tasks: TaskConfig{
 			MaxConcurrentTransfers: intOrDefault(tasks, "maxConcurrentTransfers", 4),
@@ -246,6 +252,15 @@ func validate(path string, cfg *CagnardConfig) error {
 	authMode := cfg.AuthMode()
 	validModes := map[string]bool{"static": true, "development": true, "external": true}
 	var errs []string
+	appearance := cfg.EffectiveAppearance()
+	validPalettes := map[AppearancePalette]bool{AppearancePaletteClassic: true, AppearancePaletteSolar: true}
+	validAppearanceModes := map[AppearanceMode]bool{AppearanceModeLight: true, AppearanceModeDark: true, AppearanceModeSystem: true}
+	if !validPalettes[appearance.DefaultPalette] {
+		errs = append(errs, "appearance.defaultPalette must be one of classic, solar")
+	}
+	if !validAppearanceModes[appearance.DefaultMode] {
+		errs = append(errs, "appearance.defaultMode must be one of dark, light, system")
+	}
 	if !validModes[authMode] {
 		errs = append(errs, "auth.mode must be one of development, external, static")
 	}

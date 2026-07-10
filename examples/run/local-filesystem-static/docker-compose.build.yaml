@@ -1,0 +1,12 @@
+services:
+  backend:
+    image: cagnard-backend:local
+    build:
+      context: ../../..
+      dockerfile: Containerfile.backend
+
+  frontend:
+    image: cagnard-frontend:local
+    build:
+      context: ../../..
+      dockerfile: frontend/Containerfile

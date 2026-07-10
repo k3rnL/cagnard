@@ -1,135 +1,100 @@
+<p align="center">
+  <img src="docs/assets/brand/cagnard-banner.png" alt="Cagnard outlined orange mark connecting filesystem and object storage" />
+</p>
+
 # Cagnard
 
-Cagnard is a provider-neutral storage browser. Storage is modeled as a capability implemented by plugins, so the same browser can navigate local filesystems, object stores, document drives, and future storage providers through one contract.
+[![Validate](https://github.com/k3rnL/cagnard/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/k3rnL/cagnard/actions/workflows/validate.yml)
+[![Latest release](https://img.shields.io/github/v/release/k3rnL/cagnard)](https://github.com/k3rnL/cagnard/releases/latest)
 
-The current implementation includes:
+**Built in Occitania for files that live everywhere.**
 
-- stateless Go backend driven by HOCON configuration
-- provider-neutral HTTP API for browsing, mutation, preview, and transfer jobs
-- Unix filesystem and S3-compatible storage providers
-- React frontend
-- personal `Home` / `My documents` and admin-configured `Global` storage navigation
-- UI plugin declarations for preview and file-specific actions
+Cagnard is a self-hosted storage browser that gives Unix filesystems and S3-compatible object storage one modern, capability-aware interface. Browse, open, search, upload, download, rename, delete, and stream files between providers without exposing storage credentials to the browser.
 
-## Layout
+## Why Cagnard
 
-```text
-backend-go/    Go backend service
-frontend/      Refine React application
-config/        Example stateless backend configuration
-docs/          Maintained feature and operator documentation
-examples/      Sample storage content and runnable Docker Compose examples
-deploy/        Container, Helm, and deployment automation artifacts
-openspec/      OpenSpec change artifacts and specs
+- **One browser across providers.** Storage roots share a normalized contract while keeping provider-specific metadata and degraded-operation notices visible.
+- **Cross-provider transfers.** A tab-synchronized pasteboard, recursive tasks, conflict resolution, streaming, progress, cancellation, and per-file detail make copy and move practical.
+- **Useful file opening.** Text, Markdown, JSON, YAML, CSV, diffs, logs, media, PDF, and archives open in the application with bounded or range-based reads.
+- **Stateless operation.** One HOCON file defines users, access rules, providers, accounts, roots, appearance, and opener manifests; no application database is required.
+- **Personal and shared spaces.** Users can receive one or more personal homes alongside administrator-controlled global roots.
+- **Operator-controlled appearance.** Classic and Solar palettes each include light, dark, and live system modes, with optional user overrides.
+
+<p align="center">
+  <img src="docs/assets/screenshots/storage-browser.png" alt="Cagnard Solar light theme browsing JSON and Markdown files in an S3 storage root" width="960" />
+</p>
+
+## Quick Start
+
+### Docker Compose
+
+Run the released filesystem demo; Go and Node.js are not required:
+
+```bash
+git clone https://github.com/k3rnL/cagnard.git
+cd cagnard/examples/run/local-filesystem-static
+cp .env.example .env
+docker compose up -d
 ```
+
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173) and sign in with `alice` / `cagnard`. The [Docker guide](docs/getting-started/docker.md) also covers the MinIO and combined-provider examples, version selection, source builds, and cleanup.
+
+The default path pulls from GHCR. If registry policy returns `401`, the package owner must make the release packages public or grant your account read access; the Docker guide includes an immediate source-build fallback.
+
+### Helm
+
+```bash
+curl -fsSLo cagnard-demo-values.yaml \
+  https://raw.githubusercontent.com/k3rnL/cagnard/v0.6.2/deploy/helm/cagnard/examples/local-filesystem-static-values.yaml
+
+helm install cagnard oci://ghcr.io/k3rnl/charts/cagnard \
+  --version 0.6.2 \
+  -f cagnard-demo-values.yaml
+
+kubectl port-forward service/cagnard-frontend 5173:80
+```
+
+The [Helm guide](docs/getting-started/helm.md) explains production adaptation, secret-backed configuration, ingress, upgrades, and cleanup.
+
+## Supported Today
+
+| Area | Implemented |
+| --- | --- |
+| Storage providers | Unix filesystem, AWS S3 and compatible endpoints including MinIO |
+| Authentication | Static configured users and explicit local development mode |
+| Storage access | Multiple accounts, personal/global roots, user/role/group rules, read-only accounts |
+| Browser | Provider pagination, backend search/sort, metadata, multi-select, upload/download, rename/delete |
+| Transfers | Cross-provider files and directories, streams, conflict policies, task queue, progress and cancellation |
+| File experiences | Text/source editing, Markdown, JSON/YAML, CSV/TSV, logs, diffs, media, PDF, archives |
+| Deployment | Release images, Docker Compose examples, OCI Helm chart, GitHub release automation |
+
+OIDC declarations reserve the future SSO contract, but end-to-end OIDC login is not yet production-ready. Active transfer jobs are currently process-local and are lost when the backend restarts. These limits are documented rather than hidden.
+
+## Configuration And Extension
+
+Providers, accounts, roots, users, access rules, themes, and opener manifests live in HOCON. Start from [`config/cagnard.example.conf`](config/cagnard.example.conf), then use the [configuration guide](docs/operations/configuration.md) and [field reference](docs/reference/configuration.md).
+
+Storage implementations advertise supported, degraded, and unsupported capabilities. UI openers match MIME types, extensions, categories, size strategies, and provider capabilities. Read the [architecture overview](docs/architecture/overview.md), [storage provider contract](docs/architecture/storage-plugins.md), and [file opener model](docs/architecture/ui-plugins.md) before extending them.
 
 ## Documentation
 
-Start with [docs/README.md](docs/README.md). Feature documentation is maintained alongside specs and implementation. Any change that modifies implemented behavior should update the matching page under `docs/features/`.
+- [Documentation portal](docs/README.md)
+- [Docker quick start](docs/getting-started/docker.md)
+- [Helm quick start](docs/getting-started/helm.md)
+- [Browsing and transfers](docs/guides/browsing-and-transfers.md)
+- [S3-compatible storage and MinIO](docs/guides/s3-and-minio.md)
+- [Deployment and security](docs/operations/deployment.md)
+- [Development setup](docs/getting-started/development.md)
 
-## Backend
+Engineering behavior contracts and active changes live under [`openspec/`](openspec/). Reader documentation is maintained by user goal under [`docs/`](docs/README.md).
 
-The backend is stateless: it derives providers, accounts, users, access rules, and UI plugin declarations from configuration and external providers.
+## Develop
 
-Run from the repository root:
-
-```bash
-cd backend-go
-go run ./cmd/cagnard-backend
-```
-
-By default the backend reads:
-
-```text
-config/cagnard.example.conf
-```
-
-Override it with:
+Cagnard uses a Go backend and a Vite/React frontend. With Go, Node.js 22.13+, and pnpm 11.7.0 installed:
 
 ```bash
-CAGNARD_CONFIG=/path/to/cagnard.conf go run ./cmd/cagnard-backend
-```
-
-The backend configuration format is HOCON. See [docs/configuration.md](docs/configuration.md).
-
-## Frontend
-
-The frontend is a Vite/React app using Refine as the application shell.
-Use Node.js 22.13 or newer for the declared `pnpm@11.7.0` package manager.
-
-```bash
-cd frontend
 pnpm install
-pnpm dev
+pnpm check
 ```
 
-The Vite dev server proxies `/api` to `http://127.0.0.1:8080`.
-
-## Docker
-
-Build local images from the repository root:
-
-```bash
-docker build -f Containerfile.backend -t cagnard-backend:local .
-docker build -f frontend/Containerfile -t cagnard-frontend:local .
-```
-
-The backend image accepts `CAGNARD_CONFIG` for mounted HOCON configuration. The frontend image serves the production build and proxies `/api` to `CAGNARD_API_UPSTREAM`.
-
-Runnable examples are available under `examples/run`. For example:
-
-```bash
-cd examples/run/local-filesystem-static
-cp .env.example .env
-docker compose up --build
-```
-
-## Local Mocker Validation
-
-Mocker is used for local image validation on macOS. CI and publishing use Docker.
-
-Mocker requires Apple's `container` runtime. Install and start it before local Mocker builds:
-
-```bash
-brew install container
-brew tap us/tap
-brew install us/tap/mocker
-container system start --enable-kernel-install
-```
-
-Build local images from the repository root:
-
-```bash
-mocker build -f Containerfile.backend -t cagnard-backend:local .
-mocker build -f frontend/Containerfile -t cagnard-frontend:local .
-```
-
-## Helm
-
-The chart lives in `deploy/helm/cagnard`.
-
-```bash
-helm template cagnard deploy/helm/cagnard
-helm install cagnard deploy/helm/cagnard -f deploy/helm/cagnard/examples/demo-values.yaml
-```
-
-Use `deploy/helm/cagnard/examples/external-config-values.yaml` as the starting point when the backend config is provided through an existing Kubernetes Secret.
-
-Pure Helm values matching the runnable examples are also available under `deploy/helm/cagnard/examples`.
-
-## GitHub Actions
-
-The validation workflow runs Go backend tests, frontend checks, Docker image builds, and Helm rendering on hosted runners. The publishing workflow uses Docker to push backend and frontend images to GHCR or another configured registry.
-
-See [docs/features/deployment-packaging.md](docs/features/deployment-packaging.md) and [docs/features/ci-release-automation.md](docs/features/ci-release-automation.md).
-
-## Example User
-
-The example configuration enables static login for a configured demo user:
-
-```text
-User: alice
-Password: cagnard
-```
-
-Static login issues a signed stateless browser session. Development identity headers are still supported only when `auth.mode = development` is explicitly configured.
+See [Development setup](docs/getting-started/development.md), [Testing and validation](docs/contributing/testing.md), and [Documentation maintenance](docs/contributing/documentation.md).

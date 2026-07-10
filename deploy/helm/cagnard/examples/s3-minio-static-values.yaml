@@ -1,7 +1,7 @@
 backend:
   image:
-    repository: cagnard-backend
-    tag: local
+    repository: ghcr.io/k3rnl/cagnard-backend
+    tag: v0.6.2
     pullPolicy: IfNotPresent
   config:
     inline:
@@ -10,6 +10,12 @@ backend:
         server {
           host = "0.0.0.0"
           port = 8080
+        }
+
+        appearance {
+          defaultPalette = solar
+          defaultMode = system
+          allowUserOverride = true
         }
 
         auth {
@@ -95,22 +101,24 @@ backend:
 
         uiPlugins = [
           {
-            id = text-preview
-            label = "Text preview"
-            kind = preview
+            id = jsonl-text
+            label = "JSON Lines"
+            kind = opener
             apiVersion = "1"
             enabled = true
-            mimeTypes = ["text/plain", "text/markdown", "application/json", "text/csv"]
-            extensions = [".txt", ".md", ".json", ".csv"]
+            extensions = [".jsonl"]
             permissions = [read]
-            priority = 10
+            priority = 15
+            view = text
+            readStrategy = bounded
+            maxSizeBytes = 524288
           }
         ]
 
 frontend:
   image:
-    repository: cagnard-frontend
-    tag: local
+    repository: ghcr.io/k3rnl/cagnard-frontend
+    tag: v0.6.2
     pullPolicy: IfNotPresent
 
 ingress:

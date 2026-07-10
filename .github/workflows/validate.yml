@@ -9,11 +9,13 @@ on:
       - "config/**"
       - "deploy/**"
       - "docs/**"
+      - "assets/**"
       - "examples/**"
       - "frontend/**"
       - "openspec/**"
       - "scripts/**"
       - "Containerfile.backend"
+      - "README.md"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -28,11 +30,13 @@ on:
       - "config/**"
       - "deploy/**"
       - "docs/**"
+      - "assets/**"
       - "examples/**"
       - "frontend/**"
       - "openspec/**"
       - "scripts/**"
       - "Containerfile.backend"
+      - "README.md"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -75,6 +79,9 @@ jobs:
       - name: Run frontend typecheck
         run: pnpm --filter @cagnard/frontend typecheck
 
+      - name: Run frontend tests
+        run: pnpm --filter @cagnard/frontend test
+
       - name: Build frontend
         run: pnpm --filter @cagnard/frontend build
 
@@ -98,3 +105,6 @@ jobs:
 
       - name: Render Helm chart with example values
         run: pnpm examples:helm:check
+
+      - name: Validate documentation links and assets
+        run: pnpm docs:check

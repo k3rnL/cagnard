@@ -39,24 +39,26 @@ jobs:
 
       - name: Resolve image names
         run: |
-          image_namespace="$(printf '%s' "$IMAGE_NAMESPACE" | tr '[:upper:]' '[:lower:]')"
-          image_tag="$(printf '%s' "$IMAGE_TAG" | tr '[:upper:]' '[:lower:]')"
+          IMAGE_NAMESPACE="$(printf '%s' "$IMAGE_NAMESPACE" | tr '[:upper:]' '[:lower:]')"
+          IMAGE_TAG="$(printf '%s' "$IMAGE_TAG" | tr '[:upper:]' '[:lower:]')"
           chart_version="$(awk '$1 == "version:" { print $2 }' deploy/helm/cagnard/Chart.yaml | tr -d '"')"
           release_tag=""
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
             release_tag="$GITHUB_REF_NAME"
-          elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "$image_tag" == v* ]]; then
-            release_tag="$image_tag"
+          elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "$IMAGE_TAG" == v* ]]; then
+            release_tag="$IMAGE_TAG"
           fi
 
-          echo "IMAGE_NAMESPACE=$image_namespace" >> "$GITHUB_ENV"
-          echo "IMAGE_TAG=$image_tag" >> "$GITHUB_ENV"
-          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
-          echo "CHART_VERSION=$chart_version" >> "$GITHUB_ENV"
-          echo "BACKEND_IMAGE=$REGISTRY/$image_namespace/cagnard-backend:$image_tag" >> "$GITHUB_ENV"
-          echo "FRONTEND_IMAGE=$REGISTRY/$image_namespace/cagnard-frontend:$image_tag" >> "$GITHUB_ENV"
-          echo "CHART_REPOSITORY=oci://$REGISTRY/$image_namespace/charts" >> "$GITHUB_ENV"
-          echo "CHART_IMAGE=$REGISTRY/$image_namespace/charts/cagnard:$chart_version" >> "$GITHUB_ENV"
+          {
+            echo "IMAGE_NAMESPACE=$IMAGE_NAMESPACE"
+            echo "IMAGE_TAG=$IMAGE_TAG"
+            echo "RELEASE_TAG=$release_tag"
+            echo "CHART_VERSION=$chart_version"
+            echo "BACKEND_IMAGE=$REGISTRY/$IMAGE_NAMESPACE/cagnard-backend:$IMAGE_TAG"
+            echo "FRONTEND_IMAGE=$REGISTRY/$IMAGE_NAMESPACE/cagnard-frontend:$IMAGE_TAG"
+            echo "CHART_REPOSITORY=oci://$REGISTRY/$IMAGE_NAMESPACE/charts"
+            echo "CHART_IMAGE=$REGISTRY/$IMAGE_NAMESPACE/charts/cagnard:$chart_version"
+          } >> "$GITHUB_ENV"
 
       - name: Log in to registry
         env:

@@ -1,43 +1,29 @@
 # Runnable Examples
 
-This directory contains complete Cagnard starter environments. Each example is designed to run from its own directory with Docker Compose and has matching pure Helm values under `deploy/helm/cagnard/examples`.
+Each directory is a complete Cagnard starter environment. Docker Compose uses matching released frontend and backend images by default; a build override is included for contributors working from source.
 
-## Example Matrix
+| Example | Storage | Local services | Best for |
+| --- | --- | --- | --- |
+| [`local-filesystem-static`](local-filesystem-static/) | Unix filesystem | Cagnard | First run and UI evaluation |
+| [`s3-minio-static`](s3-minio-static/) | S3-compatible | Cagnard, MinIO | S3 integration |
+| [`local-and-s3-static`](local-and-s3-static/) | Filesystem and S3 | Cagnard, MinIO | Cross-provider transfers |
 
-| Example | Storage | Auth | Local services | Frontend | Backend | Helm values |
-| --- | --- | --- | --- | --- | --- | --- |
-| `local-filesystem-static` | Unix filesystem | Static users | Cagnard frontend, Cagnard backend | `http://127.0.0.1:5173` | `http://127.0.0.1:8080` | `deploy/helm/cagnard/examples/local-filesystem-static-values.yaml` |
-| `s3-minio-static` | S3-compatible object storage | Static users | Cagnard frontend, Cagnard backend, MinIO, MinIO init | `http://127.0.0.1:5173` | `http://127.0.0.1:8080` | `deploy/helm/cagnard/examples/s3-minio-static-values.yaml` |
-| `local-and-s3-static` | Unix filesystem plus S3-compatible object storage | Static users | Cagnard frontend, Cagnard backend, MinIO, MinIO init | `http://127.0.0.1:5173` | `http://127.0.0.1:8080` | `deploy/helm/cagnard/examples/local-and-s3-static-values.yaml` |
+All examples use `alice` / `cagnard` as local demo credentials and expose the frontend at `http://127.0.0.1:5173` unless `.env` overrides the port.
 
-All examples use this demo login:
-
-```text
-User: alice
-Password: cagnard
-```
-
-## Running an Example
-
-From a runnable example directory:
+## Standard Workflow
 
 ```bash
+cd examples/run/local-filesystem-static
 cp .env.example .env
-docker compose up --build
+docker compose up -d
 ```
 
-Open `http://127.0.0.1:5173` and log in with the demo account.
-
-Stop and remove local resources:
+To build the checkout instead of pulling a release:
 
 ```bash
-docker compose down --volumes
+docker compose -f docker-compose.yaml -f docker-compose.build.yaml up --build
 ```
 
-## Security Boundary
+Stop an example with `docker compose down --volumes`.
 
-Credentials in these examples are local-only demo values. They are safe for trying Cagnard on a developer machine and are not production secrets. Replace all credentials, session signing secrets, storage endpoints, and bucket names before using an example as the basis for a real deployment.
-
-## Maintenance Rule
-
-Every future storage provider or authentication method that changes how Cagnard is started or configured must update this catalog. Add or update a Docker Compose example and matching pure Helm values for each relevant starter combination.
+Pure Helm values live in [`deploy/helm/cagnard/examples`](../../deploy/helm/cagnard/examples). Demo credentials and MinIO keys are intentionally local-only; replace every secret and configure durable storage before adapting an example for production.

@@ -1,4 +1,5 @@
 import type {
+  AppearanceResponse,
   ArchiveEntriesResponse,
   AuthProvidersResponse,
   ContentSearchResponse,
@@ -110,6 +111,7 @@ function putStorageContent(tunnel: string, rootId: string, path: string, body: B
 }
 
 export const cagnardApi = {
+  appearance: () => fetchJson<AppearanceResponse>("/api/appearance"),
   authProviders: () => fetchJson<AuthProvidersResponse>("/api/auth/providers"),
   login: (providerId: string, username: string, password: string) =>
     fetchJson<LoginResponse>("/api/auth/login", {

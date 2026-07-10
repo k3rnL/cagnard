@@ -32,6 +32,11 @@ while IFS= read -r compose_file; do
 
   echo "Validating ${compose_file#$ROOT_DIR/}"
   docker compose --env-file "$env_file" -f "$compose_file" config >/dev/null
+  build_override="$example_dir/docker-compose.build.yaml"
+  if [[ -f "$build_override" ]]; then
+    echo "Validating ${build_override#$ROOT_DIR/}"
+    docker compose --env-file "$env_file" -f "$compose_file" -f "$build_override" config >/dev/null
+  fi
   while IFS= read -r image_ref; do
     case "$image_ref" in
       quay.io/*) validate_quay_manifest "$image_ref" ;;

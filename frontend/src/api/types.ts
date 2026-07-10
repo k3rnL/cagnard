@@ -3,6 +3,12 @@ export interface ApiError {
   message: string;
 }
 
+export interface AppearanceResponse {
+  defaultPalette: "classic" | "solar";
+  defaultMode: "light" | "dark" | "system";
+  allowUserOverride: boolean;
+}
+
 export interface UserProfile {
   id: string;
   displayName: string;

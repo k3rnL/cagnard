@@ -1,34 +1,23 @@
-# S3 MinIO With Static Users
+# S3/MinIO With Static Login
 
-This example starts the Cagnard Go backend with an S3-compatible storage provider backed by local MinIO. The MinIO init service creates a bucket and seeds generated sample files.
+Runs released Cagnard images against local MinIO. Initialization creates `cagnard-demo` and seeds generated objects under `documents/`.
 
-## Start
+## Start Released Images
 
 ```bash
 cp .env.example .env
-docker compose up --build
+docker compose up -d
 ```
 
-Open `http://127.0.0.1:5173`.
+Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
-```text
-User: alice
-Password: cagnard
+MinIO console: `http://127.0.0.1:9001`, using `cagnard` / `cagnard-secret`. These are local demo credentials only.
+
+## Build The Current Source
+
+```bash
+docker compose -f docker-compose.yaml -f docker-compose.build.yaml up --build
 ```
-
-MinIO is available at:
-
-- API: `http://127.0.0.1:9000`
-- Console: `http://127.0.0.1:9001`
-- User: `cagnard`
-- Password: `cagnard-secret`
-
-## What It Starts
-
-- Cagnard Go backend on `http://127.0.0.1:8080`
-- Cagnard frontend on `http://127.0.0.1:5173`
-- MinIO S3-compatible object storage
-- MinIO initialization that creates `cagnard-demo` and seeds `documents/`
 
 ## Cleanup
 
@@ -36,4 +25,4 @@ MinIO is available at:
 docker compose down --volumes
 ```
 
-The matching Helm values are `deploy/helm/cagnard/examples/s3-minio-static-values.yaml`.
+Kubernetes users can start from `deploy/helm/cagnard/examples/s3-minio-static-values.yaml`. That values file expects a separately managed S3-compatible service.
