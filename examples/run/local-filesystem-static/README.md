@@ -11,6 +11,8 @@ docker compose up -d
 
 Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
+Open **Global > Structured data** to try the generated Parquet, Avro OCF, Arrow IPC/Feather, NDJSON, CSV, and TSV viewers, plus their safe malformed/truncated fixtures.
+
 `CAGNARD_VERSION` in `.env` selects the matching frontend and backend release. Ports default to frontend `5173` and backend `8080`.
 
 ## Build The Current Source

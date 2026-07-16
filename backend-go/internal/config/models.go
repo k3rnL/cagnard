@@ -10,7 +10,6 @@ type CagnardConfig struct {
 	Accounts        []StorageAccountConfig
 	PersonalStorage []StorageRootConfig
 	GlobalStorage   []StorageRootConfig
-	UIPlugins       []UIPluginConfig
 }
 
 type AppearancePalette string
@@ -135,26 +134,6 @@ type StorageRootConfig struct {
 	AllowedUsers  []string
 	AllowedRoles  []string
 	AllowedGroups []string
-}
-
-type UIPluginConfig struct {
-	ID                   string
-	Label                string
-	Kind                 string
-	APIVersion           string
-	Enabled              bool
-	MIMETypes            []string
-	Extensions           []string
-	Permissions          []string
-	Priority             int
-	View                 string
-	Categories           []string
-	Mode                 string
-	EditMode             string
-	ReadStrategy         string
-	SaveStrategy         string
-	MaxSizeBytes         int64
-	RequiredCapabilities []string
 }
 
 func (c CagnardConfig) AuthMode() string {

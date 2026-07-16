@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, RefObject } from "react";
 import type { ReactNode } from "react";
 import {
@@ -57,10 +57,15 @@ hljs.registerLanguage("properties", properties);
 import type { CagnardDataState, EntrySelectionMode, OpenedFileState, OpenedFileViewMode } from "../api/useCagnardData";
 import type { EntrySortField } from "../api/useCagnardData";
 import { useFileWatch } from "../api/useFileWatch";
-import type { ArchiveEntry, EntryMetadata, StorageEntry, TransferJobResponse, TransferJobTask, UiPluginManifest } from "../api/types";
+import type { ArchiveEntry, EntryMetadata, StorageEntry, TransferJobResponse, TransferJobTask } from "../api/types";
 import { cagnardApi } from "../api/client";
-import { classifyEntry, highlightLanguageOf } from "../plugins/fileTypeCatalog";
-import { openerSupportsRaw, resolveFileOpener } from "../plugins/fileOpeners";
+import { classifyEntry, highlightLanguageOf } from "../openers/fileTypeCatalog";
+import { loadFirstPartyOpenerRuntime, openerSupportsRaw, resolveFileOpener } from "../openers/fileOpeners";
+import type { StructuredFormatId } from "../formats/models";
+
+const StructuredDataView = lazy(
+  () => loadFirstPartyOpenerRuntime("parquet") as Promise<typeof import("../formats/StructuredDataView")>
+);
 
 interface StorageBrowserProps {
   state: CagnardDataState;
@@ -176,7 +181,9 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
           <TransferQueueControl state={state} />
           <input
             ref={uploadInput}
+            aria-label="Upload file"
             className="visually-hidden"
+            tabIndex={-1}
             type="file"
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -715,7 +722,14 @@ function ActionMenuGroup({ primary, items }: { primary: ActionDefinition; items:
 
   return (
     <div className="action-menu-group" ref={menu.ref} onMouseEnter={menu.openOnHover} onMouseLeave={menu.closeOnLeave}>
-      <ActionButton {...primary} primary />
+      <ActionButton
+        {...primary}
+        primary
+        onClick={async () => {
+          menu.close();
+          await primary.onClick();
+        }}
+      />
       <div className="action-menu">
         <button
           aria-expanded={menu.open}
@@ -866,7 +880,16 @@ function PasteboardControl({ state }: { state: CagnardDataState }) {
 
   return (
     <div className="action-menu-group pasteboard-menu-group" ref={menu.ref} onMouseEnter={menu.openOnHover} onMouseLeave={menu.closeOnLeave}>
-      <ActionButton icon={<CopyPlus size={17} />} label="Copy" onClick={state.copySelected} disabled={!hasSelection} primary />
+      <ActionButton
+        icon={<CopyPlus size={17} />}
+        label="Copy"
+        onClick={async () => {
+          menu.close();
+          await state.copySelected();
+        }}
+        disabled={!hasSelection}
+        primary
+      />
       <div className="action-menu pasteboard-menu">
         <button
           aria-expanded={menu.open}
@@ -1442,9 +1465,11 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
               <Search size={17} />
             </button>
           ) : null}
-          <button className="icon-button" type="button" onClick={() => void state.saveOpenedFile()} disabled={!canSave} title="Save">
-            <Save size={17} />
-          </button>
+          {match?.opener.saveStrategy === "overwrite" ? (
+            <button className="icon-button" type="button" onClick={() => void state.saveOpenedFile()} disabled={!canSave} title="Save">
+              <Save size={17} />
+            </button>
+          ) : null}
           <button className="icon-button" type="button" onClick={state.closeOpenedFile} title="Close">
             <X size={17} />
           </button>
@@ -1508,10 +1533,24 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
           {!match ? <UnsupportedFile entry={entry} classification={classification} /> : null}
           {match?.opener.view === "archive" ? (
             archiveBrowsable(entry.name) && state.selectedRoot ? (
-              <ArchiveView root={state.selectedRoot} entry={entry} plugins={state.uiPlugins} />
+              <ArchiveView root={state.selectedRoot} entry={entry} />
             ) : (
               <ArchiveMetadata entry={entry} classification={classification} />
             )
+          ) : null}
+          {match?.opener.view === "structured-data" && state.selectedRoot ? (
+            <Suspense fallback={<div className="structured-loading"><LoaderCircle className="spin" size={20} /> Loading data viewer</div>}>
+              <StructuredDataView
+                entry={entry}
+                format={match.opener.id as StructuredFormatId}
+                contentUrl={cagnardApi.contentUrl(
+                  state.selectedRoot.tunnel,
+                  state.selectedRoot.id,
+                  entry.path,
+                  entry.metadata.version ?? entry.metadata.modifiedTime
+                )}
+              />
+            </Suspense>
           ) : null}
           {match?.opener.view === "media" && opened.contentUrl ? <MediaViewer entry={entry} classification={classification} url={opened.contentUrl} /> : null}
           {match?.opener.view === "pdf" && opened.contentUrl ? <iframe className="pdf-viewer" src={opened.contentUrl} title={entry.name} /> : null}
@@ -1520,7 +1559,6 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
           {match?.opener.view === "yaml" && opened.viewMode === "tree" ? <YamlView content={content} /> : null}
           {match?.opener.view === "diff" && opened.viewMode === "diff" ? <DiffView content={content} /> : null}
           {match?.opener.view === "log" && opened.viewMode === "log" ? <LogView state={state} opened={opened} content={content} follow={follow} /> : null}
-          {match?.opener.view === "csv" && opened.viewMode === "table" ? <CsvTable content={content} /> : null}
           {match && shouldShowSource(opened.viewMode) ? (
             searching ? (
               <SearchableSource content={content} ranges={ranges} currentIndex={currentMatch} />
@@ -1574,7 +1612,7 @@ interface InnerArchiveEntryState {
   loading?: boolean;
 }
 
-function ArchiveView({ root, entry, plugins }: { root: { tunnel: string; id: string }; entry: StorageEntry; plugins: UiPluginManifest[] }) {
+function ArchiveView({ root, entry }: { root: { tunnel: string; id: string }; entry: StorageEntry }) {
   const [entries, setEntries] = useState<ArchiveEntry[]>();
   const [listError, setListError] = useState<string>();
   const [stack, setStack] = useState<string[]>([]);
@@ -1605,12 +1643,16 @@ function ArchiveView({ root, entry, plugins }: { root: { tunnel: string; id: str
     }
     const innerPath = [...stack, item.path].join("!/");
     const fake = synthesizeArchiveEntry(item, entry.path);
-    const match = resolveFileOpener(fake, plugins);
+    const match = resolveFileOpener(fake);
     if (!match) {
       setInner({ item, fake, error: "No compatible opener is available for this archive entry." });
       return;
     }
     const view = match.opener.view;
+    if (view === "structured-data") {
+      setInner({ item, fake, error: "Extract this entry before opening its structured-data viewer." });
+      return;
+    }
     if (view === "media" || view === "pdf") {
       setInner({ item, fake, view, url: cagnardApi.archiveEntryUrl(root.tunnel, root.id, entry.path, innerPath) });
       return;
@@ -1667,7 +1709,6 @@ function InnerArchivePreview({ inner }: { inner: InnerArchiveEntryState }) {
       {inner.view === "json" && inner.content !== undefined ? <JsonView content={inner.content} /> : null}
       {inner.view === "yaml" && inner.content !== undefined ? <YamlView content={inner.content} /> : null}
       {inner.view === "diff" && inner.content !== undefined ? <DiffView content={inner.content} /> : null}
-      {inner.view === "csv" && inner.content !== undefined ? <CsvTable content={inner.content} /> : null}
       {inner.view === "log" && inner.content !== undefined ? <LogLines content={inner.content} /> : null}
       {inner.view === "text" && inner.content !== undefined ? <HighlightedSource content={inner.content} fileName={inner.item.name} /> : null}
     </div>
@@ -1754,31 +1795,6 @@ function JsonNode({ value }: { value: unknown }) {
   return <code className="json-scalar">{JSON.stringify(value)}</code>;
 }
 
-function CsvTable({ content }: { content: string }) {
-  const rows = useMemo(() => parseDelimited(content), [content]);
-  if (rows.length === 0) return <p className="muted">No rows.</p>;
-  const [header, ...body] = rows;
-  const displayedRows = body.slice(0, 200);
-
-  return (
-    <div className="csv-table-wrap">
-      <table className="csv-table">
-        <thead>
-          <tr>{header.map((cell, index) => <th key={index}>{cell || `Column ${index + 1}`}</th>)}</tr>
-        </thead>
-        <tbody>
-          {displayedRows.map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {header.map((_, cellIndex) => <td key={cellIndex}>{row[cellIndex] ?? ""}</td>)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {body.length > displayedRows.length ? <p className="muted">Showing first {displayedRows.length} rows.</p> : null}
-    </div>
-  );
-}
-
 function FileTypeCell({ entry }: { entry: StorageEntry }) {
   const classification = classifyEntry(entry);
   return <span>{entry.kind === "directory" ? "Folder" : classification.label}</span>;
@@ -1820,8 +1836,8 @@ function viewTabs(
   switch (view) {
     case "archive":
       return [{ label: "Metadata", value: "archive" }];
-    case "csv":
-      return [{ label: "Table", value: "table" }, ...(hasSource ? [{ label: "Raw", value: "source" as const }] : [])];
+    case "structured-data":
+      return [{ label: "Table", value: "table" }];
     case "diff":
       return [{ label: "Diff", value: "diff" }, ...(hasSource ? [{ label: "Source", value: "source" as const }] : [])];
     case "log":
@@ -2098,41 +2114,6 @@ function inlineMarkdown(text: string) {
     if (part.startsWith("`") && part.endsWith("`")) return <code key={index}>{part.slice(1, -1)}</code>;
     return <Fragment key={index}>{part}</Fragment>;
   });
-}
-
-function parseDelimited(content: string): string[][] {
-  const firstLine = content.split(/\r?\n/, 1)[0] ?? "";
-  const delimiter = firstLine.includes("\t") ? "\t" : ",";
-  return content
-    .split(/\r?\n/)
-    .filter((line) => line.length > 0)
-    .slice(0, 1000)
-    .map((line) => parseDelimitedLine(line, delimiter));
-}
-
-function parseDelimitedLine(line: string, delimiter: string): string[] {
-  const cells: string[] = [];
-  let current = "";
-  let quoted = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-    if (char === "\"" && quoted && next === "\"") {
-      current += "\"";
-      index += 1;
-    } else if (char === "\"") {
-      quoted = !quoted;
-    } else if (char === delimiter && !quoted) {
-      cells.push(current);
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-
-  cells.push(current);
-  return cells;
 }
 
 function SelectionSummary({ entries }: { entries: StorageEntry[] }) {

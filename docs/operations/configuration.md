@@ -53,7 +53,7 @@ A successful process serves `GET /api/health`. Stop it after confirming startup,
 
 ## Change Management
 
-Configuration is read at process start; hot reload is not supported. Roll the backend after changing provider, account, root, authorization, appearance, or opener configuration. Because browser sessions are stateless signed cookies, rotating the signing secret invalidates existing sessions.
+Configuration is read at process start; hot reload is not supported. Roll the backend after changing provider, account, root, authorization, or appearance configuration. File openers are compiled into the frontend and have no runtime configuration section. Because browser sessions are stateless signed cookies, rotating the signing secret invalidates existing sessions.
 
 Treat these changes as a deployment:
 

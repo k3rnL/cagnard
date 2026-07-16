@@ -7,18 +7,22 @@ Cagnard SHALL run the backend with configuration and external providers as the r
 
 #### Scenario: Start from configuration only
 - **WHEN** the backend starts with a valid configuration file and required external dependencies are reachable
-- **THEN** Cagnard SHALL be able to serve configured providers, users, access policies, and UI plugin declarations without running schema migrations or loading application database state
+- **THEN** Cagnard SHALL be able to serve configured providers, users, and access policies without running schema migrations or loading application database state
 
 #### Scenario: Reject missing required configuration
 - **WHEN** required provider, identity, or access configuration is missing
 - **THEN** Cagnard SHALL fail startup or disable the affected feature with explicit diagnostics
+
+#### Scenario: Reject removed UI plugin configuration
+- **WHEN** backend configuration contains the removed top-level `uiPlugins` section
+- **THEN** Cagnard SHALL fail startup with a diagnostic directing the operator to remove that section and use shipped first-party openers
 
 ### Requirement: Stateless request handling
 Cagnard SHALL avoid storing required user, session, provider, or access-control state in backend-local persistent storage.
 
 #### Scenario: Restart backend
 - **WHEN** the backend restarts with the same configuration
-- **THEN** Cagnard SHALL recover the same configured providers, users, access policies, and plugin registrations
+- **THEN** Cagnard SHALL recover the same configured providers, users, and access policies
 
 #### Scenario: Scale backend replicas
 - **WHEN** multiple backend replicas run with the same configuration
@@ -55,7 +59,7 @@ Cagnard SHALL support simple user declarations in configuration for deployments 
 - **THEN** Cagnard SHALL reject the request instead of silently resolving `auth.defaultUser`
 
 ### Requirement: Configuration-defined authorization
-Cagnard SHALL derive user roles, groups, storage access rules, and plugin permissions from configuration and externally supplied identity claims.
+Cagnard SHALL derive user roles, groups, storage access rules, and storage operation permissions from configuration and externally supplied identity claims.
 
 #### Scenario: Map OIDC group to role
 - **WHEN** a validated token contains a group claim mapped by configuration
@@ -92,7 +96,7 @@ Cagnard SHALL use HOCON as the primary backend runtime configuration format whil
 
 #### Scenario: Start from HOCON configuration
 - **WHEN** the backend starts with a valid HOCON configuration file
-- **THEN** Cagnard SHALL load server, auth, users, providers, accounts, storage roots, and UI plugin declarations from that file without requiring application database state
+- **THEN** Cagnard SHALL load server, auth, users, providers, accounts, and storage roots from that file without requiring application database state
 
 #### Scenario: Use HOCON comments and includes
 - **WHEN** the configuration uses HOCON comments or includes
@@ -133,7 +137,7 @@ Cagnard SHALL support containerized deployments where backend configuration is s
 
 #### Scenario: Load mounted container configuration
 - **WHEN** the backend container starts with `CAGNARD_CONFIG` pointing to a mounted HOCON file
-- **THEN** Cagnard SHALL load server, auth, users, providers, accounts, storage roots, and UI plugin declarations from that file without requiring image rebuilds
+- **THEN** Cagnard SHALL load server, auth, users, providers, accounts, and storage roots from that file without requiring image rebuilds
 
 #### Scenario: Use Kubernetes secret references
 - **WHEN** deployment configuration references environment variables or mounted files populated from Kubernetes Secrets
@@ -179,4 +183,34 @@ Cagnard SHALL require stateless session signing settings when login mode issues 
 #### Scenario: Configure session lifetime
 - **WHEN** session lifetime settings are configured
 - **THEN** Cagnard SHALL apply them when issuing stateless sessions
+
+### Requirement: Stateless appearance configuration
+Cagnard SHALL support optional application appearance defaults through HOCON configuration without requiring persistent backend state.
+
+#### Scenario: Use default appearance configuration
+- **WHEN** no appearance section is configured
+- **THEN** Cagnard SHALL default to the Classic palette, system mode, and enabled user overrides
+
+#### Scenario: Configure appearance defaults
+- **WHEN** an administrator configures a supported default palette and mode
+- **THEN** Cagnard SHALL expose those defaults to the frontend for the login screen and authenticated application shell
+
+#### Scenario: Configure user override policy
+- **WHEN** an administrator disables user appearance overrides
+- **THEN** Cagnard SHALL expose the configured palette and mode as locked frontend appearance settings
+
+#### Scenario: Reject invalid appearance values
+- **WHEN** the configured palette or mode is not supported
+- **THEN** Cagnard SHALL fail startup with a diagnostic that identifies the invalid appearance setting
+
+### Requirement: Public appearance discovery
+Cagnard SHALL expose only non-sensitive appearance configuration through an unauthenticated discovery response so the login screen can apply operator defaults.
+
+#### Scenario: Load appearance before login
+- **WHEN** the frontend starts without an authenticated session
+- **THEN** it SHALL be able to retrieve default palette, default mode, and user-override policy without receiving users, credentials, storage roots, or other protected configuration
+
+#### Scenario: Restart with same appearance
+- **WHEN** stateless backend replicas restart with the same HOCON configuration
+- **THEN** each replica SHALL return the same appearance discovery response without shared application state
 

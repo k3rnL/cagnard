@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,6 +58,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/storage/entries", s.listEntries)
 	s.mux.HandleFunc("GET /api/storage/stat", s.statEntry)
 	s.mux.HandleFunc("GET /api/storage/content", s.downloadContent)
+	s.mux.HandleFunc("HEAD /api/storage/content", s.downloadContent)
 	s.mux.HandleFunc("PUT /api/storage/content", s.uploadContent)
 	s.mux.HandleFunc("GET /api/storage/preview", s.previewContent)
 	s.mux.HandleFunc("GET /api/storage/content/search", s.contentSearch)
@@ -77,7 +77,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/storage/transfer/jobs/{jobId}", s.transferJob)
 	s.mux.HandleFunc("POST /api/storage/transfer/jobs/{jobId}/cancel", s.cancelTransferJob)
 	s.mux.HandleFunc("POST /api/storage/transfer/jobs/{jobId}/resolve", s.resolveTransferJob)
-	s.mux.HandleFunc("GET /api/plugins/ui", s.uiPlugins)
 }
 
 func (s *Server) appearance(w http.ResponseWriter, r *http.Request) {
@@ -153,39 +152,6 @@ func (s *Server) navigation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, NavigationResponse{Personal: personal, Global: global})
 }
 
-func (s *Server) uiPlugins(w http.ResponseWriter, r *http.Request) {
-	if _, failure := s.resolver.Resolve(requestIdentity(r)); failure != nil {
-		writeAuthFailure(w, failure)
-		return
-	}
-	plugins := make([]UIPluginManifest, 0, len(s.cfg.UIPlugins))
-	for _, plugin := range s.cfg.UIPlugins {
-		if !plugin.Enabled {
-			continue
-		}
-		plugins = append(plugins, UIPluginManifest{
-			ID:                   plugin.ID,
-			Label:                plugin.Label,
-			Kind:                 plugin.Kind,
-			APIVersion:           plugin.APIVersion,
-			MIMETypes:            plugin.MIMETypes,
-			Extensions:           plugin.Extensions,
-			Permissions:          plugin.Permissions,
-			Priority:             plugin.Priority,
-			View:                 plugin.View,
-			Categories:           plugin.Categories,
-			Mode:                 plugin.Mode,
-			EditMode:             plugin.EditMode,
-			ReadStrategy:         plugin.ReadStrategy,
-			SaveStrategy:         plugin.SaveStrategy,
-			MaxSizeBytes:         plugin.MaxSizeBytes,
-			RequiredCapabilities: plugin.RequiredCapabilities,
-		})
-	}
-	sort.SliceStable(plugins, func(i, j int) bool { return plugins[i].Priority < plugins[j].Priority })
-	writeJSON(w, http.StatusOK, UIPluginsResponse{Plugins: plugins})
-}
-
 func (s *Server) listEntries(w http.ResponseWriter, r *http.Request) {
 	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), false)
 	if !ok {
@@ -225,6 +191,7 @@ func (s *Server) statEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) downloadContent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), false)
 	if !ok {
 		return
@@ -250,7 +217,7 @@ func (s *Server) downloadContent(w http.ResponseWriter, r *http.Request) {
 		requested = parsed
 	}
 	var rangeReader io.ReadCloser
-	if requested != nil {
+	if requested != nil && r.Method != http.MethodHead {
 		reader, _, err := provider.RangeRead(root, path, requested.start, requested.end-requested.start+1)
 		if err != nil {
 			writeAPIError(w, http.StatusBadRequest, APIError{Code: "storage_download_failed", Message: err.Error()})
@@ -274,6 +241,9 @@ func (s *Server) downloadContent(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", requested.start, requested.end, size))
 		w.Header().Set("Content-Length", strconv.FormatInt(requested.end-requested.start+1, 10))
 		w.WriteHeader(http.StatusPartialContent)
+		if r.Method == http.MethodHead {
+			return
+		}
 		_, _ = io.Copy(w, rangeReader)
 		return
 	}
@@ -281,6 +251,9 @@ func (s *Server) downloadContent(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	}
 	w.WriteHeader(http.StatusOK)
+	if r.Method == http.MethodHead {
+		return
+	}
 	_, _ = provider.StreamRead(root, path, w, nil)
 }
 

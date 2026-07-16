@@ -35,7 +35,8 @@ Cagnard is a self-hosted, provider-neutral storage browser. Start with a runnabl
 
 - [Architecture overview](architecture/overview.md)
 - [Storage providers and capabilities](architecture/storage-plugins.md)
-- [File opener and UI plugins](architecture/ui-plugins.md)
+- [First-party file openers](architecture/file-openers.md)
+- [Structured-data runtime and limits](architecture/structured-data-limits.md)
 - [Transfer task engine](architecture/transfer-jobs.md)
 - [Configuration reference](reference/configuration.md)
 - [Provider capability reference](reference/provider-capabilities.md)
@@ -43,6 +44,7 @@ Cagnard is a self-hosted, provider-neutral storage browser. Start with a runnabl
 ## Contribute
 
 - [Testing and validation](contributing/testing.md)
+- [Adding a first-party file opener](contributing/file-openers.md)
 - [Documentation maintenance](contributing/documentation.md)
 
 The behavior contract remains in [`openspec/specs`](../openspec/specs). OpenSpec is for engineering requirements; this documentation is organized around reader goals.

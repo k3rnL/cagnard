@@ -15,8 +15,8 @@ Cagnard is a self-hosted storage browser that gives Unix filesystems and S3-comp
 
 - **One browser across providers.** Storage roots share a normalized contract while keeping provider-specific metadata and degraded-operation notices visible.
 - **Cross-provider transfers.** A tab-synchronized pasteboard, recursive tasks, conflict resolution, streaming, progress, cancellation, and per-file detail make copy and move practical.
-- **Useful file opening.** Text, Markdown, JSON, YAML, CSV, diffs, logs, media, PDF, and archives open in the application with bounded or range-based reads.
-- **Stateless operation.** One HOCON file defines users, access rules, providers, accounts, roots, appearance, and opener manifests; no application database is required.
+- **Useful file opening.** Text, Markdown, JSON, YAML, Parquet, Avro, Arrow, NDJSON, CSV, diffs, logs, media, PDF, and archives open in the application with bounded or range-based reads.
+- **Stateless operation.** One HOCON file defines users, access rules, providers, accounts, roots, and appearance; no application database is required.
 - **Personal and shared spaces.** Users can receive one or more personal homes alongside administrator-controlled global roots.
 - **Operator-controlled appearance.** Classic and Solar palettes each include light, dark, and live system modes, with optional user overrides.
 
@@ -65,16 +65,16 @@ The [Helm guide](docs/getting-started/helm.md) explains production adaptation, s
 | Storage access | Multiple accounts, personal/global roots, user/role/group rules, read-only accounts |
 | Browser | Provider pagination, backend search/sort, metadata, multi-select, upload/download, rename/delete |
 | Transfers | Cross-provider files and directories, streams, conflict policies, task queue, progress and cancellation |
-| File experiences | Text/source editing, Markdown, JSON/YAML, CSV/TSV, logs, diffs, media, PDF, archives |
+| File experiences | Text/source editing, Markdown, JSON/YAML, read-only Parquet/Avro/Arrow/NDJSON/CSV/TSV inspection, logs, diffs, media, PDF, archives |
 | Deployment | Release images, Docker Compose examples, OCI Helm chart, GitHub release automation |
 
 OIDC declarations reserve the future SSO contract, but end-to-end OIDC login is not yet production-ready. Active transfer jobs are currently process-local and are lost when the backend restarts. These limits are documented rather than hidden.
 
 ## Configuration And Extension
 
-Providers, accounts, roots, users, access rules, themes, and opener manifests live in HOCON. Start from [`config/cagnard.example.conf`](config/cagnard.example.conf), then use the [configuration guide](docs/operations/configuration.md) and [field reference](docs/reference/configuration.md).
+Providers, accounts, roots, users, access rules, and themes live in HOCON. Start from [`config/cagnard.example.conf`](config/cagnard.example.conf), then use the [configuration guide](docs/operations/configuration.md) and [field reference](docs/reference/configuration.md).
 
-Storage implementations advertise supported, degraded, and unsupported capabilities. UI openers match MIME types, extensions, categories, size strategies, and provider capabilities. Read the [architecture overview](docs/architecture/overview.md), [storage provider contract](docs/architecture/storage-plugins.md), and [file opener model](docs/architecture/ui-plugins.md) before extending them.
+Storage implementations advertise supported, degraded, and unsupported capabilities. Maintained file openers ship in a typed first-party frontend registry and use scoped Cagnard content APIs without provider credentials. Read the [architecture overview](docs/architecture/overview.md), [storage provider contract](docs/architecture/storage-plugins.md), and [file opener architecture](docs/architecture/file-openers.md) before extending them.
 
 ## Documentation
 

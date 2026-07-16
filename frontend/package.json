@@ -1,22 +1,30 @@
 {
   "name": "@cagnard/frontend",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "fixtures:data": "node scripts/generate-structured-data-fixtures.mjs",
+    "fixtures:benchmark": "node scripts/benchmark-structured-data-fixtures.mjs",
     "typecheck": "tsc -b --pretty false",
     "preview": "vite preview",
     "test": "vitest run"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "1.32.0",
     "@refinedev/core": "^4.57.10",
     "@vitejs/plugin-react": "^4.3.4",
+    "apache-arrow": "21.1.0",
+    "avsc": "5.7.9",
+    "buffer": "6.0.3",
+    "fflate": "0.8.2",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "snappyjs": "0.7.0",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
     "yaml": "^2.9.0"
@@ -24,6 +32,7 @@
   "devDependencies": {
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "hyparquet-writer": "^0.16.1",
     "vitest": "^3.2.4"
   }
 }

@@ -64,13 +64,12 @@ func TestHealthAndDiscoveryRoutes(t *testing.T) {
 	if nav.Global == nil || len(nav.Global.Roots) != 1 || nav.Global.Roots[0].Label != "Global" {
 		t.Fatalf("unexpected global navigation: %#v", nav)
 	}
-
-	plugins := getJSONWithCookie[UIPluginsResponse](t, server, "/api/plugins/ui", cookie)
-	if len(plugins.Plugins) != 1 || plugins.Plugins[0].ID != "jsonl-text" {
-		t.Fatalf("unexpected ui plugins: %#v", plugins)
-	}
-	if plugins.Plugins[0].View != "text" || plugins.Plugins[0].ReadStrategy != "bounded" || plugins.Plugins[0].MaxSizeBytes != 524288 {
-		t.Fatalf("plugin manifest missing extended fields: %#v", plugins.Plugins[0])
+	removedPluginRoute := httptest.NewRequest(http.MethodGet, "/api/plugins/ui", nil)
+	removedPluginRoute.Header.Set("Cookie", cookie)
+	removedPluginResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(removedPluginResponse, removedPluginRoute)
+	if removedPluginResponse.Code != http.StatusNotFound {
+		t.Fatalf("removed UI plugin route status = %d, want 404", removedPluginResponse.Code)
 	}
 
 	jobs := getJSONWithCookie[TransferJobListResponse](t, server, "/api/storage/transfer/jobs", cookie)
@@ -358,6 +357,9 @@ func TestDownloadContentRangeRequests(t *testing.T) {
 	if full.Header().Get("Accept-Ranges") != "bytes" {
 		t.Fatalf("missing Accept-Ranges header: %#v", full.Header())
 	}
+	if full.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("unexpected Cache-Control header: %#v", full.Header())
+	}
 	if !strings.HasPrefix(full.Header().Get("Content-Disposition"), "attachment") {
 		t.Fatalf("unexpected disposition: %s", full.Header().Get("Content-Disposition"))
 	}
@@ -373,6 +375,14 @@ func TestDownloadContentRangeRequests(t *testing.T) {
 	}
 	if middle.Header().Get("Content-Range") != "bytes 2-5/10" || middle.Header().Get("Content-Length") != "4" {
 		t.Fatalf("mid-range headers = %#v", middle.Header())
+	}
+
+	headRequest := httptest.NewRequest(http.MethodHead, url, nil)
+	headRequest.Header.Set("Range", "bytes=0-")
+	head := httptest.NewRecorder()
+	server.Handler().ServeHTTP(head, headRequest)
+	if head.Code != http.StatusPartialContent || head.Body.Len() != 0 || head.Header().Get("Content-Range") != "bytes 0-9/10" {
+		t.Fatalf("range HEAD response = %d %q %#v", head.Code, head.Body.String(), head.Header())
 	}
 
 	openEnded := doContentRequest(t, server, url, "bytes=4-")

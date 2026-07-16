@@ -14,8 +14,7 @@ import type {
   ResolveTransferJobRequest,
   TransferJobListResponse,
   TransferJobResponse,
-  TransferResponse,
-  UiPluginsResponse
+  TransferResponse
 } from "./types";
 
 interface ApiResponseBody {
@@ -151,8 +150,8 @@ export const cagnardApi = {
         fromLine: options.fromLine ? String(options.fromLine) : undefined
       })}`
     ),
-  contentUrl: (tunnel: string, rootId: string, path: string) =>
-    `/api/storage/content?${storageParams(tunnel, rootId, path, { inline: "true" })}`,
+  contentUrl: (tunnel: string, rootId: string, path: string, version?: string | null) =>
+    `/api/storage/content?${storageParams(tunnel, rootId, path, { inline: "true", version: version || undefined })}`,
   archiveEntries: (tunnel: string, rootId: string, path: string, entryPath?: string) =>
     fetchJson<ArchiveEntriesResponse>(
       `/api/storage/archive/entries?${storageParams(tunnel, rootId, path, { entryPath: entryPath || undefined })}`
@@ -219,6 +218,5 @@ export const cagnardApi = {
   clearTransferJobs: () =>
     fetchJson<OperationResponse>("/api/storage/transfer/jobs/clear", {
       method: "POST"
-    }),
-  uiPlugins: () => fetchJson<UiPluginsResponse>("/api/plugins/ui")
+    })
 };

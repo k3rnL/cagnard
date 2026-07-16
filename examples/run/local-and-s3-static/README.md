@@ -13,6 +13,8 @@ Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
 MinIO console: `http://127.0.0.1:9001`, using `cagnard` / `cagnard-secret`. The initializer creates `cagnard-combined` and seeds `documents/` and `shared/`.
 
+The filesystem and MinIO global roots both include **Structured data**, with generated Parquet, Avro OCF, Arrow IPC/Feather, NDJSON, CSV, and TSV samples. Use them to compare the same first-party viewer over local and S3-backed content access.
+
 ## Build The Current Source
 
 ```bash

@@ -1,9 +1,7 @@
 ## Purpose
 
 Defines explicit in-app file opening, opener/editor plugin selection, safe content access, large-file fallback behavior, and first-party opener expectations.
-
 ## Requirements
-
 ### Requirement: Explicit file opening
 Cagnard SHALL open file content only through an explicit user action and a selected compatible file opener.
 
@@ -16,15 +14,19 @@ Cagnard SHALL open file content only through an explicit user action and a selec
 - **THEN** Cagnard SHALL update metadata and available actions without requiring file content to be fetched
 
 ### Requirement: File opener registry
-Cagnard SHALL route file opening through a deterministic opener registry that includes first-party and plugin-provided openers.
+Cagnard SHALL route file opening through a deterministic, typed registry of first-party openers whose rendering and format behavior ship with the frontend.
 
 #### Scenario: Match opener by declared support
 - **WHEN** a file is opened
-- **THEN** Cagnard SHALL match candidate openers using declared MIME patterns, categories, extensions, provider metadata, or content hints
+- **THEN** Cagnard SHALL match candidate first-party openers using declared MIME patterns, categories, extensions, provider metadata, or content hints
 
 #### Scenario: Multiple openers match
-- **WHEN** multiple compatible openers match a file
-- **THEN** Cagnard SHALL select one by configured priority or allow user/admin choice when policy permits
+- **WHEN** multiple compatible first-party openers match a file
+- **THEN** Cagnard SHALL select one by deterministic built-in priority or allow user choice when the frontend explicitly supports it
+
+#### Scenario: Lazy-load specialized opener
+- **WHEN** the selected first-party opener requires a specialized component, worker, parser, or WASM engine
+- **THEN** Cagnard SHALL load that implementation on demand without adding it to the initial browser execution path
 
 #### Scenario: No opener matches
 - **WHEN** no compatible opener exists
@@ -46,15 +48,15 @@ Each opener SHALL declare its viewing, editing, content access, save, size, and 
 - **THEN** Cagnard SHALL not offer direct write-back for that opener
 
 ### Requirement: Core-mediated opener access
-Cagnard SHALL provide opener plugins with scoped content and mutation APIs mediated by core authorization, provider capabilities, and audit policy.
+Cagnard SHALL provide first-party openers with scoped content and mutation APIs mediated by core authorization, provider capabilities, and audit policy.
 
 #### Scenario: Scoped file handle
 - **WHEN** an opener receives access to a file
 - **THEN** it SHALL receive only scoped access to the selected file and approved operations
 
 #### Scenario: Deny raw credentials
-- **WHEN** an opener or UI plugin requests raw provider credentials
-- **THEN** Cagnard SHALL deny the request
+- **WHEN** a first-party opener requests file content
+- **THEN** Cagnard SHALL mediate the request without exposing raw provider credentials to frontend code
 
 ### Requirement: Large-file-safe opening
 Cagnard SHALL avoid requiring full in-memory loading for all open/view/edit workflows and SHALL provide safe fallback for files that exceed opener or storage limits.
@@ -76,7 +78,7 @@ Cagnard SHALL avoid requiring full in-memory loading for all open/view/edit work
 - **THEN** Cagnard SHALL allow seeking within the media without requiring the full file to be downloaded first
 
 ### Requirement: Built-in common openers
-Cagnard SHALL provide first-party opener plugins for common user and developer file types, registered through the same opener registry mechanism as any other opener plugin.
+Cagnard SHALL provide first-party openers for common user, developer, and supported analytical file types through the typed built-in opener registry.
 
 #### Scenario: Open text and source file
 - **WHEN** the user opens a supported text, source, config, or log file within configured limits
@@ -91,7 +93,7 @@ Cagnard SHALL provide first-party opener plugins for common user and developer f
 - **THEN** Cagnard SHALL provide rendered and source views and MAY allow editing when write-back is authorized
 
 #### Scenario: Open JSON file
-- **WHEN** the user opens a JSON file within configured limits
+- **WHEN** the user opens a JSON document within configured limits
 - **THEN** Cagnard SHALL provide source and structured views with validation and formatting actions such as prettify or minify
 
 #### Scenario: Open YAML file
@@ -104,7 +106,11 @@ Cagnard SHALL provide first-party opener plugins for common user and developer f
 
 #### Scenario: Open CSV or TSV file
 - **WHEN** the user opens a CSV or TSV file
-- **THEN** Cagnard SHALL provide a table-oriented view with raw fallback and SHALL avoid loading excessive rows into the browser at once
+- **THEN** Cagnard SHALL provide the first-party structured-data table with bounded raw fallback and SHALL avoid loading excessive rows into the browser at once
+
+#### Scenario: Open supported analytical file
+- **WHEN** the user opens a supported Parquet, Avro OCF, Arrow IPC, Feather, or NDJSON file
+- **THEN** Cagnard SHALL route it to the corresponding first-party read-only structured-data source
 
 #### Scenario: Open log file
 - **WHEN** the user opens a recognized log file

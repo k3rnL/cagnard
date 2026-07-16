@@ -32,9 +32,9 @@ Prefer workload/default-chain credentials when the environment supports them. Fo
 
 Path-style addressing and custom endpoints change routing, not the trust model. Verify endpoint DNS, certificate names, bucket policy, encryption, versioning, and deletion protections.
 
-## Browser And Plugins
+## Browser And File Openers
 
-UI opener manifests expose rendering choices and scoped Cagnard file APIs; they never expose provider credentials. Cagnard does not currently load arbitrary third-party executable bundles from configuration. Treat any future executable UI or provider plugin as trusted code requiring review and isolation.
+First-party file openers use scoped Cagnard file APIs and never receive provider credentials. Structured-data parsing and queries run in local worker assets with bounded results; DuckDB extension autoloading and unrestricted remote URLs are disabled. Cagnard does not load arbitrary third-party executable frontend bundles from configuration. Treat any future executable UI or provider plugin as trusted code requiring review and isolation.
 
 The pasteboard stores entry references only in browser memory and synchronizes them between active same-origin tabs. It does not persist across a complete browser restart. Paths copied to the system clipboard leave the application security boundary.
 

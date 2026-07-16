@@ -10,11 +10,10 @@ import type {
   StorageEntry,
   TransferConflictPolicy,
   TransferItemResult,
-  TransferJobResponse,
-  UiPluginManifest
+  TransferJobResponse
 } from "./types";
-import { canWriteBack, openerBlockedReason, resolveFileOpener } from "../plugins/fileOpeners";
-import type { FileOpenerMatch, OpenerView } from "../plugins/fileOpeners";
+import { canWriteBack, openerBlockedReason, resolveFileOpener } from "../openers/fileOpeners";
+import type { FileOpenerMatch, OpenerView } from "../openers/fileOpeners";
 
 export type EntrySelectionMode = "replace" | "toggle" | "range";
 export type EntrySortField = "name" | "kind" | "fileCategory" | "size" | "modifiedTime" | "mimeType";
@@ -156,7 +155,6 @@ export interface CagnardDataState {
   selectedEntries: StorageEntry[];
   selectedEntryIds: string[];
   selectionCount: number;
-  uiPlugins: UiPluginManifest[];
   openedFile?: OpenedFileState;
   modal?: BrowserModalState;
   pasteboardItems: PasteboardItem[];
@@ -233,7 +231,6 @@ export function useCagnardData(): CagnardDataState {
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
   const [activeEntryId, setActiveEntryId] = useState<string>();
   const [lastSelectedEntryId, setLastSelectedEntryId] = useState<string>();
-  const [uiPlugins, setUiPlugins] = useState<UiPluginManifest[]>([]);
   const [openedFile, setOpenedFile] = useState<OpenedFileState>();
   const [restoreOpenedFilePath, setRestoreOpenedFilePath] = useState<string>();
   const [modal, setModal] = useState<BrowserModalState>();
@@ -356,7 +353,6 @@ export function useCagnardData(): CagnardDataState {
     setCurrentPath("");
     setEntryResponse(undefined);
     setEntryPageNavigation({ criteriaKey: "", history: [] });
-    setUiPlugins([]);
     setOpenedFile(undefined);
     setRestoreOpenedFilePath(undefined);
     modalResolver.current?.(undefined);
@@ -417,15 +413,13 @@ export function useCagnardData(): CagnardDataState {
   const loadApplication = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextSession, nextNavigation, plugins, jobs] = await Promise.all([
+      const [nextSession, nextNavigation, jobs] = await Promise.all([
         cagnardApi.session(),
         cagnardApi.navigation(),
-        cagnardApi.uiPlugins(),
         cagnardApi.transferJobs()
       ]);
       setSession(nextSession);
       setNavigation(nextNavigation);
-      setUiPlugins(plugins.plugins);
       setTransferJobs(jobs.jobs);
       setSelectedRoot((existing) => existing ?? firstRoot(nextNavigation));
       setError(undefined);
@@ -741,13 +735,13 @@ export function useCagnardData(): CagnardDataState {
       const root = options.root ?? requireRoot();
       if (placement === "page" && options.history !== "none") queueLocationHistoryPush();
       setRestoreOpenedFilePath(undefined);
-      const match = resolveFileOpener(entry, uiPlugins);
+      const match = resolveFileOpener(entry);
       if (!match) {
         setOpenedFile({
           entry,
           placement,
           loading: false,
-          error: openerBlockedReason(entry, uiPlugins),
+          error: openerBlockedReason(entry),
           viewMode: "source",
           dirty: false
         });
@@ -790,7 +784,12 @@ export function useCagnardData(): CagnardDataState {
         if (match.opener.view === "media") {
           // Media streams straight from the endpoint so the browser can issue
           // its own Range requests for seeking; no blob prefetch.
-          const contentUrl = cagnardApi.contentUrl(root.tunnel, root.id, entry.path);
+          const contentUrl = cagnardApi.contentUrl(
+            root.tunnel,
+            root.id,
+            entry.path,
+            entry.metadata.version ?? entry.metadata.modifiedTime
+          );
           setOpenedFile({ entry, match, placement, loading: false, contentUrl, viewMode, dirty: false });
           return;
         }
@@ -811,7 +810,7 @@ export function useCagnardData(): CagnardDataState {
         });
       }
     },
-    [handleUnauthorized, queueLocationHistoryPush, requireRoot, uiPlugins]
+    [handleUnauthorized, queueLocationHistoryPush, requireRoot]
   );
 
   useEffect(() => {
@@ -1388,7 +1387,6 @@ export function useCagnardData(): CagnardDataState {
       selectedEntries,
       selectedEntryIds,
       selectionCount: selectedEntries.length,
-      uiPlugins,
       openedFile,
       modal,
       pasteboardItems,
@@ -1515,7 +1513,6 @@ export function useCagnardData(): CagnardDataState {
       loadMoreOpenedFile,
       reloadOpenedFile,
       setSort,
-      uiPlugins,
       uploadFile,
       totalEntryCount
     ]
@@ -1692,7 +1689,7 @@ function defaultViewMode(view: OpenerView): OpenedFileViewMode {
   switch (view) {
     case "archive":
       return "archive";
-    case "csv":
+    case "structured-data":
       return "table";
     case "diff":
       return "diff";

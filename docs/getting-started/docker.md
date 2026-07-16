@@ -22,6 +22,8 @@ Password: cagnard
 
 The frontend proxies `/api` to the backend container. The backend reads the mounted `cagnard.conf` and exposes sample personal and global filesystem roots from `data/`.
 
+Open **Global > Structured data** to try generated Parquet, Avro OCF, Arrow IPC/Feather, NDJSON, CSV, and TSV files. The same deterministic fixture set includes malformed/truncated samples for error-state testing and is documented in [`examples/storage/global/structured-data`](../../examples/storage/global/structured-data/README.md).
+
 ## Check The Services
 
 ```bash
@@ -51,7 +53,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Use the pasteboard to copy files between the local and S3 roots. MinIO's console is at `http://127.0.0.1:9001` with the local demo credentials documented in that example.
+Use the pasteboard to copy files between the local and S3 roots. Both roots expose the structured-data fixture set so the viewers can be compared across filesystem and authorized S3 range access. MinIO's console is at `http://127.0.0.1:9001` with the local demo credentials documented in that example.
 
 ## Build Your Checkout
 

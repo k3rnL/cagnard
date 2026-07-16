@@ -99,22 +99,6 @@ backend:
 
         globalStorage = []
 
-        uiPlugins = [
-          {
-            id = jsonl-text
-            label = "JSON Lines"
-            kind = opener
-            apiVersion = "1"
-            enabled = true
-            extensions = [".jsonl"]
-            permissions = [read]
-            priority = 15
-            view = text
-            readStrategy = bounded
-            maxSizeBytes = 524288
-          }
-        ]
-
 frontend:
   image:
     repository: ghcr.io/k3rnl/cagnard-frontend

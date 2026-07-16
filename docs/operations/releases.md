@@ -46,7 +46,7 @@ Keep `backend.image.tag` and `frontend.image.tag` aligned with the application r
 ## Before Upgrading
 
 - Back up the active HOCON and Helm values without exposing them in tickets or logs.
-- Confirm changed configuration enums and plugin manifest fields.
+- Confirm changed configuration keys, removed API contracts, and migration diagnostics.
 - Test provider listing, login, file opening, and a transfer against non-production data.
 - Account for active in-memory transfer tasks; let them finish before restarting the backend.
 - Confirm the chart and images exist in GHCR before rollout.

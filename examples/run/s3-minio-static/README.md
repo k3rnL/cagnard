@@ -13,6 +13,8 @@ Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
 MinIO console: `http://127.0.0.1:9001`, using `cagnard` / `cagnard-secret`. These are local demo credentials only.
 
+Open **Global > Structured data** to inspect the generated fixture set through authenticated S3 range access. The MinIO initializer mirrors the canonical files from `examples/storage/global/structured-data` into the demo bucket.
+
 ## Build The Current Source
 
 ```bash

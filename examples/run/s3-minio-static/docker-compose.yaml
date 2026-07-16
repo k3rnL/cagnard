@@ -1,7 +1,7 @@
 services:
   minio:
     image: ${MINIO_IMAGE:-quay.io/minio/minio:latest}
-    command: server /data --console-address ":9001"
+    command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cagnard}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cagnard-secret}
@@ -32,8 +32,10 @@ services:
         mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
         mc mb --ignore-existing "local/$$CAGNARD_S3_BUCKET"
         mc mirror --overwrite /seed "local/$$CAGNARD_S3_BUCKET/documents"
+        mc mirror --overwrite /structured-data "local/$$CAGNARD_S3_BUCKET/documents/structured-data"
     volumes:
       - ./seed:/seed:ro
+      - ../../storage/global/structured-data:/structured-data:ro
 
   backend:
     image: ghcr.io/k3rnl/cagnard-backend:${CAGNARD_VERSION:-v0.6.2}

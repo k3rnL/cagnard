@@ -105,6 +105,13 @@ func TestRejectInvalidStaticConfig(t *testing.T) {
 	}
 }
 
+func TestRejectLegacyUIPluginsConfiguration(t *testing.T) {
+	_, err := Load(writeConfigFixture(t, `uiPlugins = []`))
+	if err == nil || !strings.Contains(err.Error(), "uiPlugins was removed") {
+		t.Fatalf("error = %v, want actionable uiPlugins migration diagnostic", err)
+	}
+}
+
 func loadFixture(t *testing.T, path string) *CagnardConfig {
 	t.Helper()
 	cfg, err := Load(filepath.Clean(filepath.Join("..", "..", "..", path)))

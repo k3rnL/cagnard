@@ -1,5 +1,5 @@
 import { Refine } from "@refinedev/core";
-import { FolderOpen, Home, LogOut, Plug, ShieldCheck } from "lucide-react";
+import { FolderOpen, Home, LogOut, ShieldCheck } from "lucide-react";
 
 import { LoginScreen } from "./components/LoginScreen";
 import { StorageBrowser } from "./components/StorageBrowser";
@@ -12,10 +12,7 @@ export function App() {
 
   return (
     <Refine
-      resources={[
-        { name: "storage" },
-        { name: "plugins" }
-      ]}
+      resources={[{ name: "storage" }]}
     >
       {data.authenticated ? (
         <div className="app-shell">
@@ -81,19 +78,6 @@ export function App() {
                 ))}
               </section>
             ) : null}
-
-            <section className="nav-section plugins-section">
-              <div className="nav-title">
-                <Plug size={16} />
-                UI plugins
-              </div>
-              {data.uiPlugins.map((plugin) => (
-                <div className="plugin-row" key={plugin.id}>
-                  <span>{plugin.label}</span>
-                  <small>{plugin.kind}</small>
-                </div>
-              ))}
-            </section>
 
             <div className="sidebar-appearance">
               <AppearanceSelector />

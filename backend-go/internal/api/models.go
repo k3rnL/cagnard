@@ -303,26 +303,3 @@ type TransferJobResponse struct {
 type TransferJobListResponse struct {
 	Jobs []TransferJobResponse `json:"jobs"`
 }
-
-type UIPluginsResponse struct {
-	Plugins []UIPluginManifest `json:"plugins"`
-}
-
-type UIPluginManifest struct {
-	ID                   string   `json:"id"`
-	Label                string   `json:"label"`
-	Kind                 string   `json:"kind"`
-	APIVersion           string   `json:"apiVersion"`
-	MIMETypes            []string `json:"mimeTypes"`
-	Extensions           []string `json:"extensions"`
-	Permissions          []string `json:"permissions"`
-	Priority             int      `json:"priority"`
-	View                 string   `json:"view,omitempty"`
-	Categories           []string `json:"categories,omitempty"`
-	Mode                 string   `json:"mode,omitempty"`
-	EditMode             string   `json:"editMode,omitempty"`
-	ReadStrategy         string   `json:"readStrategy,omitempty"`
-	SaveStrategy         string   `json:"saveStrategy,omitempty"`
-	MaxSizeBytes         int64    `json:"maxSizeBytes,omitempty"`
-	RequiredCapabilities []string `json:"requiredCapabilities,omitempty"`
-}

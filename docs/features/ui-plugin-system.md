@@ -1,3 +1,3 @@
 # UI Plugin System
 
-This legacy feature page is kept for existing links. See [File opener and UI plugins](../architecture/ui-plugins.md) and [File viewers](../guides/file-viewers.md).
+The former manifest-only UI plugin system has been removed. See [first-party file openers](../architecture/file-openers.md), [file viewers](../guides/file-viewers.md), and the [`uiPlugins` migration guide](../guides/migrating-ui-plugins.md).

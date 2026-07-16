@@ -14,7 +14,7 @@ flowchart LR
 
 ## Stateless Runtime
 
-On startup, the backend parses one configuration into typed providers, accounts, users, roots, appearance defaults, and opener manifests. Requests authenticate a signed cookie or explicit development identity, resolve the current user against configuration, then filter roots by user, role, and group.
+On startup, the backend parses one configuration into typed providers, accounts, users, roots, and appearance defaults. Requests authenticate a signed cookie or explicit development identity, resolve the current user against configuration, then filter roots by user, role, and group.
 
 There is no application database. This makes deployment and backup simple, but active transfer jobs are an explicit exception: they are process-local and disappear on restart.
 
@@ -41,6 +41,6 @@ Small direct operations can use bounded buffers. Downloads, range-based viewers,
 
 ## Extension Boundaries
 
-Storage providers implement the server-side storage interface and advertise capabilities. File opener manifests map MIME types, extensions, categories, size strategies, and required capabilities to frontend rendering surfaces. Neither model gives browser code provider credentials.
+Storage providers implement the server-side storage interface and advertise capabilities. A typed first-party registry maps MIME types, extensions, categories, size strategies, and required capabilities to lazy frontend rendering surfaces. Neither model gives browser code provider credentials.
 
-The current registry is compiled into the application for provider implementations, while opener configuration extends selection among maintained rendering surfaces. These contracts leave room for stronger runtime plugin packaging later without making it a prerequisite for today's deployment.
+Both provider implementations and file openers are currently compiled into the application. Specialized structured-data readers run in a worker and use authorized Cagnard content URLs. A future executable plugin system would need an explicit packaging, versioning, trust, and isolation design; the removed manifest-only frontend contract is not retained as a public API.

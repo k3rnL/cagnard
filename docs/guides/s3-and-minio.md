@@ -12,6 +12,8 @@ docker compose up -d
 
 The initializer creates the bucket and sample objects. Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
+Open **Global > Structured data** to inspect the generated Parquet, Avro OCF, Arrow IPC/Feather, NDJSON, CSV, and TSV fixtures through the S3 provider. The initializer mirrors [`examples/storage/global/structured-data`](../../examples/storage/global/structured-data/README.md), including safe malformed and truncated cases. Parquet requests stay on Cagnard's authenticated content endpoint and use S3-backed HTTP ranges rather than browser-visible S3 credentials.
+
 ## Provider Settings
 
 ```hocon

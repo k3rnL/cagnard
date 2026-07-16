@@ -254,26 +254,3 @@ export interface ContentSearchResponse {
   nextOffset: number;
   nextLine: number;
 }
-
-export interface UiPluginManifest {
-  id: string;
-  label: string;
-  kind: string;
-  apiVersion: string;
-  mimeTypes: string[];
-  extensions: string[];
-  permissions: string[];
-  priority: number;
-  view?: string;
-  categories?: string[];
-  mode?: string;
-  editMode?: string;
-  readStrategy?: string;
-  saveStrategy?: string;
-  maxSizeBytes?: number;
-  requiredCapabilities?: string[];
-}
-
-export interface UiPluginsResponse {
-  plugins: UiPluginManifest[];
-}

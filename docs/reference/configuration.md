@@ -15,7 +15,6 @@ This reference describes the implemented HOCON model. See [Configuration](../ope
 | `accounts` | Credentials and read/write policy for one provider |
 | `personalStorage` | User-facing personal roots |
 | `globalStorage` | Shared roots filtered by authorization selectors |
-| `uiPlugins` | Declarative file opener manifests |
 
 ## `server`
 
@@ -117,23 +116,4 @@ Disabled accounts do not produce usable roots. Read-only accounts expose browsin
 
 When no authorization selector is declared, the root is visible to every authenticated user. Otherwise the selectors use OR semantics: an allowed user ID, any allowed role, or any allowed group grants visibility. Keep root IDs stable because browser URLs and pasteboard references use them.
 
-## `uiPlugins[]`
-
-| Field | Notes |
-| --- | --- |
-| `id`, `label` | Stable identity and readable name |
-| `kind` | `opener` |
-| `apiVersion` | Current value `"1"` |
-| `enabled` | Include or omit the manifest |
-| `mimeTypes`, `extensions`, `categories` | Matching rules |
-| `permissions` | Requested scoped operations, such as `read` |
-| `priority` | Lower value wins |
-| `view` | `text`, `json`, `csv`, `markdown`, `media`, `pdf`, or `archive` |
-| `mode` | `viewer` or `editor` |
-| `editMode` | `none`, `text`, `structured`, or `export-only` |
-| `readStrategy` | `bounded`, `download`, or `metadata` |
-| `saveStrategy` | `none`, `overwrite`, or `export-only` |
-| `maxSizeBytes` | Opener-specific content ceiling |
-| `requiredCapabilities` | Provider capabilities required before selection |
-
-Defaults and a complete JSON Lines example are documented inline in the canonical config.
+File openers are maintained frontend code rather than runtime configuration. The removed top-level `uiPlugins` key is rejected with a migration diagnostic; see [Migrating from `uiPlugins`](../guides/migrating-ui-plugins.md).

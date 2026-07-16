@@ -1,9 +1,7 @@
 ## Purpose
 
 Defines the storage plugin abstraction, capability discovery, provider limitations, and initial provider targets.
-
 ## Requirements
-
 ### Requirement: Provider-neutral storage abstraction
 Cagnard SHALL represent every storage implementation as a provider plugin exposing accounts, storage roots, and storage entries through a common storage model.
 
@@ -186,19 +184,19 @@ Storage plugins SHALL expose content access capabilities that let Cagnard distin
 
 #### Scenario: Full buffered read only
 - **WHEN** a storage plugin supports only full buffered download for content access
-- **THEN** Cagnard SHALL enforce configured object size limits before routing files to openers that require complete content
+- **THEN** Cagnard SHALL enforce configured object size limits before routing files to first-party openers that require complete content
 
 #### Scenario: Range read supported
 - **WHEN** a storage plugin supports byte-range reads for an entry
-- **THEN** Cagnard SHALL expose that capability to opener plugins that can operate through partial content access
+- **THEN** Cagnard SHALL expose that capability to first-party openers and format engines that can operate through partial content access
 
 #### Scenario: Stream read supported
 - **WHEN** a storage plugin supports streaming content delivery
-- **THEN** Cagnard SHALL expose that capability to opener plugins and transfer flows that can avoid full in-memory buffering
+- **THEN** Cagnard SHALL expose that capability to first-party openers and transfer flows that can avoid full in-memory buffering
 
 #### Scenario: Deliver declared range reads
 - **WHEN** a storage plugin declares range read as supported for an entry
-- **THEN** Cagnard SHALL be able to serve a byte-range request for that entry's content through the storage content access API, not merely report the capability as a flag
+- **THEN** Cagnard SHALL be able to serve an authorized byte-range request for that entry's content through the storage content access API, not merely report the capability as a flag
 
 ### Requirement: Change notification capability
 Storage plugins SHALL declare whether they support change notification for a given entry, and MAY implement it through native provider push or backend-side polling.
@@ -220,11 +218,11 @@ Storage plugins SHALL report whether an entry supports overwrite, create-new-ver
 
 #### Scenario: Direct overwrite supported
 - **WHEN** a provider can replace an existing file atomically or safely enough for direct editing
-- **THEN** Cagnard MAY allow editor plugins to save changes through overwrite when user permissions allow it
+- **THEN** Cagnard MAY allow a first-party editor to save changes through overwrite when user permissions allow it
 
 #### Scenario: Versioned save supported
 - **WHEN** a provider supports versioned writes or new-version creation
-- **THEN** Cagnard MAY allow editor plugins to save changes as a new version when the opener declares that strategy
+- **THEN** Cagnard MAY allow a first-party editor to save changes as a new version when the opener declares that strategy
 
 #### Scenario: Write-back unsupported
 - **WHEN** a provider or selected entry does not support safe write-back
