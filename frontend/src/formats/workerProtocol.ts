@@ -11,12 +11,13 @@ export type StructuredWorkerRequest =
   | { id: string; type: "inspect"; sourceId: string }
   | { id: string; type: "page" | "query"; sourceId: string; request: StructuredPageRequest }
   | { id: string; type: "cancel"; targetId: string }
-  | { id: string; type: "close"; sourceId: string };
+  | { id: string; type: "close"; sourceId: string }
+  | { id: string; type: "shutdown" };
 
 export type StructuredWorkerResponse =
   | { id: string; type: "initialized" | "inspection"; inspection: StructuredInspection }
   | { id: string; type: "page"; page: StructuredPage }
-  | { id: string; type: "closed" | "canceled" }
+  | { id: string; type: "closed" | "canceled" | "shutdown" }
   | { id: string; type: "progress"; phase: string; loaded?: number; total?: number }
   | { id: string; type: "error"; error: StructuredErrorShape };
 

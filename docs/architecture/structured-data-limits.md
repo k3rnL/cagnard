@@ -1,6 +1,8 @@
 # Structured Data Runtime And Limits
 
-Cagnard's analytical viewers run in a dedicated frontend worker. They receive one same-origin `/api/storage/content` URL, never provider credentials, and return normalized pages through a request-ID protocol capped at 16 MB per response. Closing a file aborts reads, closes format state and DuckDB connections, and terminates the dedicated worker.
+Cagnard's analytical viewers lazily share one frontend worker per browser tab. They receive same-origin `/api/storage/content` URLs, never provider credentials, and return normalized pages through a request-ID protocol capped at 16 MB per response. Every opened source owns a unique ID and reader state. Closing a file aborts its requests, releases buffered format state, closes its DuckDB connection, and unregisters its virtual file without terminating a healthy shared runtime.
+
+DuckDB-Wasm is initialized only when the first Parquet file is opened. Its local Parquet extension is loaded once, then sequential Parquet viewers reuse the engine with unique registrations and source-owned connections. Logout, an unrecoverable worker/database failure, or page teardown terminates the per-tab runtime. A rejected initialization is discarded so Retry can create a fresh engine.
 
 ## Access And Memory Model
 
@@ -41,6 +43,6 @@ The mobile profile repeatedly processes approximately 8 MB and the desktop profi
 | `buffer` | 6.0.3 | Browser-compatible Avro decode buffer | MIT |
 | `hyparquet-writer` | 0.16.1 | Development-only deterministic Parquet fixtures | MIT |
 
-DuckDB's worker and WASM binary are emitted as local lazy production assets. No format worker or engine is fetched from a CDN, and DuckDB external extension autoloading and unsigned extensions are disabled.
+DuckDB's worker and WASM binary are emitted as local lazy production assets. No format worker or engine is fetched from a CDN, and DuckDB external extension autoloading and unsigned extensions are disabled. Keeping the lazy engine alive after closing a Parquet viewer trades some per-tab WASM memory for much faster subsequent opens; file registrations and connections are still released immediately.
 
 The signed DuckDB 1.4.3 Parquet extension variants are mirrored under `frontend/public/duckdb-extensions/v1.4.3`. Their official source URLs and SHA-256 hashes are recorded in the adjacent asset README. The worker selects only the matching same-origin signed variant; arbitrary extension names and remote repositories are not exposed to users.

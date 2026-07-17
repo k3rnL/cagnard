@@ -22,12 +22,28 @@ import {
   StructuredReaderError,
 } from "./shared";
 import type { StructuredDataSource } from "./types";
+import { LazyRuntime } from "./lazyRuntime";
 
-const registeredFile = "cagnard-input.parquet";
 const queryTimeoutMilliseconds = 30_000;
 const maximumOffset = 10_000_000;
 const maximumFilters = 8;
 const maximumSorts = 8;
+
+interface DuckDBRuntime {
+  database: duckdb.AsyncDuckDB;
+  worker: Worker;
+}
+
+type ProgressReporter = (
+  phase: string,
+  loaded?: number,
+  total?: number,
+) => void;
+
+const sharedDuckDBRuntime = new LazyRuntime<
+  DuckDBRuntime,
+  [contentUrl: string, progress: ProgressReporter]
+>(createDuckDBRuntime, disposeDuckDBRuntime);
 
 export async function createParquetSource(
   definition: StructuredSourceDefinition,
@@ -35,46 +51,36 @@ export async function createParquetSource(
   progress: (phase: string, loaded?: number, total?: number) => void,
 ): Promise<StructuredDataSource> {
   signal.throwIfAborted();
-  progress("Initializing DuckDB-Wasm");
-  const bundle = await duckdb.selectBundle({
-    mvp: { mainModule: duckdbMvpWasm, mainWorker: duckdbMvpWorker },
-    eh: { mainModule: duckdbEhWasm, mainWorker: duckdbEhWorker },
-  });
-  const worker = new Worker(bundle.mainWorker as string);
-  const database = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
+  const runtime = await sharedDuckDBRuntime.get(
+    definition.contentUrl,
+    progress,
+  );
+  signal.throwIfAborted();
+  const registeredFile = parquetRegistrationName(definition.sourceId);
+  let connection: duckdb.AsyncDuckDBConnection | undefined;
   try {
-    await database.instantiate(bundle.mainModule, bundle.pthreadWorker);
-    await database.open({
-      allowUnsignedExtensions: false,
-      maximumThreads: 1,
-      filesystem: {
-        reliableHeadRequests: true,
-        allowFullHTTPReads: false,
-        forceFullHTTPReads: false,
-      },
-      query: {
-        castBigIntToDouble: false,
-        castDecimalToDouble: false,
-        castTimestampToDate: false,
-      },
-    });
-    const connection = await database.connect();
-    await disableExternalExtensions(connection);
-    await loadLocalParquetExtension(connection, definition.contentUrl);
-    signal.throwIfAborted();
     progress("Reading Parquet metadata");
-    await database.registerFileURL(
+    await runtime.database.registerFileURL(
       registeredFile,
       definition.contentUrl,
       duckdb.DuckDBDataProtocol.HTTP,
       false,
     );
-    const source = new ParquetSource(database, connection, worker);
+    connection = await runtime.database.connect();
+    signal.throwIfAborted();
+    const source = new ParquetSource(
+      runtime,
+      connection,
+      registeredFile,
+    );
     await source.initialize(signal);
     return source;
   } catch (caught) {
-    await database.terminate().catch(() => undefined);
-    worker.terminate();
+    await connection?.close().catch(() => undefined);
+    await runtime.database.dropFile(registeredFile).catch(() => undefined);
+    if (isFatalDuckDBError(caught)) {
+      await sharedDuckDBRuntime.invalidate(runtime).catch(() => undefined);
+    }
     if (caught instanceof StructuredReaderError) throw caught;
     const detail = caught instanceof Error ? caught.message : String(caught);
     const code = /range|http file|head request/i.test(detail)
@@ -95,19 +101,19 @@ class ParquetSource implements StructuredDataSource {
   private columns = new Set<string>();
 
   constructor(
-    private readonly database: duckdb.AsyncDuckDB,
+    private readonly runtime: DuckDBRuntime,
     private readonly connection: duckdb.AsyncDuckDBConnection,
-    private readonly worker: Worker,
+    private readonly registeredFile: string,
   ) {}
 
   async initialize(signal: AbortSignal): Promise<void> {
     const describe = await this.query(
-      `DESCRIBE SELECT * FROM read_parquet('${registeredFile}')`,
+      `DESCRIBE SELECT * FROM read_parquet(${sqlLiteral(this.registeredFile)})`,
       signal,
     );
     const describeRows = tableRows(describe);
     const parquetSchemaRows = await this.optionalQuery(
-      `SELECT * FROM parquet_schema('${registeredFile}')`,
+      `SELECT * FROM parquet_schema(${sqlLiteral(this.registeredFile)})`,
       signal,
     );
     const parquetSchemaByName = new Map(
@@ -143,11 +149,11 @@ class ParquetSource implements StructuredDataSource {
       };
     });
     const metadataRows = await this.optionalQuery(
-      `SELECT * FROM parquet_metadata('${registeredFile}')`,
+      `SELECT * FROM parquet_metadata(${sqlLiteral(this.registeredFile)})`,
       signal,
     );
     const fileMetadataRows = await this.optionalQuery(
-      `SELECT * FROM parquet_file_metadata('${registeredFile}')`,
+      `SELECT * FROM parquet_file_metadata(${sqlLiteral(this.registeredFile)})`,
       signal,
     );
     const rowGroupIds = new Set(
@@ -274,7 +280,7 @@ class ParquetSource implements StructuredDataSource {
       : "";
     const sql = `SELECT ${
       projection.map(quoteIdentifier).join(", ")
-    } FROM read_parquet('${registeredFile}')${where}${order} LIMIT ${limit} OFFSET ${offset}`;
+    } FROM read_parquet(${sqlLiteral(this.registeredFile)})${where}${order} LIMIT ${limit} OFFSET ${offset}`;
     let result;
     try {
       result = await this.query(sql, signal);
@@ -315,9 +321,7 @@ class ParquetSource implements StructuredDataSource {
 
   async close(): Promise<void> {
     await this.connection.close().catch(() => undefined);
-    await this.database.dropFile(registeredFile).catch(() => undefined);
-    await this.database.terminate().catch(() => undefined);
-    this.worker.terminate();
+    await this.runtime.database.dropFile(this.registeredFile).catch(() => undefined);
   }
 
   private async query(sql: string, signal: AbortSignal) {
@@ -355,6 +359,11 @@ class ParquetSource implements StructuredDataSource {
             detail: caught instanceof Error ? caught.message : String(caught),
             retryable: true,
           },
+        );
+      }
+      if (isFatalDuckDBError(caught)) {
+        await sharedDuckDBRuntime.invalidate(this.runtime).catch(() =>
+          undefined
         );
       }
       throw caught;
@@ -414,6 +423,69 @@ class ParquetSource implements StructuredDataSource {
       sort.direction === "desc" ? "DESC" : "ASC"
     }`;
   }
+}
+
+async function createDuckDBRuntime(
+  contentUrl: string,
+  progress: ProgressReporter,
+): Promise<DuckDBRuntime> {
+  progress("Initializing DuckDB-Wasm");
+  const bundle = await duckdb.selectBundle({
+    mvp: { mainModule: duckdbMvpWasm, mainWorker: duckdbMvpWorker },
+    eh: { mainModule: duckdbEhWasm, mainWorker: duckdbEhWorker },
+  });
+  const worker = new Worker(bundle.mainWorker as string);
+  const database = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
+  const runtime = { database, worker };
+  try {
+    await database.instantiate(bundle.mainModule, bundle.pthreadWorker);
+    await database.open({
+      allowUnsignedExtensions: false,
+      maximumThreads: 1,
+      filesystem: {
+        reliableHeadRequests: true,
+        allowFullHTTPReads: false,
+        forceFullHTTPReads: false,
+      },
+      query: {
+        castBigIntToDouble: false,
+        castDecimalToDouble: false,
+        castTimestampToDate: false,
+      },
+    });
+    const bootstrap = await database.connect();
+    try {
+      await disableExternalExtensions(bootstrap);
+      await loadLocalParquetExtension(bootstrap, contentUrl);
+    } finally {
+      await bootstrap.close().catch(() => undefined);
+    }
+    return runtime;
+  } catch (caught) {
+    await disposeDuckDBRuntime(runtime);
+    throw caught;
+  }
+}
+
+async function disposeDuckDBRuntime(runtime: DuckDBRuntime): Promise<void> {
+  await runtime.database.terminate().catch(() => undefined);
+  runtime.worker.terminate();
+}
+
+export function shutdownParquetRuntime(): Promise<void> {
+  return sharedDuckDBRuntime.shutdown();
+}
+
+export function parquetRegistrationName(sourceId: string): string {
+  const safe = sourceId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 96) ||
+    "source";
+  return `cagnard-${safe}.parquet`;
+}
+
+function isFatalDuckDBError(caught: unknown): boolean {
+  const detail = caught instanceof Error ? caught.message : String(caught);
+  return /duckdb.*(?:terminated|closed)|worker.*(?:terminated|stopped|crashed)|database.*(?:terminated|closed)/i
+    .test(detail);
 }
 
 function compactMetadata(

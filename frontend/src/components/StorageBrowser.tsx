@@ -57,6 +57,7 @@ hljs.registerLanguage("properties", properties);
 import type { BrowserUploadItem, CagnardDataState, EntrySelectionMode, OpenedFileState, OpenedFileViewMode } from "../api/useCagnardData";
 import type { EntrySortField } from "../api/useCagnardData";
 import { taskOperationLabel } from "../api/useCagnardData";
+import { currentDirectoryDownloadUnavailableReason } from "../api/browserActions";
 import { useFileWatch } from "../api/useFileWatch";
 import type { ArchiveEntry, EntryMetadata, StorageEntry, TaskResponse, TaskItem } from "../api/types";
 import { cagnardApi } from "../api/client";
@@ -101,6 +102,8 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
   const allVisibleSelected = state.entries.length > 0 && visibleSelectedCount === state.entries.length;
   const partiallyVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
   const rootBreadcrumbLabel = state.selectedRoot?.label ?? "Root";
+  const currentDirectoryDownloadReason =
+    currentDirectoryDownloadUnavailableReason(state.selectedRoot);
   const readablePath = useMemo(
     () => readableStoragePath(rootBreadcrumbLabel, state.breadcrumbs.slice(1).map((crumb) => crumb.label).join("/")),
     [rootBreadcrumbLabel, state.breadcrumbs]
@@ -160,23 +163,46 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
           </p>
         </div>
         <div className="toolbar-actions">
-          <ActionMenuGroup
-            primary={{ icon: <Eye size={17} />, label: "Open", onClick: () => void state.openSelected(), disabled: !singleSelection }}
-            items={[{ icon: <RefreshCw size={16} />, label: "Refresh", onClick: state.refresh }]}
-          />
+          <button
+            aria-label={pageOpenedFile ? "Reload opened file" : "Refresh current folder"}
+            className="icon-button toolbar-refresh"
+            onClick={() => void state.refresh()}
+            title={pageOpenedFile ? "Reload opened file" : "Refresh current folder"}
+            type="button"
+          >
+            <RefreshCw size={18} />
+          </button>
           <ActionMenuGroup
             primary={{ icon: <FolderPlus size={17} />, label: "New folder", onClick: state.createFolder, disabled: !canMutate }}
             items={[
               { icon: <FilePlus size={16} />, label: "New file", onClick: state.createFile, disabled: !canMutate }
             ]}
           />
-          <ActionMenuGroup
-            primary={{ icon: <Download size={17} />, label: "Download", onClick: state.downloadSelected, disabled: !hasSelection }}
-            items={[
-              { icon: <Upload size={16} />, label: "Upload files", onClick: () => uploadFilesInput.current?.click(), disabled: !canMutate },
-              { icon: <FolderPlus size={16} />, label: "Upload folder", onClick: () => uploadDirectoryInput.current?.click(), disabled: !canMutate }
-            ]}
-          />
+          {state.downloadTarget.kind === "current-directory" ? (
+            <ActionMenuGroup
+              className="transfer-action-group"
+              primary={{ icon: <Upload size={17} />, label: "Upload files", onClick: () => uploadFilesInput.current?.click(), disabled: !canMutate }}
+              items={[
+                { icon: <FolderPlus size={16} />, label: "Upload folder", onClick: () => uploadDirectoryInput.current?.click(), disabled: !canMutate },
+                {
+                  icon: <Download size={16} />,
+                  label: "Download current folder",
+                  onClick: state.download,
+                  disabled: Boolean(currentDirectoryDownloadReason),
+                  disabledReason: currentDirectoryDownloadReason,
+                },
+              ]}
+            />
+          ) : (
+            <ActionMenuGroup
+              className="transfer-action-group"
+              primary={{ icon: <Download size={17} />, label: "Download", onClick: state.download, disabled: !state.selectedRoot }}
+              items={[
+                { icon: <Upload size={16} />, label: "Upload files", onClick: () => uploadFilesInput.current?.click(), disabled: !canMutate },
+                { icon: <FolderPlus size={16} />, label: "Upload folder", onClick: () => uploadDirectoryInput.current?.click(), disabled: !canMutate }
+              ]}
+            />
+          )}
           <ActionMenuGroup
             primary={{ icon: <Pencil size={17} />, label: "Rename", onClick: state.renameSelected, disabled: !singleSelection || !canMutate }}
             items={[{ icon: <Trash2 size={16} />, label: "Delete", onClick: state.deleteSelected, disabled: !hasSelection || !canMutate, danger: true }]}
@@ -249,7 +275,11 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
       ) : null}
 
       {pageOpenedFile ? (
-        <FileOpenerSurface state={state} opened={pageOpenedFile} />
+        <FileOpenerSurface
+          key={`${pageOpenedFile.entry.id}:${pageOpenedFile.reloadToken ?? 0}`}
+          state={state}
+          opened={pageOpenedFile}
+        />
       ) : (
       <>
       {metadataOpen ? <button className="metadata-backdrop" type="button" aria-label="Close metadata" onClick={() => setMetadataOpen(false)} /> : null}
@@ -809,14 +839,23 @@ interface ActionDefinition {
   label: string;
   onClick: () => void | Promise<void>;
   disabled?: boolean;
+  disabledReason?: string;
   danger?: boolean;
 }
 
-function ActionMenuGroup({ primary, items }: { primary: ActionDefinition; items: ActionDefinition[] }) {
+function ActionMenuGroup({
+  primary,
+  items,
+  className,
+}: {
+  primary: ActionDefinition;
+  items: ActionDefinition[];
+  className?: string;
+}) {
   const menu = useHoverDropdown<HTMLDivElement>();
 
   return (
-    <div className="action-menu-group" ref={menu.ref} onMouseEnter={menu.openOnHover} onMouseLeave={menu.closeOnLeave}>
+    <div className={`action-menu-group${className ? ` ${className}` : ""}`} ref={menu.ref} onMouseEnter={menu.openOnHover} onMouseLeave={menu.closeOnLeave}>
       <ActionButton
         {...primary}
         primary
@@ -832,6 +871,10 @@ function ActionMenuGroup({ primary, items }: { primary: ActionDefinition; items:
           aria-label={`${primary.label} options`}
           className="action-menu-trigger"
           onClick={menu.togglePinned}
+          onKeyDown={(event) => {
+            if (!["Enter", " ", "ArrowDown"].includes(event.key)) return;
+            menu.togglePinned(event);
+          }}
           title={`${primary.label} options`}
           type="button"
         >
@@ -900,7 +943,7 @@ function useHoverDropdown<T extends HTMLElement>() {
       clearCloseTimer();
       setOpen(false);
     },
-    togglePinned: (event: MouseEvent<HTMLElement>) => {
+    togglePinned: (event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
       event.preventDefault();
       event.stopPropagation();
       clearCloseTimer();
@@ -943,9 +986,13 @@ function MenuActionButton({ action, onClose }: { action: ActionDefinition; onClo
 
   return (
     <button
+      aria-label={action.disabledReason
+        ? `${action.label}: ${action.disabledReason}`
+        : undefined}
       className={className}
       disabled={action.disabled}
       role="menuitem"
+      title={action.disabledReason ?? action.label}
       type="button"
       onClick={() => {
         onClose?.();

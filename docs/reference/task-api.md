@@ -40,6 +40,8 @@ Task summaries include `id`, `operation`, `status`, `revision`, timestamps, `mes
 
 `POST /api/tasks/downloads` accepts storage `sources`. The returned `download.url` is consumed with a native authenticated `GET`. A single file is streamed directly; folders or multiple sources produce an incremental ZIP.
 
+A source `path` may be the empty string only to identify the authorized configured storage root. Cagnard treats it as a synthetic directory named from the root's display label, then traverses the complete filesystem root or S3 bucket prefix through provider-neutral list and stream capabilities. It does not treat an empty path as an S3 object, expose the host filesystem path, or infer contents from a paginated browser listing. Absolute paths and parent traversal remain invalid.
+
 `GET /api/tasks/{taskId}/content` can be consumed once while the task is pending. Single files support one standard byte range. Terminal, stale, or foreign URLs are rejected.
 
 ### Upload

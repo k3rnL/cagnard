@@ -8,6 +8,9 @@ import { structuredWorkerResponseFits } from "./workerProtocol";
 const workerScope = self as DedicatedWorkerGlobalScope;
 const sources = new Map<string, StructuredDataSource>();
 const operations = new Map<string, AbortController>();
+const operationSources = new Map<string, string>();
+const closingSources = new Set<string>();
+let parquetRuntimeLoaded = false;
 
 workerScope.onmessage = (event: MessageEvent<StructuredWorkerRequest>) => {
   const request = event.data;
@@ -22,6 +25,12 @@ workerScope.onmessage = (event: MessageEvent<StructuredWorkerRequest>) => {
 async function handle(request: Exclude<StructuredWorkerRequest, { type: "cancel" }>): Promise<void> {
   const controller = new AbortController();
   operations.set(request.id, controller);
+  const sourceId = "sourceId" in request
+    ? request.sourceId
+    : request.type === "initialize"
+    ? request.source.sourceId
+    : undefined;
+  if (sourceId) operationSources.set(request.id, sourceId);
   try {
     if (request.type === "initialize") {
       validateSource(request.source.contentUrl);
@@ -35,9 +44,43 @@ async function handle(request: Exclude<StructuredWorkerRequest, { type: "cancel"
         await source.close();
         controller.signal.throwIfAborted();
       }
+      if (closingSources.delete(request.source.sourceId)) {
+        await source.close();
+        throw new DOMException("Source closed", "AbortError");
+      }
       sources.set(request.source.sourceId, source);
       const inspection = await source.inspect(controller.signal);
       postBounded({ id: request.id, type: "initialized", inspection });
+      return;
+    }
+    if (request.type === "shutdown") {
+      operations.forEach((operation, id) => {
+        if (id !== request.id) operation.abort();
+      });
+      await Promise.all(Array.from(sources.values(), (source) =>
+        source.close().catch(() => undefined)
+      ));
+      sources.clear();
+      closingSources.clear();
+      if (parquetRuntimeLoaded) {
+        const { shutdownParquetRuntime } = await import("./readers/parquet");
+        await shutdownParquetRuntime();
+      }
+      post({ id: request.id, type: "shutdown" });
+      return;
+    }
+    if (request.type === "close") {
+      closingSources.add(request.sourceId);
+      operationSources.forEach((operationSource, operationId) => {
+        if (operationSource === request.sourceId && operationId !== request.id) {
+          operations.get(operationId)?.abort();
+        }
+      });
+      const source = sources.get(request.sourceId);
+      if (source) await source.close();
+      sources.delete(request.sourceId);
+      closingSources.delete(request.sourceId);
+      post({ id: request.id, type: "closed" });
       return;
     }
     const source = requireSource(request.sourceId);
@@ -49,13 +92,11 @@ async function handle(request: Exclude<StructuredWorkerRequest, { type: "cancel"
       postBounded({ id: request.id, type: "page", page: await source.page(request.request, controller.signal) });
       return;
     }
-    await source.close();
-    sources.delete(request.sourceId);
-    post({ id: request.id, type: "closed" });
   } catch (caught) {
     post({ id: request.id, type: "error", error: normalizeReaderError(caught) });
   } finally {
     operations.delete(request.id);
+    operationSources.delete(request.id);
   }
 }
 
@@ -77,6 +118,7 @@ function validateSource(contentUrl: string): void {
 async function loadFactory(format: string): Promise<StructuredSourceFactory> {
   switch (format) {
     case "parquet":
+      parquetRuntimeLoaded = true;
       return (await import("./readers/parquet")).createParquetSource;
     case "avro":
       return (await import("./readers/avro")).createAvroSource;

@@ -278,6 +278,73 @@ func TestZipEntryModifiedTimeUsesArchiveFallbackForMissingMetadata(t *testing.T)
 	}
 }
 
+func TestTaskDownloadStreamsCompleteConfiguredRoot(t *testing.T) {
+	server, home, _ := newTransferTestServer(t)
+	writeTestFile(t, filepath.Join(home, "top.txt"), []byte("top"))
+	writeTestFile(t, filepath.Join(home, "nested", "child.txt"), []byte("child"))
+	if err := os.MkdirAll(filepath.Join(home, "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	job := postJSON[TaskResponse](t, server, "/api/tasks/downloads", "", `{"sources":[{"tunnel":"personal","rootId":"home","path":""}]}`)
+	if job.Download == nil || !job.Download.Archive || job.Download.FileName != "Home.zip" {
+		t.Fatalf("unexpected root download descriptor: %#v", job)
+	}
+	response := doTaskContentRequest(t, server, job.Download.URL, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("root download status = %d body = %s", response.Code, response.Body.String())
+	}
+	reader, err := zip.NewReader(bytes.NewReader(response.Body.Bytes()), int64(response.Body.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{}
+	directories := map[string]bool{}
+	for _, archived := range reader.File {
+		if archived.FileInfo().IsDir() {
+			directories[archived.Name] = true
+			continue
+		}
+		opened, err := archived.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, err := io.ReadAll(opened)
+		_ = opened.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[archived.Name] = string(content)
+	}
+	if files["Home/top.txt"] != "top" || files["Home/nested/child.txt"] != "child" {
+		t.Fatalf("root archive omitted content: %#v", files)
+	}
+	if !directories["Home/"] || !directories["Home/empty/"] {
+		t.Fatalf("root archive omitted directories: %#v", directories)
+	}
+
+	for _, body := range []string{
+		`{"sources":[{"tunnel":"personal","rootId":"home","path":"../outside"}]}`,
+		`{"sources":[{"tunnel":"personal","rootId":"home","path":"/absolute"}]}`,
+	} {
+		invalid := postRawJSON(t, server, "/api/tasks/downloads", body)
+		if invalid.Code != http.StatusBadRequest {
+			t.Fatalf("unsafe root download status = %d body = %s", invalid.Code, invalid.Body.String())
+		}
+	}
+}
+
+func TestDirectoryDownloadNamePreservesDots(t *testing.T) {
+	name := downloadFileName([]TaskItem{{Name: "release.v1", Kind: "directory"}}, true)
+	if name != "release.v1.zip" {
+		t.Fatalf("directory archive name = %q", name)
+	}
+	name = downloadFileName([]TaskItem{{Name: "Finance / 2026\n", Kind: "directory"}}, true)
+	if name != "Finance _ 2026.zip" {
+		t.Fatalf("sanitized root archive name = %q", name)
+	}
+}
+
 func TestTaskUploadStreamsManifestItemsAndResolvesConflicts(t *testing.T) {
 	server, home, _ := newTransferTestServer(t)
 	job := postJSON[TaskResponse](t, server, "/api/tasks/uploads", "", `{

@@ -145,4 +145,4 @@ jobs:
           CAGNARD_S3_TEST_ENDPOINT: http://127.0.0.1:9000
           CAGNARD_S3_TEST_ACCESS_KEY: cagnard
           CAGNARD_S3_TEST_SECRET_KEY: cagnard-secret
-        run: go test ./internal/storage -run TestS3MinIOStreamingIntegration -count=1 -v
+        run: go test ./internal/storage ./internal/api -run 'TestS3MinIOStreamingIntegration|TestS3MinIORootDownloadIntegration' -count=1 -v

@@ -32,7 +32,7 @@ Every response carries a stable ID, monotonically increasing revision, timestamp
 
 Copy, move, and delete are backend-run tasks. Provider operations receive a cancellable context, and eligible selected items use the configured concurrency limit.
 
-Downloads are response-stream tasks. Creation returns an authenticated content URL and leaves the task pending. Consuming that URL streams one file directly or writes a ZIP incrementally for mixed files and folders. A ZIP is not built in temporary storage and cannot be resumed.
+Downloads are response-stream tasks. Creation returns an authenticated content URL and leaves the task pending. Consuming that URL streams one file directly or writes a ZIP incrementally for mixed files and folders. An empty source path identifies the authorized configured root as a synthetic directory, allowing complete filesystem-root or S3-prefix archives without expanding a paginated frontend listing. A ZIP is not built in temporary storage and cannot be resumed.
 
 Uploads are browser-fed tasks. The browser first submits a safe relative-path manifest, resolves conflicts once on the original task, then streams each file to a stable item endpoint with bounded concurrency. Explicit empty directories are supported when the browser supplies them.
 

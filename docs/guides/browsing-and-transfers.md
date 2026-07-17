@@ -9,6 +9,7 @@ Cagnard presents filesystem directories and S3 prefixes through one browser. The
 - Use breadcrumbs to return to an ancestor or copy the readable path.
 - Search, sort, and paginate the current directory through provider-backed listing options.
 - Use checkboxes to select multiple entries. Select all applies to the current page.
+- Use the direct refresh icon to reload the visible directory. When a page-level viewer is open, the same control reloads that file and confirms before discarding unsaved edits.
 
 The URL records the tunnel, root, real directory path, and opened file. Native Back and Forward restore accessible Cagnard locations.
 
@@ -29,6 +30,10 @@ Cancellation cannot restore completed deletions. Independent selections continue
 ## Download Files And Folders
 
 A single selected file streams directly to the browser with its MIME type, content length, and byte-range support. Selecting a directory, several files, or a mixed selection streams an incremental ZIP. Cagnard does not buffer the complete file or archive in browser memory.
+
+The transfer control adapts to context. With no selection, **Upload files** is primary and its menu contains **Upload folder** and **Download current folder**. With selected entries or a page-level opened file, **Download** is primary and upload commands move into its menu. An opened page-level file wins over any stale selection hidden behind the viewer; inline previews continue to use the visible selection.
+
+**Download current folder** archives the complete directory, not only the loaded page or current search results. At a storage root, Cagnard uses the configured root label and recursively streams the authorized filesystem root or S3 bucket prefix without exposing host paths, credentials, or provider identifiers.
 
 ZIP paths are sanitized, duplicate names receive deterministic suffixes, empty directories and provider modification times are retained, and already compressed formats are stored without redundant deflate work. Entries without a provider timestamp use the archive creation time. ZIP downloads cannot resume after interruption; start a new task instead.
 

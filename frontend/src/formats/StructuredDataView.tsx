@@ -41,6 +41,10 @@ import {
   StructuredDataClientError,
   StructuredDataWorkerClient,
 } from "./workerClient";
+import {
+  acquireStructuredDataRuntime,
+  type StructuredRuntimeLease,
+} from "./runtimeManager";
 
 export interface StructuredDataViewProps {
   entry: StorageEntry;
@@ -182,11 +186,9 @@ export default function StructuredDataView(
   );
 
   useEffect(() => {
-    const client = new StructuredDataWorkerClient();
     const controller = new AbortController();
-    const sourceId = `${entry.id}:${attempt}:${Date.now()}`;
-    clientRef.current = client;
-    sourceIdRef.current = sourceId;
+    let active = true;
+    let lease: StructuredRuntimeLease | undefined;
     operationRef.current = controller;
     setInspection(undefined);
     setPage(undefined);
@@ -203,31 +205,40 @@ export default function StructuredDataView(
     setPendingHeaderSortColumn(undefined);
     setQueryEditor(undefined);
     setActiveOperation(undefined);
-    void client
-      .initialize(
-        {
-          sourceId,
-          format,
-          name: entry.name,
-          contentUrl: absoluteContentUrl,
-          size: entry.metadata.size ?? undefined,
-          mimeType: entry.metadata.mimeType ?? undefined,
-          options: format === "delimited-text"
-            ? {
-              delimiter: delimiter === "auto" ? undefined : delimiter,
-              header: headerMode === "first-row",
-            }
-            : undefined,
-        },
-        controller.signal,
-        (nextPhase, nextLoaded, nextTotal) => {
-          setPhase(nextPhase);
-          setLoaded(nextLoaded);
-          setTotal(nextTotal);
-        },
-      )
-      .then(async (nextInspection) => {
-        if (controller.signal.aborted) return;
+    void acquireStructuredDataRuntime()
+      .then(async (nextLease) => {
+        lease = nextLease;
+        if (!active || controller.signal.aborted) {
+          await nextLease.release();
+          return;
+        }
+        const { client, sourceId } = nextLease;
+        clientRef.current = client;
+        sourceIdRef.current = sourceId;
+        const nextInspection = await client.initialize(
+          {
+            sourceId,
+            format,
+            name: entry.name,
+            contentUrl: absoluteContentUrl,
+            size: entry.metadata.size ?? undefined,
+            mimeType: entry.metadata.mimeType ?? undefined,
+            options: format === "delimited-text"
+              ? {
+                delimiter: delimiter === "auto" ? undefined : delimiter,
+                header: headerMode === "first-row",
+              }
+              : undefined,
+          },
+          controller.signal,
+          (nextPhase, nextLoaded, nextTotal) => {
+            if (!active) return;
+            setPhase(nextPhase);
+            setLoaded(nextLoaded);
+            setTotal(nextTotal);
+          },
+        );
+        if (!active || controller.signal.aborted) return;
         setInspection(nextInspection);
         const firstField = nextInspection.schema[0];
         nextFilterDraftIdRef.current += 1;
@@ -243,24 +254,25 @@ export default function StructuredDataView(
           { limit: pageSize },
           controller.signal,
         );
-        if (controller.signal.aborted) return;
+        if (!active || controller.signal.aborted) return;
         setPage(nextPage);
         setActiveCursor(undefined);
         setVisibleColumns(new Set(nextPage.columns));
       })
       .catch((caught) => {
-        if (!controller.signal.aborted) setError(errorShape(caught));
+        if (active && !controller.signal.aborted) setError(errorShape(caught));
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (active && !controller.signal.aborted) setLoading(false);
       });
 
     return () => {
+      active = false;
       controller.abort();
-      if (clientRef.current === client) clientRef.current = undefined;
-      void client.close(sourceId).catch(() => undefined).finally(() =>
-        client.terminate()
-      );
+      if (lease && clientRef.current === lease.client) {
+        clientRef.current = undefined;
+      }
+      void lease?.release().catch(() => undefined);
     };
   }, [
     absoluteContentUrl,

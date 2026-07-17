@@ -35,6 +35,8 @@ Exact global filtering, sorting, projection, and counts are enabled for Parquet 
 
 All analytical viewers are read-only, even on writable roots. **Page CSV** and **Page JSON** export only the current page or selected rows and visible columns.
 
+The analytical worker is lazy and shared only within the current browser tab. DuckDB-Wasm initializes on the first Parquet open and is reused for later Parquet files; each file still has a unique virtual registration and connection. Closing a viewer releases its source state, while logout or closing the page releases the complete runtime.
+
 ## Limits And Fallbacks
 
 | Reader | Access model | Current ceiling |

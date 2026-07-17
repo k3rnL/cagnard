@@ -10,7 +10,7 @@ The registry keeps ordinary JSON separate from NDJSON. A `.json` document uses t
 
 ## Runtime Boundaries
 
-Existing text, Markdown, JSON, YAML, diff, log, media, PDF, and archive surfaces are inline application modules. Structured-data formats lazy-load a shared React surface and a dedicated worker. The worker then imports only the selected format reader:
+Existing text, Markdown, JSON, YAML, diff, log, media, PDF, and archive surfaces are inline application modules. Structured-data formats lazy-load a shared React surface and one reusable worker per browser tab. The worker then imports only the selected format reader:
 
 - DuckDB-Wasm for Parquet;
 - Avro OCF decoding for null, deflate, and Snappy codecs;
@@ -27,6 +27,6 @@ All analytical viewers are read-only. CSV and JSON exports contain only the visi
 
 ## Security And Lifecycle
 
-The frontend receives an authenticated, same-origin Cagnard content URL, never provider credentials. Parquet’s HTTP filesystem uses byte ranges against that URL and refuses full-file HTTP fallback. Closing or replacing the view cancels outstanding requests, closes reader state and DuckDB connections, and terminates workers.
+The frontend receives an authenticated, same-origin Cagnard content URL, never provider credentials. Parquet’s HTTP filesystem uses byte ranges against that URL and refuses full-file HTTP fallback. Closing or replacing a view cancels that source's outstanding requests, closes reader state and its DuckDB connection, and unregisters its unique virtual file. The healthy worker and lazy DuckDB engine remain available for later files in the same tab; logout, fatal runtime failure, and page teardown terminate them.
 
 See [File viewers](../guides/file-viewers.md), [adding a first-party opener](../contributing/file-openers.md), and the [`uiPlugins` migration](../guides/migrating-ui-plugins.md).

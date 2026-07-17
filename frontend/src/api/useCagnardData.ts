@@ -15,6 +15,13 @@ import type {
 } from "./types";
 import { canWriteBack, openerBlockedReason, resolveFileOpener } from "../openers/fileOpeners";
 import type { FileOpenerMatch, OpenerView } from "../openers/fileOpeners";
+import { shutdownStructuredDataRuntime } from "../formats/runtimeManager";
+import {
+  downloadSourcesForTarget,
+  resolveBrowserActionContext,
+  resolveBrowserRefreshTarget,
+  type BrowserDownloadTarget,
+} from "./browserActions";
 
 export type EntrySelectionMode = "replace" | "toggle" | "range";
 export type EntrySortField = "name" | "kind" | "fileCategory" | "size" | "modifiedTime" | "mimeType";
@@ -37,6 +44,7 @@ export interface OpenedFileState {
   nextOffset?: number;
   totalSize?: number | null;
   loadingMore?: boolean;
+  reloadToken?: number;
 }
 
 export interface EntryPageState {
@@ -198,7 +206,7 @@ export interface CagnardDataState {
   openDirectory: (entry: StorageEntry) => void;
   navigateToPath: (path: string) => void;
   goUp: () => void;
-  refresh: () => void;
+  refresh: () => Promise<void>;
   createFile: () => Promise<void>;
   createFolder: () => Promise<void>;
   renameSelected: () => Promise<void>;
@@ -218,7 +226,8 @@ export interface CagnardDataState {
   showMessage: (title: string, message: string, danger?: boolean) => Promise<void>;
   uploadFile: (file: File) => Promise<void>;
   uploadItems: (items: BrowserUploadItem[]) => Promise<void>;
-  downloadSelected: () => Promise<void>;
+  downloadTarget: BrowserDownloadTarget;
+  download: () => Promise<void>;
 }
 
 export function useCagnardData(): CagnardDataState {
@@ -323,6 +332,16 @@ export function useCagnardData(): CagnardDataState {
     if (activeEntryId) return entriesById.get(activeEntryId) ?? selectedEntries[0];
     return selectedEntries[0];
   }, [activeEntryId, entriesById, selectedEntries]);
+  const browserActionContext = useMemo(
+    () => resolveBrowserActionContext({
+      pageOpenedFile: openedFile?.placement === "page"
+        ? openedFile.entry
+        : undefined,
+      selectedEntries,
+      currentPath,
+    }),
+    [currentPath, openedFile?.entry, openedFile?.placement, selectedEntries],
+  );
   useEffect(() => {
     pasteboardItemsRef.current = pasteboardItems;
   }, [pasteboardItems]);
@@ -368,6 +387,7 @@ export function useCagnardData(): CagnardDataState {
   }, []);
 
   const resetAuthenticatedState = useCallback(() => {
+    void shutdownStructuredDataRuntime();
     urlRestoredRef.current = false;
     setSession(undefined);
     setNavigation(undefined);
@@ -1018,7 +1038,21 @@ export function useCagnardData(): CagnardDataState {
   const reloadOpenedFile = useCallback(async () => {
     const root = requireRoot();
     const current = openedFile;
-    if (!current?.match || current.match.opener.readStrategy !== "bounded") return;
+    if (!current?.match) return;
+    if (current.match.opener.readStrategy !== "bounded") {
+      setOpenedFile((existing) => {
+        if (!existing || existing.entry.path !== current.entry.path) {
+          return existing;
+        }
+        return {
+          ...existing,
+          dirty: false,
+          error: undefined,
+          reloadToken: (existing.reloadToken ?? 0) + 1,
+        };
+      });
+      return;
+    }
     try {
       const preview = await cagnardApi.preview(root.tunnel, root.id, current.entry.path);
       setOpenedFile((existing) => {
@@ -1031,7 +1065,8 @@ export function useCagnardData(): CagnardDataState {
           error: undefined,
           truncated: preview.truncated,
           nextOffset: preview.nextOffset,
-          totalSize: preview.size
+          totalSize: preview.size,
+          reloadToken: (existing.reloadToken ?? 0) + 1,
         };
       });
     } catch (caught) {
@@ -1099,8 +1134,6 @@ export function useCagnardData(): CagnardDataState {
     });
     setFilterQueryState("");
   }, [queueLocationHistoryPush]);
-
-  const refresh = useCallback(() => setRefreshTick((value) => value + 1), []);
 
   const mutate = useCallback(
     async (action: () => Promise<{ message: string }>) => {
@@ -1182,6 +1215,27 @@ export function useCagnardData(): CagnardDataState {
     },
     [openModal]
   );
+
+  const refresh = useCallback(async () => {
+    const current = openedFile;
+    if (
+      current &&
+      resolveBrowserRefreshTarget(current.placement) === "opened-file"
+    ) {
+      if (current.dirty) {
+        const confirmed = await askConfirm({
+          title: "Reload file",
+          message: "Reloading will discard your unsaved changes.",
+          confirmLabel: "Reload",
+          danger: true,
+        });
+        if (!confirmed) return;
+      }
+      await reloadOpenedFile();
+      return;
+    }
+    setRefreshTick((value) => value + 1);
+  }, [askConfirm, openedFile, reloadOpenedFile]);
 
   const askConflictPolicy = useCallback(
     async (message: string) => {
@@ -1485,17 +1539,14 @@ export function useCagnardData(): CagnardDataState {
     [uploadItems]
   );
 
-  const downloadSelected = useCallback(async () => {
+  const download = useCallback(async () => {
     const root = requireRoot();
-    const selection = requireSelection();
-    if (selection.length === 0) {
-      setError("Select at least one item to download.");
-      return;
-    }
+    const target = browserActionContext.downloadTarget;
+    const sources = downloadSourcesForTarget(root, target);
 
     try {
       const task = await cagnardApi.startDownloadTask({
-        sources: selection.map((entry) => ({ tunnel: root.tunnel, rootId: root.id, path: entry.path }))
+        sources,
       });
       applyTaskUpdate(task);
       if (!task.download) throw new Error("The server did not provide a download URL.");
@@ -1506,13 +1557,18 @@ export function useCagnardData(): CagnardDataState {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      setOperationMessage(selection.length === 1 ? `Downloading ${selection[0].name}` : `Preparing ${selection.length} items for download`);
+      const message = target.kind === "current-directory"
+        ? `Preparing ${target.path ? target.path.split("/").at(-1) : root.label} for download`
+        : target.entries.length === 1
+        ? `Downloading ${target.entries[0].name}`
+        : `Preparing ${target.entries.length} items for download`;
+      setOperationMessage(message);
       setError(undefined);
     } catch (caught) {
       if (handleUnauthorized(caught)) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [applyTaskUpdate, handleUnauthorized, requireRoot, requireSelection]);
+  }, [applyTaskUpdate, browserActionContext.downloadTarget, handleUnauthorized, requireRoot]);
 
   return useMemo(
     () => ({
@@ -1591,7 +1647,8 @@ export function useCagnardData(): CagnardDataState {
       showMessage,
       uploadFile,
       uploadItems,
-      downloadSelected
+      downloadTarget: browserActionContext.downloadTarget,
+      download,
     }),
     [
       authProviders,
@@ -1603,7 +1660,8 @@ export function useCagnardData(): CagnardDataState {
       createFile,
       createFolder,
       deleteSelected,
-      downloadSelected,
+      download,
+      browserActionContext.downloadTarget,
       currentPath,
       entries,
       error,

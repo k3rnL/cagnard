@@ -715,6 +715,19 @@ summary:focus-visible {
   min-width: 0;
 }
 
+.toolbar-refresh {
+  flex: 0 0 36px;
+  background: var(--surface-subtle);
+}
+
+.transfer-action-group {
+  width: 164px;
+}
+
+.transfer-action-group > .action-button {
+  flex: 1 1 auto;
+}
+
 .action-menu-group {
   position: relative;
   display: inline-flex;
@@ -2624,6 +2637,10 @@ mark.search-hit.current {
     min-height: 40px;
     overflow-x: auto;
     padding-bottom: 4px;
+  }
+
+  .toolbar-actions:has(.action-menu-content) {
+    overflow: visible;
   }
 
   .pasteboard-panel,

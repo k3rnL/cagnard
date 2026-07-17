@@ -52,7 +52,7 @@ func (s *Server) startDownloadTaskRequest(identity auth.RequestIdentity, request
 	for index, source := range request.Sources {
 		source.Tunnel = strings.TrimSpace(source.Tunnel)
 		source.RootID = strings.TrimSpace(source.RootID)
-		cleaned, err := validateRelativeTaskPath(source.Path, false)
+		cleaned, err := validateRelativeTaskPath(source.Path, true)
 		if err != nil {
 			return TaskResponse{}, badRequestAPIError("invalid_source_path", fmt.Sprintf("Download source %d has an invalid path", index+1))
 		}
@@ -64,10 +64,9 @@ func (s *Server) startDownloadTaskRequest(identity auth.RequestIdentity, request
 		if err != nil {
 			return TaskResponse{}, badRequestAPIError("unknown_provider", "Storage provider is unavailable")
 		}
-		entry, err := provider.Stat(root, cleaned)
-		if err != nil {
-			op := operationError(err)
-			return TaskResponse{}, badRequestAPIError(op.Code, op.Message)
+		entry, entryErr := downloadSourceEntry(root, provider, cleaned)
+		if entryErr != nil {
+			return TaskResponse{}, entryErr
 		}
 		archive = archive || entry.Kind == "directory"
 		source.Path = cleaned
@@ -103,11 +102,13 @@ func (s *Server) startDownloadTaskRequest(identity auth.RequestIdentity, request
 
 func downloadFileName(tasks []TaskItem, archive bool) string {
 	if len(tasks) == 1 {
-		name := safeFileName(tasks[0].Name)
+		name := safeFileName(sanitizeArchiveComponent(tasks[0].Name))
 		if !archive {
 			return name
 		}
-		name = strings.TrimSuffix(name, path.Ext(name))
+		if tasks[0].Kind != "directory" {
+			name = strings.TrimSuffix(name, path.Ext(name))
+		}
 		if name != "" {
 			return name + ".zip"
 		}
@@ -288,8 +289,8 @@ func (s *Server) streamTaskZIP(ctx context.Context, jobID string, identity auth.
 			s.markTaskItemFinished(jobID, transferTaskID(index), "error", "Source is unavailable")
 			continue
 		}
-		entry, err := provider.Stat(root, source.Path)
-		if err != nil {
+		entry, entryErr := downloadSourceEntry(root, provider, source.Path)
+		if entryErr != nil {
 			stream.failures++
 			s.markTaskItemFinished(jobID, transferTaskID(index), "error", "Source is unavailable")
 			continue
@@ -319,6 +320,39 @@ func (s *Server) streamTaskZIP(ctx context.Context, jobID string, identity auth.
 		})
 	}
 	return nil
+}
+
+func downloadSourceEntry(root storage.ResolvedStorageRoot, provider storage.StorageProvider, sourcePath string) (storage.StorageEntry, *transferAPIError) {
+	if !capabilitySupported(provider, root, "stream-read") {
+		return storage.StorageEntry{}, badRequestAPIError("download_unsupported", "This storage provider cannot stream downloads")
+	}
+	if sourcePath == "" {
+		if !capabilitySupported(provider, root, "recursive-list") {
+			return storage.StorageEntry{}, badRequestAPIError("directory_download_unsupported", "This storage provider cannot download complete folders")
+		}
+		name := strings.TrimSpace(root.Label)
+		if name == "" {
+			name = "Storage"
+		}
+		return storage.StorageEntry{
+			ID:               "root",
+			Name:             name,
+			Path:             "",
+			Kind:             "directory",
+			Metadata:         storage.EntryMetadata{Unavailable: []string{}},
+			Capabilities:     provider.Capabilities(root),
+			ProviderSpecific: map[string]string{},
+		}, nil
+	}
+	entry, err := provider.Stat(root, sourcePath)
+	if err != nil {
+		op := operationError(err)
+		return storage.StorageEntry{}, badRequestAPIError(op.Code, op.Message)
+	}
+	if entry.Kind == "directory" && !capabilitySupported(provider, root, "recursive-list") {
+		return storage.StorageEntry{}, badRequestAPIError("directory_download_unsupported", "This storage provider cannot download complete folders")
+	}
+	return entry, nil
 }
 
 func (stream *zipTaskStream) writeEntry(root storage.ResolvedStorageRoot, provider storage.StorageProvider, source TaskSourceRequest, entry storage.StorageEntry, archiveName string, taskID string, selected bool) error {

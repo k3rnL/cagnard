@@ -25,9 +25,15 @@ interface PendingRequest {
 export class StructuredDataWorkerClient {
   private readonly worker: Worker;
   private readonly pending = new Map<string, PendingRequest>();
+  private readonly closedSources = new Set<string>();
+  private readonly closingSources = new Map<string, Promise<void>>();
+  private shutdownPromise?: Promise<void>;
   private terminated = false;
 
-  constructor(worker?: Worker) {
+  constructor(
+    worker?: Worker,
+    private readonly onFatal?: (error: StructuredDataClientError) => void,
+  ) {
     this.worker = worker ?? new Worker(new URL("./structuredData.worker.ts", import.meta.url), { type: "module" });
     this.worker.onmessage = (event: MessageEvent<StructuredWorkerResponse>) => this.receive(event.data);
     this.worker.onerror = (event) => {
@@ -45,6 +51,7 @@ export class StructuredDataWorkerClient {
       });
       this.pending.clear();
       this.worker.terminate();
+      this.onFatal?.(error);
     };
   }
 
@@ -53,6 +60,7 @@ export class StructuredDataWorkerClient {
     signal?: AbortSignal,
     progress?: (phase: string, loaded?: number, total?: number) => void
   ): Promise<StructuredInspection> {
+    this.closedSources.delete(source.sourceId);
     const response = await this.request({ id: nextId(), type: "initialize", source }, signal, progress);
     if (response.type !== "initialized") throw unexpected(response);
     return response.inspection;
@@ -76,14 +84,34 @@ export class StructuredDataWorkerClient {
     return response.page;
   }
 
-  async close(sourceId: string): Promise<void> {
-    if (this.terminated) return;
-    try {
-      const response = await this.request({ id: nextId(), type: "close", sourceId });
-      if (response.type !== "closed") throw unexpected(response);
-    } finally {
-      this.terminate();
+  closeSource(sourceId: string): Promise<void> {
+    if (this.terminated || this.closedSources.has(sourceId)) {
+      return Promise.resolve();
     }
+    const current = this.closingSources.get(sourceId);
+    if (current) return current;
+    const closing = this.request({ id: nextId(), type: "close", sourceId })
+      .then((response) => {
+        if (response.type !== "closed") throw unexpected(response);
+      })
+      .finally(() => {
+        this.closingSources.delete(sourceId);
+        this.closedSources.add(sourceId);
+      });
+    this.closingSources.set(sourceId, closing);
+    return closing;
+  }
+
+  shutdown(): Promise<void> {
+    if (this.terminated) return Promise.resolve();
+    if (this.shutdownPromise) return this.shutdownPromise;
+    const pending = this.request({ id: nextId(), type: "shutdown" })
+      .then((response) => {
+        if (response.type !== "shutdown") throw unexpected(response);
+      })
+      .finally(() => this.terminate());
+    this.shutdownPromise = pending;
+    return pending;
   }
 
   terminate(): void {
@@ -96,6 +124,8 @@ export class StructuredDataWorkerClient {
       reject(error);
     });
     this.pending.clear();
+    this.closingSources.clear();
+    this.closedSources.clear();
   }
 
   private request(

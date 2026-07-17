@@ -34,7 +34,7 @@ Path-style addressing and custom endpoints change routing, not the trust model. 
 
 ## Browser And File Openers
 
-First-party file openers use scoped Cagnard file APIs and never receive provider credentials. Structured-data parsing and queries run in local worker assets with bounded results; DuckDB extension autoloading and unrestricted remote URLs are disabled. Cagnard does not load arbitrary third-party executable frontend bundles from configuration. Treat any future executable UI or provider plugin as trusted code requiring review and isolation.
+First-party file openers use scoped Cagnard file APIs and never receive provider credentials. Structured-data parsing and queries run in one local worker runtime per tab with isolated source IDs, connections, cancellation, and cleanup. Results remain bounded; DuckDB extension autoloading, arbitrary SQL, and unrestricted remote URLs are disabled. The shared runtime is terminated on logout and page teardown. Cagnard does not load arbitrary third-party executable frontend bundles from configuration. Treat any future executable UI or provider plugin as trusted code requiring review and isolation.
 
 The pasteboard stores entry references only in browser memory and synchronizes them between active same-origin tabs. It does not persist across a complete browser restart. Paths copied to the system clipboard leave the application security boundary.
 

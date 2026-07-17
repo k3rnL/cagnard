@@ -40,6 +40,29 @@ describe("structured-data worker client", () => {
     client.terminate();
   });
 
+  it("keeps another source request alive when one source is canceled", async () => {
+    const worker = new FakeWorker();
+    const client = new StructuredDataWorkerClient(worker as unknown as Worker);
+    const controller = new AbortController();
+    const canceled = client.inspect("canceled-source", controller.signal);
+    const active = client.inspect("active-source");
+    const [canceledRequest, activeRequest] = worker.requestsOfType("inspect");
+
+    controller.abort();
+    await expect(canceled).rejects.toMatchObject({ name: "AbortError" });
+    worker.emit({
+      id: activeRequest.id,
+      type: "inspection",
+      inspection: inspection("still active"),
+    });
+
+    await expect(active).resolves.toMatchObject({ variant: "still active" });
+    expect(worker.requestsOfType("cancel")).toEqual([
+      expect.objectContaining({ targetId: canceledRequest.id }),
+    ]);
+    client.terminate();
+  });
+
   it("normalizes worker errors and removes abort listeners", async () => {
     const worker = new FakeWorker();
     const client = new StructuredDataWorkerClient(worker as unknown as Worker);
@@ -58,21 +81,49 @@ describe("structured-data worker client", () => {
     client.terminate();
   });
 
-  it("closes the source and terminates the dedicated worker", async () => {
+  it("closes one source idempotently without terminating the shared worker", async () => {
     const worker = new FakeWorker();
     const client = new StructuredDataWorkerClient(worker as unknown as Worker);
-    const closing = client.close("source");
+    const closing = client.closeSource("source");
+    const duplicate = client.closeSource("source");
     const request = worker.requestsOfType("close")[0];
     worker.emit({ id: request.id, type: "closed" });
 
-    await closing;
+    await Promise.all([closing, duplicate]);
+    await client.closeSource("source");
+    expect(worker.requestsOfType("close")).toHaveLength(1);
+    expect(worker.terminated).toBe(false);
+
+    const inspecting = client.inspect("other");
+    const inspectRequest = worker.requestsOfType("inspect")[0];
+    worker.emit({ id: inspectRequest.id, type: "inspection", inspection: inspection("other") });
+    await expect(inspecting).resolves.toMatchObject({ variant: "other" });
+    client.terminate();
+  });
+
+  it("shuts down all runtime state before terminating the worker", async () => {
+    const worker = new FakeWorker();
+    const client = new StructuredDataWorkerClient(worker as unknown as Worker);
+    const shutdown = client.shutdown();
+    const duplicate = client.shutdown();
+    const request = worker.requestsOfType("shutdown")[0];
+    worker.emit({ id: request.id, type: "shutdown" });
+
+    await Promise.all([shutdown, duplicate]);
+    expect(worker.requestsOfType("shutdown")).toHaveLength(1);
     expect(worker.terminated).toBe(true);
     await expect(client.inspect("source")).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("rejects pending work and cleans up when the worker crashes", async () => {
     const worker = new FakeWorker();
-    const client = new StructuredDataWorkerClient(worker as unknown as Worker);
+    let fatal = false;
+    const client = new StructuredDataWorkerClient(
+      worker as unknown as Worker,
+      () => {
+        fatal = true;
+      },
+    );
     const pending = client.inspect("source");
     worker.fail("decoder crashed");
 
@@ -81,6 +132,7 @@ describe("structured-data worker client", () => {
       shape: { code: "internal", retryable: true }
     });
     expect(worker.terminated).toBe(true);
+    expect(fatal).toBe(true);
   });
 
   it("measures worker payloads against the shared 16 MB boundary", () => {
