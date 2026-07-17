@@ -1,20 +1,16 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Cagnard is a provider-neutral storage browser with a Go backend and a React frontend.
+  User-facing changes must preserve the established visual language and feel integrated,
+  elegant, responsive, accessible, and efficient rather than appearing as isolated features.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - For changes that affect the frontend, explicitly state the expected UI/UX quality and consistency with existing Cagnard controls, themes, responsive behavior, and interaction patterns.
+  specs:
+    - For user-facing behavior, include testable requirements for visual integration, accessibility, responsive layouts, stable dimensions, and clear operation feedback where relevant.
+  design:
+    - For frontend changes, explain how the design reuses existing components and interaction patterns and avoids layering, overflow, hover, focus, loading, and layout regressions.
+  tasks:
+    - For frontend changes, include implementation work for consistent styling and controls plus in-app browser verification across desktop, mobile, and supported themes.

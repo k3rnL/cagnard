@@ -1027,7 +1027,7 @@ summary:focus-visible {
   align-items: center;
   gap: 7px;
   height: 34px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
   color: var(--text);
@@ -1039,6 +1039,7 @@ summary:focus-visible {
 
 .transfer-queue-trigger:hover,
 .transfer-queue-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -1413,7 +1414,7 @@ summary:focus-visible {
   right: 0;
   display: grid;
   gap: 10px;
-  width: min(460px, calc(100vw - 32px));
+  width: min(520px, calc(100vw - 32px));
   overflow: visible;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1500,6 +1501,18 @@ summary:focus-visible {
   white-space: nowrap;
 }
 
+.task-operation-label,
+.transfer-task-main strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.task-operation-label svg,
+.transfer-task-main strong svg {
+  flex: 0 0 auto;
+}
+
 .transfer-job-status {
   flex: 0 0 auto;
   border-radius: 999px;
@@ -1557,6 +1570,10 @@ summary:focus-visible {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.84rem;
+}
+
+.task-detail-error {
+  color: var(--danger-text);
 }
 
 .transfer-task-row {
@@ -1640,10 +1657,27 @@ summary:focus-visible {
 }
 
 .browser-layout {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
   gap: 16px;
   align-items: start;
+}
+
+.browser-layout.upload-drag-active {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.upload-drop-indicator {
+  position: absolute;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  background: var(--pending-wash);
+  color: var(--accent);
+  pointer-events: none;
 }
 
 .table-surface,
@@ -2574,6 +2608,43 @@ mark.search-hit.current {
 }
 
 @media (max-width: 1280px) {
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbar > div:first-child {
+    flex: 0 1 auto;
+  }
+
+  .toolbar-actions {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    min-height: 40px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .pasteboard-panel,
+  .transfer-jobs {
+    position: fixed;
+    z-index: 120;
+    top: 72px;
+    right: 16px;
+    width: min(520px, calc(100vw - 32px));
+    max-height: calc(100dvh - 88px);
+  }
+
+  .pasteboard-panel {
+    width: min(420px, calc(100vw - 32px));
+  }
+
+  .pasteboard-items,
+  .transfer-job-list {
+    max-height: calc(100dvh - 214px);
+  }
+
   .browser-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2702,24 +2773,6 @@ mark.search-hit.current {
     justify-content: space-between;
   }
 
-  .toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .toolbar > div:first-child {
-    flex: 0 1 auto;
-  }
-
-  .toolbar-actions {
-    flex: 0 0 auto;
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    min-height: 40px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-  }
-
   .details-panel {
     inset: 12px;
     width: auto;
@@ -2754,6 +2807,20 @@ mark.search-hit.current {
 }
 
 @media (max-width: 600px) {
+  .pasteboard-panel,
+  .transfer-jobs {
+    top: 12px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: calc(100dvh - 24px);
+  }
+
+  .pasteboard-items,
+  .transfer-job-list {
+    max-height: calc(100dvh - 150px);
+  }
+
   .structured-toolbar {
     overflow: visible;
   }

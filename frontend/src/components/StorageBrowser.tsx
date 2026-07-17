@@ -54,10 +54,11 @@ import YAML from "yaml";
 hljs.registerLanguage("scala", scala);
 hljs.registerLanguage("properties", properties);
 
-import type { CagnardDataState, EntrySelectionMode, OpenedFileState, OpenedFileViewMode } from "../api/useCagnardData";
+import type { BrowserUploadItem, CagnardDataState, EntrySelectionMode, OpenedFileState, OpenedFileViewMode } from "../api/useCagnardData";
 import type { EntrySortField } from "../api/useCagnardData";
+import { taskOperationLabel } from "../api/useCagnardData";
 import { useFileWatch } from "../api/useFileWatch";
-import type { ArchiveEntry, EntryMetadata, StorageEntry, TransferJobResponse, TransferJobTask } from "../api/types";
+import type { ArchiveEntry, EntryMetadata, StorageEntry, TaskResponse, TaskItem } from "../api/types";
 import { cagnardApi } from "../api/client";
 import { classifyEntry, highlightLanguageOf } from "../openers/fileTypeCatalog";
 import { loadFirstPartyOpenerRuntime, openerSupportsRaw, resolveFileOpener } from "../openers/fileOpeners";
@@ -81,11 +82,14 @@ interface ToastMessage {
 }
 
 export function StorageBrowser({ state }: StorageBrowserProps) {
-  const uploadInput = useRef<HTMLInputElement>(null);
+  const uploadFilesInput = useRef<HTMLInputElement>(null);
+  const uploadDirectoryInput = useRef<HTMLInputElement>(null);
+  const uploadDragDepth = useRef(0);
   const toastSequence = useRef(0);
   const toastTimers = useRef<number[]>([]);
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [uploadDragActive, setUploadDragActive] = useState(false);
   const selectedEntry = state.selectedEntry;
   const pageOpenedFile = state.openedFile?.placement === "page" ? state.openedFile : undefined;
   const inlineOpenedFile = state.openedFile?.placement === "inline" ? state.openedFile : undefined;
@@ -93,7 +97,6 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
   const selectedIdSet = new Set(state.selectedEntryIds);
   const hasSelection = state.selectionCount > 0;
   const singleSelection = state.selectionCount === 1;
-  const fileSelectionCount = state.selectedEntries.filter((entry) => entry.kind === "file").length;
   const visibleSelectedCount = state.entries.filter((entry) => selectedIdSet.has(entry.id)).length;
   const allVisibleSelected = state.entries.length > 0 && visibleSelectedCount === state.entries.length;
   const partiallyVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
@@ -168,9 +171,10 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
             ]}
           />
           <ActionMenuGroup
-            primary={{ icon: <Download size={17} />, label: "Download", onClick: state.downloadSelected, disabled: fileSelectionCount === 0 }}
+            primary={{ icon: <Download size={17} />, label: "Download", onClick: state.downloadSelected, disabled: !hasSelection }}
             items={[
-              { icon: <Upload size={16} />, label: "Upload", onClick: () => uploadInput.current?.click(), disabled: !canMutate }
+              { icon: <Upload size={16} />, label: "Upload files", onClick: () => uploadFilesInput.current?.click(), disabled: !canMutate },
+              { icon: <FolderPlus size={16} />, label: "Upload folder", onClick: () => uploadDirectoryInput.current?.click(), disabled: !canMutate }
             ]}
           />
           <ActionMenuGroup
@@ -178,16 +182,31 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
             items={[{ icon: <Trash2 size={16} />, label: "Delete", onClick: state.deleteSelected, disabled: !hasSelection || !canMutate, danger: true }]}
           />
           <PasteboardControl state={state} />
-          <TransferQueueControl state={state} />
+          <TaskQueueControl state={state} />
           <input
-            ref={uploadInput}
-            aria-label="Upload file"
+            ref={uploadFilesInput}
+            aria-label="Upload files"
             className="visually-hidden"
+            multiple
             tabIndex={-1}
             type="file"
             onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void state.uploadFile(file);
+              const files = Array.from(event.target.files ?? []);
+              if (files.length > 0) void state.uploadItems(files.map((file) => ({ relativePath: file.name, kind: "file", file })));
+              event.target.value = "";
+            }}
+          />
+          <input
+            ref={uploadDirectoryInput}
+            aria-label="Upload folder"
+            className="visually-hidden"
+            multiple
+            tabIndex={-1}
+            type="file"
+            {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              if (files.length > 0) void state.uploadItems(files.map((file) => ({ relativePath: file.webkitRelativePath || file.name, kind: "file", file })));
               event.target.value = "";
             }}
           />
@@ -234,7 +253,32 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
       ) : (
       <>
       {metadataOpen ? <button className="metadata-backdrop" type="button" aria-label="Close metadata" onClick={() => setMetadataOpen(false)} /> : null}
-      <section className="browser-layout">
+      <section
+        className={`browser-layout${uploadDragActive ? " upload-drag-active" : ""}`}
+        onDragEnter={(event) => {
+          if (!canMutate || !hasUploadPayload(event.dataTransfer)) return;
+          event.preventDefault();
+          uploadDragDepth.current += 1;
+          setUploadDragActive(true);
+        }}
+        onDragOver={(event) => {
+          if (!canMutate || !hasUploadPayload(event.dataTransfer)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }}
+        onDragLeave={() => {
+          uploadDragDepth.current = Math.max(0, uploadDragDepth.current - 1);
+          if (uploadDragDepth.current === 0) setUploadDragActive(false);
+        }}
+        onDrop={(event) => {
+          if (!canMutate) return;
+          event.preventDefault();
+          uploadDragDepth.current = 0;
+          setUploadDragActive(false);
+          void collectDroppedUploadItems(event.dataTransfer).then((items) => state.uploadItems(items));
+        }}
+      >
+        {uploadDragActive ? <div className="upload-drop-indicator" aria-hidden="true"><Upload size={22} /></div> : null}
         <div className={state.loading ? "table-surface pending" : "table-surface"} aria-busy={state.loading}>
           <div className="table-header">
             <label className="selection-cell" title="Select visible entries">
@@ -372,6 +416,43 @@ function readableStoragePath(rootLabel: string, path: string): string {
   return [rootLabel, ...parts].join("/");
 }
 
+function hasUploadPayload(dataTransfer: DataTransfer): boolean {
+  return Array.from(dataTransfer.types).includes("Files");
+}
+
+async function collectDroppedUploadItems(dataTransfer: DataTransfer): Promise<BrowserUploadItem[]> {
+  const entries = Array.from(dataTransfer.items)
+    .filter((item) => item.kind === "file")
+    .map((item) => item.webkitGetAsEntry?.())
+    .filter((entry): entry is FileSystemEntry => Boolean(entry));
+  if (entries.length === 0) {
+    return Array.from(dataTransfer.files).map((file) => ({ relativePath: file.webkitRelativePath || file.name, kind: "file", file }));
+  }
+
+  const out: BrowserUploadItem[] = [];
+  for (const entry of entries) await collectDroppedEntry(entry, "", out);
+  const unique = new Map<string, BrowserUploadItem>();
+  for (const item of out) unique.set(`${item.kind}:${item.relativePath}`, item);
+  return [...unique.values()];
+}
+
+async function collectDroppedEntry(entry: FileSystemEntry, parent: string, out: BrowserUploadItem[]): Promise<void> {
+  const relativePath = parent ? `${parent}/${entry.name}` : entry.name;
+  if (entry.isFile) {
+    const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject));
+    out.push({ relativePath, kind: "file", file });
+    return;
+  }
+  if (!entry.isDirectory) return;
+  out.push({ relativePath, kind: "directory" });
+  const reader = (entry as FileSystemDirectoryEntry).createReader();
+  for (;;) {
+    const children = await new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject));
+    if (children.length === 0) break;
+    for (const child of children) await collectDroppedEntry(child, relativePath, out);
+  }
+}
+
 async function copyTextToClipboard(value: string) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
@@ -393,139 +474,100 @@ async function copyTextToClipboard(value: string) {
   }
 }
 
-function TransferQueueControl({ state }: { state: CagnardDataState }) {
+function TaskQueueControl({ state }: { state: CagnardDataState }) {
   const menu = useHoverDropdown<HTMLDivElement>();
-  if (state.transferJobs.length === 0) return null;
+  if (state.tasks.length === 0) return null;
 
-  const summary = transferQueueSummary(state.transferJobs);
+  const summary = taskQueueSummary(state.tasks);
 
   return (
     <div className={`action-menu-group transfer-queue-menu-group ${summary.kind}`} ref={menu.ref} onMouseEnter={menu.openOnHover} onMouseLeave={menu.closeOnLeave}>
       <button
         aria-expanded={menu.open}
         aria-haspopup="menu"
-        aria-label="Transfer queue"
+        aria-label="Task queue"
         className="transfer-queue-trigger"
         onClick={menu.togglePinned}
-        title="Transfer queue"
+        title="Task queue"
         type="button"
       >
         {summary.icon}
         <span>{summary.label}</span>
-        <strong>{state.transferJobs.length}</strong>
+        <strong>{state.tasks.length}</strong>
       </button>
       {menu.open ? (
-        <TransferJobsPanel state={state} />
+        <TasksPanel state={state} />
       ) : null}
     </div>
   );
 }
 
-function TransferJobsPanel({
+function TasksPanel({
   state
 }: {
   state: CagnardDataState;
 }) {
-  const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(() => new Set());
-  const [detailPages, setDetailPages] = useState<Record<string, number>>({});
-  const jobs = state.transferJobs;
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(() => new Set());
+  const jobs = state.tasks;
   const visibleJobs = jobs;
-  const activeCount = jobs.filter(isActiveTransferJob).length;
-  const clearableCount = jobs.filter(isTerminalTransferJob).length;
+  const activeCount = jobs.filter(isActiveTask).length;
+  const clearableCount = jobs.filter(isTerminalTask).length;
   const toggleExpanded = (jobId: string) => {
-    setExpandedJobIds((current) => {
+    setExpandedTaskIds((current) => {
       const next = new Set(current);
       if (next.has(jobId)) next.delete(jobId);
       else next.add(jobId);
       return next;
     });
   };
-  const setDetailPage = (jobId: string, page: number) => {
-    setDetailPages((current) => ({ ...current, [jobId]: page }));
-  };
-
   return (
-    <section className="transfer-jobs" aria-label="Transfer jobs">
+    <section className="transfer-jobs" aria-label="Background tasks">
       <div className="transfer-jobs-heading">
-        <strong>Transfers</strong>
+        <strong>Tasks</strong>
         <span>{activeCount > 0 ? `${activeCount} active` : `${jobs.length} recent`}</span>
-        <button className="primary-button subtle transfer-clear-button" type="button" onClick={() => void state.clearTransferJobs()} disabled={clearableCount === 0}>
+        <button className="primary-button subtle transfer-clear-button" type="button" onClick={() => void state.clearTasks()} disabled={clearableCount === 0}>
           Clear
         </button>
       </div>
       <div className="transfer-job-list">
         {visibleJobs.map((job) => {
-          const progress = aggregateJobProgress(job);
-          const canCancel = isActiveTransferJob(job) || job.status === "blocked";
+          const progress = aggregateTaskProgress(job);
+          const canCancel = isActiveTask(job) || job.status === "blocked";
           const canResolve = job.status === "blocked";
-          const expanded = expandedJobIds.has(job.id);
-          const details = orderedTransferTaskDetails(job);
-          const page = detailPages[job.id] ?? 0;
-          const pageSize = 8;
-          const pageCount = Math.max(1, Math.ceil(details.length / pageSize));
-          const safePage = Math.min(page, pageCount - 1);
-          const pageDetails = details.slice(safePage * pageSize, safePage * pageSize + pageSize);
+          const expanded = expandedTaskIds.has(job.id);
+          const presentation = taskPresentation(job.operation);
           return (
             <article className={`transfer-job ${job.status}`} key={job.id}>
               <div className="transfer-job-main">
                 <div>
-                  <strong>{job.operation === "move" ? "Move" : job.operation === "copy" ? "Copy" : "Transfer"}</strong>
+                  <strong className="task-operation-label">{presentation.icon}{presentation.label}</strong>
                   <span>{job.message}</span>
                 </div>
-                <span className="transfer-job-status">{job.status}</span>
+                <span className="transfer-job-status">{formatTaskStatus(job.status)}</span>
               </div>
               <div className="transfer-job-progress" aria-label={progress.label}>
                 <span style={{ width: `${progress.percent}%` }} />
               </div>
               <div className="transfer-job-meta">
                 <span>{progress.label}</span>
-                <span>{formatTransferJobTime(job)}</span>
-                <span>{transferDestinationLabel(job, state)}</span>
+                <span>{formatTaskTime(job)}</span>
+                <span>{taskLocationLabel(job, state)}</span>
                 <button className="icon-button compact" type="button" onClick={() => toggleExpanded(job.id)} title={expanded ? "Hide affected files" : "Show affected files"}>
                   <ListTree size={14} />
                 </button>
                 {canResolve ? (
-                  <button className="primary-button subtle transfer-resolve-button" type="button" onClick={() => void state.resolveTransferJob(job.id)}>
+                  <button className="primary-button subtle transfer-resolve-button" type="button" onClick={() => void state.resolveTask(job.id)}>
                     Resolve
                   </button>
                 ) : null}
                 {canCancel ? (
-                  <button className="icon-button compact" type="button" onClick={() => void state.cancelTransferJob(job.id)} title="Cancel transfer">
+                  <button className="icon-button compact" type="button" onClick={() => void state.cancelTask(job.id)} title={`Cancel ${presentation.label.toLowerCase()} task`}>
                     <X size={14} />
                   </button>
                 ) : null}
               </div>
               {expanded ? (
-                <div className="transfer-task-details">
-                  {pageDetails.length === 0 ? (
-                    <p className="transfer-task-empty">No affected files reported yet.</p>
-                  ) : (
-                    pageDetails.map((task) => (
-                      <div className={`transfer-task-row ${task.status}`} key={task.id}>
-                        <div className="transfer-task-main">
-                          <strong>{transferTaskName(task)}</strong>
-                          <span>{transferTaskPath(task)}</span>
-                        </div>
-                        <span className="transfer-task-state">{task.status}</span>
-                        <div className="transfer-task-progress" aria-label={taskProgressLabel(task)}>
-                          <span style={{ width: `${taskProgressPercent(task)}%` }} />
-                        </div>
-                        <span className="transfer-task-progress-label">{taskProgressLabel(task)}</span>
-                      </div>
-                    ))
-                  )}
-                  {pageCount > 1 ? (
-                    <div className="transfer-task-pagination">
-                      <button className="primary-button subtle" type="button" onClick={() => setDetailPage(job.id, Math.max(0, safePage - 1))} disabled={safePage === 0}>
-                        Previous
-                      </button>
-                      <span>{safePage + 1} / {pageCount}</span>
-                      <button className="primary-button subtle" type="button" onClick={() => setDetailPage(job.id, Math.min(pageCount - 1, safePage + 1))} disabled={safePage >= pageCount - 1}>
-                        Next
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
+                <TaskDetailList task={job} state={state} />
               ) : null}
             </article>
           );
@@ -535,8 +577,74 @@ function TransferJobsPanel({
   );
 }
 
-function transferQueueSummary(jobs: TransferJobResponse[]): { icon: ReactNode; kind: string; label: string } {
-  const activeCount = jobs.filter(isActiveTransferJob).length;
+function TaskDetailList({ task, state }: { task: TaskResponse; state: CagnardDataState }) {
+  const [pageRefs, setPageRefs] = useState<Array<string | undefined>>([undefined]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [page, setPage] = useState<Awaited<ReturnType<CagnardDataState["loadTaskItems"]>>>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+  const pageRef = pageRefs[pageIndex];
+
+  useEffect(() => {
+    let active = true;
+    if (!page) setLoading(true);
+    state.loadTaskItems(task.id, pageRef, 50)
+      .then((nextPage) => {
+        if (!active) return;
+        setPage(nextPage);
+        setError(undefined);
+      })
+      .catch((caught) => {
+        if (active) setError(caught instanceof Error ? caught.message : String(caught));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [pageIndex, pageRef, state.loadTaskItems, task.id, task.revision]);
+
+  const nextPage = () => {
+    if (!page?.nextPageRef) return;
+    setPageRefs((current) => [...current.slice(0, pageIndex + 1), page.nextPageRef ?? undefined]);
+    setPageIndex((current) => current + 1);
+  };
+
+  return (
+    <div className="transfer-task-details" aria-busy={loading}>
+      {loading && !page ? <p className="transfer-task-empty">Loading affected items...</p> : null}
+      {error ? <p className="transfer-task-empty task-detail-error">{error}</p> : null}
+      {!loading && !error && (page?.items.length ?? 0) === 0 ? <p className="transfer-task-empty">No affected items reported yet.</p> : null}
+      {page?.items.map((item) => (
+        <div className={`transfer-task-row ${item.status}`} key={item.id} style={{ paddingLeft: `${Math.min(item.depth ?? 0, 8) * 12}px` }}>
+          <div className="transfer-task-main">
+            <strong>{item.kind === "directory" ? <Folder size={14} /> : <File size={14} />}{taskItemName(item)}</strong>
+            <span>{taskItemPath(item)}</span>
+          </div>
+          <span className="transfer-task-state">{formatTaskStatus(item.status)}</span>
+          <div className="transfer-task-progress" aria-label={taskProgressLabel(item)}>
+            <span style={{ width: `${taskProgressPercent(item)}%` }} />
+          </div>
+          <span className="transfer-task-progress-label">{taskProgressLabel(item)}</span>
+        </div>
+      ))}
+      {page && (pageIndex > 0 || page.nextPageRef) ? (
+        <div className="transfer-task-pagination">
+          <span>{page.totalCount} items</span>
+          <button className="primary-button subtle" type="button" onClick={() => setPageIndex((current) => Math.max(0, current - 1))} disabled={pageIndex === 0 || loading}>
+            Previous
+          </button>
+          <span>Page {pageIndex + 1}</span>
+          <button className="primary-button subtle" type="button" onClick={nextPage} disabled={!page.nextPageRef || loading}>
+            Next
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function taskQueueSummary(jobs: TaskResponse[]): { icon: ReactNode; kind: string; label: string } {
+  const activeCount = jobs.filter(isActiveTask).length;
   if (activeCount > 0) {
     return {
       icon: <LoaderCircle className="transfer-queue-spinner" size={16} />,
@@ -561,96 +669,64 @@ function transferQueueSummary(jobs: TransferJobResponse[]): { icon: ReactNode; k
   };
 }
 
-function aggregateJobProgress(job: TransferJobResponse): { percent: number; label: string } {
-  const totals = job.tasks.reduce(
-    (acc, task) => {
-      const progress = normalizedTaskProgress(task);
-      acc.bytes += progress.bytesTransferred;
-      acc.totalBytes += progress.totalBytes ?? 0;
-      acc.items += progress.itemsCompleted;
-      acc.totalItems += progress.totalItems ?? 0;
-      return acc;
-    },
-    { bytes: 0, totalBytes: 0, items: 0, totalItems: 0 }
-  );
+function aggregateTaskProgress(job: TaskResponse): { percent: number; label: string } {
+  const totals = job.progress ?? { bytesTransferred: 0, itemsCompleted: 0 };
 
-  if (totals.totalBytes > 0) {
+  if (job.operation === "download" && (totals.bytesDelivered ?? 0) > 0) {
+    const delivered = totals.bytesDelivered ?? 0;
+    if (totals.totalDeliveredBytes && totals.totalDeliveredBytes > 0) {
+      return {
+        percent: Math.min(100, Math.round((delivered / totals.totalDeliveredBytes) * 100)),
+        label: `${formatSize(delivered)} of ${formatSize(totals.totalDeliveredBytes)} delivered`
+      };
+    }
     return {
-      percent: Math.min(100, Math.round((totals.bytes / totals.totalBytes) * 100)),
-      label: `${formatSize(totals.bytes)} of ${formatSize(totals.totalBytes)}`
+      percent: isTerminalTask(job) ? 100 : 16,
+      label: `${formatSize(delivered)} delivered`
     };
   }
 
-  if (totals.totalItems > 0) {
+  if (totals.totalBytes && totals.totalBytes > 0) {
     return {
-      percent: Math.min(100, Math.round((totals.items / totals.totalItems) * 100)),
-      label: `${totals.items} of ${totals.totalItems} items`
+      percent: Math.min(100, Math.round((totals.bytesTransferred / totals.totalBytes) * 100)),
+      label: `${formatSize(totals.bytesTransferred)} of ${formatSize(totals.totalBytes)}`
+    };
+  }
+
+  if (totals.totalItems && totals.totalItems > 0) {
+    return {
+      percent: Math.min(100, Math.round((totals.itemsCompleted / totals.totalItems) * 100)),
+      label: `${totals.itemsCompleted} of ${totals.totalItems} items`
     };
   }
 
   return {
-    percent: isTerminalTransferJob(job) ? 100 : 8,
+    percent: isTerminalTask(job) ? 100 : 8,
     label: job.status
   };
 }
 
-function isActiveTransferJob(job: TransferJobResponse): boolean {
+function isActiveTask(job: TaskResponse): boolean {
   return ["pending", "running", "queued", "canceling"].includes(job.status);
 }
 
-function isTerminalTransferJob(job: TransferJobResponse): boolean {
+function isTerminalTask(job: TaskResponse): boolean {
   return ["completed", "canceled", "error", "failed", "partial"].includes(job.status);
 }
 
-function orderedTransferTaskDetails(job: TransferJobResponse): TransferJobTask[] {
-  return flattenTransferTasks(job.tasks).filter((task) => (task.children?.length ?? 0) === 0).sort((left, right) => {
-    const stateDelta = transferTaskStateRank(left.status) - transferTaskStateRank(right.status);
-    if (stateDelta !== 0) return stateDelta;
-    return transferTaskName(left).localeCompare(transferTaskName(right));
-  });
+function taskItemName(task: TaskItem): string {
+  if (task.name) return task.name;
+  const itemPath = task.targetPath ?? task.sourcePath;
+  const parts = itemPath.split("/").filter(Boolean);
+  return parts[parts.length - 1] || itemPath || "Root";
 }
 
-function flattenTransferTasks(tasks: TransferJobTask[]): TransferJobTask[] {
-  return tasks.flatMap((task) => [task, ...flattenTransferTasks(task.children ?? [])]);
-}
-
-function transferTaskStateRank(status: string): number {
-  switch (status) {
-    case "running":
-      return 0;
-    case "blocked":
-      return 1;
-    case "pending":
-    case "queued":
-      return 2;
-    case "error":
-    case "failed":
-    case "partial":
-      return 3;
-    case "canceled":
-      return 4;
-    case "completed":
-    case "copied":
-    case "moved":
-    case "skipped":
-      return 5;
-    default:
-      return 6;
-  }
-}
-
-function transferTaskName(task: TransferJobTask): string {
-  const path = task.targetPath ?? task.sourcePath;
-  const parts = path.split("/").filter(Boolean);
-  return parts[parts.length - 1] || path || "Root";
-}
-
-function transferTaskPath(task: TransferJobTask): string {
+function taskItemPath(task: TaskItem): string {
   const target = task.targetPath ? ` -> ${task.targetPath}` : "";
   return `${task.sourceTunnel}/${task.sourceRootId}/${task.sourcePath || "/"}${target}`;
 }
 
-function taskProgressPercent(task: TransferJobTask): number {
+function taskProgressPercent(task: TaskItem): number {
   const progress = normalizedTaskProgress(task);
   if (progress.totalBytes && progress.totalBytes > 0) {
     return Math.min(100, Math.round((progress.bytesTransferred / progress.totalBytes) * 100));
@@ -661,7 +737,7 @@ function taskProgressPercent(task: TransferJobTask): number {
   return ["completed", "copied", "moved", "skipped"].includes(task.status) ? 100 : 8;
 }
 
-function taskProgressLabel(task: TransferJobTask): string {
+function taskProgressLabel(task: TaskItem): string {
   const progress = normalizedTaskProgress(task);
   if (progress.totalBytes && progress.totalBytes > 0) {
     return `${formatSize(progress.bytesTransferred)} of ${formatSize(progress.totalBytes)}`;
@@ -672,7 +748,7 @@ function taskProgressLabel(task: TransferJobTask): string {
   return task.status;
 }
 
-function normalizedTaskProgress(task: TransferJobTask): TransferJobTask["progress"] {
+function normalizedTaskProgress(task: TaskItem): TaskItem["progress"] {
   const progress = { ...task.progress };
   const completed = ["completed", "copied", "moved", "skipped"].includes(task.status) || ["copied", "moved", "skipped"].includes(task.result?.status ?? "");
   const resultSize = task.result?.entry?.metadata.size;
@@ -692,17 +768,36 @@ function normalizedTaskProgress(task: TransferJobTask): TransferJobTask["progres
   return progress;
 }
 
-function transferDestinationLabel(job: TransferJobResponse, state: CagnardDataState): string {
+function taskLocationLabel(job: TaskResponse, state: CagnardDataState): string {
   const roots = [
     ...(state.navigation?.personal?.roots ?? []),
     ...(state.navigation?.global?.roots ?? [])
   ];
-  const root = roots.find(candidate => candidate.tunnel === job.destination.tunnel && candidate.id === job.destination.rootId);
-  const rootLabel = root?.label ?? job.destination.rootId;
-  return job.destination.path ? `to ${rootLabel} / ${job.destination.path}` : `to ${rootLabel}`;
+  if (job.operation === "download") return "to this browser";
+  const location = job.operation === "delete" ? job.initiatedFrom : job.destination;
+  const root = roots.find(candidate => candidate.tunnel === location?.tunnel && candidate.id === location?.rootId);
+  const rootLabel = root?.label ?? location?.rootId ?? "storage";
+  const prefix = job.operation === "delete" ? "from" : "to";
+  return location?.path ? `${prefix} ${rootLabel} / ${location.path}` : `${prefix} ${rootLabel}`;
 }
 
-function formatTransferJobTime(job: TransferJobResponse): string {
+function taskPresentation(operation: string): { label: string; icon: ReactNode } {
+  const label = taskOperationLabel(operation);
+  switch (operation) {
+    case "copy": return { label, icon: <CopyPlus size={15} /> };
+    case "move": return { label, icon: <MoveRight size={15} /> };
+    case "delete": return { label, icon: <Trash2 size={15} /> };
+    case "download": return { label, icon: <Download size={15} /> };
+    case "upload": return { label, icon: <Upload size={15} /> };
+    default: return { label, icon: <ListTree size={15} /> };
+  }
+}
+
+function formatTaskStatus(status: string): string {
+  return status ? status.charAt(0).toUpperCase() + status.slice(1) : "Unknown";
+}
+
+function formatTaskTime(job: TaskResponse): string {
   const timestamp = job.updatedAt || job.createdAt;
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return "time unavailable";

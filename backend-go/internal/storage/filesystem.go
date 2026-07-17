@@ -1,9 +1,11 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"os"
 	"path/filepath"
@@ -333,6 +335,13 @@ func (p *FilesystemProvider) Move(root ResolvedStorageRoot, sourcePath string, t
 }
 
 func (p *FilesystemProvider) StreamRead(root ResolvedStorageRoot, path string, output io.Writer, onBytes func(int64)) (FileContentInfo, error) {
+	return p.StreamReadContext(context.Background(), root, path, output, onBytes)
+}
+
+func (p *FilesystemProvider) StreamReadContext(ctx context.Context, root ResolvedStorageRoot, path string, output io.Writer, onBytes func(int64)) (FileContentInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return FileContentInfo{}, err
+	}
 	info, err := p.ContentInfo(root, path)
 	if err != nil {
 		return FileContentInfo{}, err
@@ -346,7 +355,7 @@ func (p *FilesystemProvider) StreamRead(root ResolvedStorageRoot, path string, o
 		return FileContentInfo{}, err
 	}
 	defer input.Close()
-	if _, err := copyWithProgress(output, input, onBytes); err != nil {
+	if _, err := copyWithProgress(contextWriter{ctx: ctx, writer: output}, contextReader{ctx: ctx, reader: input}, onBytes); err != nil {
 		return FileContentInfo{}, err
 	}
 	return info, nil
@@ -389,6 +398,13 @@ func (l *limitedReadCloser) Read(p []byte) (int, error) { return l.reader.Read(p
 func (l *limitedReadCloser) Close() error { return l.closer.Close() }
 
 func (p *FilesystemProvider) StreamWrite(root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error) {
+	return p.StreamWriteContext(context.Background(), root, path, input, info, overwrite, onBytes)
+}
+
+func (p *FilesystemProvider) StreamWriteContext(ctx context.Context, root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return StorageEntry{}, err
+	}
 	if err := ensureWritable(root); err != nil {
 		return StorageEntry{}, err
 	}
@@ -412,14 +428,95 @@ func (p *FilesystemProvider) StreamWrite(root ResolvedStorageRoot, path string, 
 	if err != nil {
 		return StorageEntry{}, err
 	}
-	if _, err := copyWithProgress(output, input, onBytes); err != nil {
+	if _, err := copyWithProgress(contextWriter{ctx: ctx, writer: output}, contextReader{ctx: ctx, reader: input}, onBytes); err != nil {
 		_ = output.Close()
+		if !overwrite {
+			_ = os.Remove(target)
+		}
 		return StorageEntry{}, err
 	}
 	if err := output.Close(); err != nil {
 		return StorageEntry{}, err
 	}
 	return p.Stat(root, path)
+}
+
+func (p *FilesystemProvider) DeleteRecursive(ctx context.Context, root ResolvedStorageRoot, relativePath string, onItem func(DeleteItemEvent)) (DeleteSummary, error) {
+	if err := ensureWritable(root); err != nil {
+		return DeleteSummary{}, err
+	}
+	target, err := p.resolve(root, relativePath)
+	if err != nil {
+		return DeleteSummary{}, err
+	}
+	base, err := p.base(root)
+	if err != nil {
+		return DeleteSummary{}, err
+	}
+	if filepath.Clean(target) == filepath.Clean(base) {
+		return DeleteSummary{}, errors.New("Cannot delete storage root")
+	}
+	if err := ctx.Err(); err != nil {
+		return DeleteSummary{}, err
+	}
+	if _, err := os.Lstat(target); err != nil {
+		return DeleteSummary{}, err
+	}
+	paths := make([]string, 0)
+	err = filepath.WalkDir(target, func(current string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		paths = append(paths, current)
+		return nil
+	})
+	if err != nil {
+		return DeleteSummary{}, err
+	}
+	summary := DeleteSummary{Discovered: len(paths)}
+	var failures []error
+	for idx := len(paths) - 1; idx >= 0; idx-- {
+		if err := ctx.Err(); err != nil {
+			return summary, errors.Join(append(failures, err)...)
+		}
+		current := paths[idx]
+		info, statErr := os.Lstat(current)
+		rel, relErr := filepath.Rel(base, current)
+		if relErr != nil {
+			rel = relativePath
+		}
+		normalized := filepath.ToSlash(rel)
+		kind := "file"
+		var size *int64
+		if statErr == nil && info.IsDir() {
+			kind = "directory"
+		} else if statErr == nil && info.Mode().IsRegular() {
+			value := info.Size()
+			size = &value
+		}
+		if onItem != nil {
+			onItem(DeleteItemEvent{Path: normalized, Name: filepath.Base(current), Kind: kind, Status: "running", Size: size})
+		}
+		if statErr == nil {
+			statErr = os.Remove(current)
+		}
+		if statErr != nil {
+			summary.Failed++
+			failures = append(failures, statErr)
+			if onItem != nil {
+				onItem(DeleteItemEvent{Path: normalized, Name: filepath.Base(current), Kind: kind, Status: "error", Message: statErr.Error(), Size: size})
+			}
+			continue
+		}
+		summary.Deleted++
+		if onItem != nil {
+			onItem(DeleteItemEvent{Path: normalized, Name: filepath.Base(current), Kind: kind, Status: "completed", Message: "Deleted", Size: size})
+		}
+	}
+	return summary, errors.Join(failures...)
 }
 
 var filesystemWatchFallbackInterval = 5 * time.Second
@@ -739,4 +836,36 @@ func copyWithProgress(dst io.Writer, src io.Reader, onBytes func(int64)) (int64,
 			return written, readErr
 		}
 	}
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r contextReader) Read(buffer []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	count, err := r.reader.Read(buffer)
+	if err == nil {
+		err = r.ctx.Err()
+	}
+	return count, err
+}
+
+type contextWriter struct {
+	ctx    context.Context
+	writer io.Writer
+}
+
+func (w contextWriter) Write(buffer []byte) (int, error) {
+	if err := w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	count, err := w.writer.Write(buffer)
+	if err == nil {
+		err = w.ctx.Err()
+	}
+	return count, err
 }

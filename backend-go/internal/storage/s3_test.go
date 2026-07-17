@@ -2,6 +2,8 @@ package storage
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -352,7 +354,7 @@ func TestAwsS3ObjectClientUsesProviderChecksumCalculation(t *testing.T) {
 	}
 }
 
-func TestAwsS3StreamPutSupportsUnseekableHTTPBody(t *testing.T) {
+func TestAwsS3StreamPutSupportsSeekableKnownSizeBody(t *testing.T) {
 	var putReceived atomic.Bool
 	endpoint := ""
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -392,14 +394,8 @@ func TestAwsS3StreamPutSupportsUnseekableHTTPBody(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reader, writer := io.Pipe()
-	go func() {
-		_, _ = writer.Write([]byte("hello"))
-		_ = writer.Close()
-	}()
-
 	size := int64(5)
-	metadata, err := client.StreamPut("cagnard-test", "streamed.txt", reader, FileContentInfo{FileName: "streamed.txt", MIMEType: ptr("text/plain"), Size: &size}, ptr("text/plain"), nil)
+	metadata, err := client.StreamPut("cagnard-test", "streamed.txt", bytes.NewReader([]byte("hello")), FileContentInfo{FileName: "streamed.txt", MIMEType: ptr("text/plain"), Size: &size}, ptr("text/plain"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,6 +404,101 @@ func TestAwsS3StreamPutSupportsUnseekableHTTPBody(t *testing.T) {
 	}
 	if metadata.Size == nil || *metadata.Size != size {
 		t.Fatalf("metadata size = %#v", metadata.Size)
+	}
+}
+
+func TestAwsS3StreamPutUsesMultipartForUnknownSize(t *testing.T) {
+	var uploaded bytes.Buffer
+	var completed atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Query().Has("uploads"):
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><InitiateMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Bucket>cagnard-test</Bucket><Key>multipart.bin</Key><UploadId>upload-1</UploadId></InitiateMultipartUploadResult>`)
+		case r.Method == http.MethodPut && r.URL.Query().Get("uploadId") == "upload-1":
+			if _, err := io.Copy(&uploaded, r.Body); err != nil {
+				t.Errorf("read multipart body: %v", err)
+			}
+			w.Header().Set("ETag", `"part-1"`)
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodPost && r.URL.Query().Get("uploadId") == "upload-1":
+			completed.Store(true)
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Location>http://example.test/cagnard-test/multipart.bin</Location><Bucket>cagnard-test</Bucket><Key>multipart.bin</Key><ETag>"complete"</ETag></CompleteMultipartUploadResult>`)
+		case r.Method == http.MethodHead:
+			w.Header().Set("Content-Length", "17")
+			w.Header().Set("ETag", `"complete"`)
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected multipart request %s %s", r.Method, r.URL.String())
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewAwsS3ObjectClient(
+		S3ProviderSettings{Region: "us-east-1", Endpoint: &server.URL, PathStyleAccess: true},
+		S3AccountSettings{CredentialMode: "static", AccessKeyID: ptr("test-access"), SecretAccessKey: ptr("test-secret")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte("unknown-size-body")
+	var progress atomic.Int64
+	metadata, err := client.StreamPutContext(context.Background(), "cagnard-test", "multipart.bin", bytes.NewReader(payload), FileContentInfo{}, ptr("application/octet-stream"), func(delta int64) {
+		progress.Add(delta)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !completed.Load() || !bytes.Equal(uploaded.Bytes(), payload) {
+		t.Fatalf("multipart upload did not complete: completed=%t body=%q", completed.Load(), uploaded.Bytes())
+	}
+	if progress.Load() != int64(len(payload)) || metadata.Size == nil || *metadata.Size != int64(len(payload)) {
+		t.Fatalf("multipart progress=%d metadata=%#v", progress.Load(), metadata)
+	}
+}
+
+func TestAwsS3StreamPutAbortsMultipartAfterCancellation(t *testing.T) {
+	var aborted atomic.Bool
+	var completed atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Query().Has("uploads"):
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><InitiateMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Bucket>cagnard-test</Bucket><Key>cancel.bin</Key><UploadId>upload-cancel</UploadId></InitiateMultipartUploadResult>`)
+		case r.Method == http.MethodPut && r.URL.Query().Get("uploadId") == "upload-cancel":
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.Header().Set("ETag", `"part-1"`)
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodDelete && r.URL.Query().Get("uploadId") == "upload-cancel":
+			aborted.Store(true)
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPost && r.URL.Query().Get("uploadId") == "upload-cancel":
+			completed.Store(true)
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			t.Errorf("unexpected canceled multipart request %s %s", r.Method, r.URL.String())
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewAwsS3ObjectClient(
+		S3ProviderSettings{Region: "us-east-1", Endpoint: &server.URL, PathStyleAccess: true},
+		S3AccountSettings{CredentialMode: "static", AccessKeyID: ptr("test-access"), SecretAccessKey: ptr("test-secret")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	payload := bytes.Repeat([]byte("x"), int(s3MultipartDefaultPartSize)+1)
+	_, err = client.StreamPutContext(ctx, "cagnard-test", "cancel.bin", bytes.NewReader(payload), FileContentInfo{}, nil, func(int64) { cancel() })
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled multipart error = %v", err)
+	}
+	if !aborted.Load() || completed.Load() {
+		t.Fatalf("multipart cleanup: aborted=%t completed=%t", aborted.Load(), completed.Load())
 	}
 }
 
@@ -431,6 +522,60 @@ func TestS3DeletesPrefixesRecursively(t *testing.T) {
 	}
 	if !fake.has("team/docs/keep.txt") || !fake.has("team/docs/other/folder/readme.txt") {
 		t.Fatalf("unrelated keys removed: %#v", fake.keys())
+	}
+}
+
+func TestS3ContextStreamsAndRecursiveDeleteProgress(t *testing.T) {
+	fake := newFakeS3ObjectClient(map[string]fakeS3Object{
+		"team/docs/tree/one.bin":        fakeObject("team/docs/tree/one.bin", []byte("one"), ptr("application/octet-stream")),
+		"team/docs/tree/nested/two.bin": fakeObject("team/docs/tree/nested/two.bin", []byte("two"), ptr("application/octet-stream")),
+	})
+	provider := testS3Provider(fake, defaultMaxBufferedObjectBytes)
+	root := s3Root("team/docs")
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := provider.StreamReadContext(canceled, root, "tree/one.bin", &bytes.Buffer{}, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled S3 read error = %v", err)
+	}
+	if _, err := provider.StreamWriteContext(canceled, root, "new.bin", bytes.NewReader([]byte("new")), FileContentInfo{}, false, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled S3 write error = %v", err)
+	}
+	if fake.has("team/docs/new.bin") {
+		t.Fatal("canceled S3 write created an object")
+	}
+
+	states := map[string][]string{}
+	summary, err := provider.DeleteRecursive(context.Background(), root, "tree", func(event DeleteItemEvent) {
+		states[event.Path] = append(states[event.Path], event.Status)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Deleted != 2 || summary.Failed != 0 {
+		t.Fatalf("unexpected S3 delete summary: %#v", summary)
+	}
+	for item, itemStates := range states {
+		if len(itemStates) != 2 || itemStates[0] != "running" || itemStates[1] != "completed" {
+			t.Fatalf("unstable progress for %s: %#v", item, itemStates)
+		}
+	}
+}
+
+func TestS3MultipartPartSizingIsBoundedAndWithinPartLimit(t *testing.T) {
+	if got := s3MultipartPartSize(nil); got != s3MultipartDefaultPartSize {
+		t.Fatalf("unknown-size part = %d", got)
+	}
+	small := int64(128 * 1024 * 1024)
+	if got := s3MultipartPartSize(&small); got != s3MultipartDefaultPartSize {
+		t.Fatalf("ordinary large-object part = %d", got)
+	}
+	maximumS3Object := int64(5) * 1024 * 1024 * 1024 * 1024
+	partSize := s3MultipartPartSize(&maximumS3Object)
+	if parts := (maximumS3Object + partSize - 1) / partSize; parts > s3MultipartMaximumParts {
+		t.Fatalf("multipart upload needs %d parts of %d bytes", parts, partSize)
+	}
+	if partSize%(1024*1024) != 0 {
+		t.Fatalf("part size is not MiB-aligned: %d", partSize)
 	}
 }
 
@@ -508,7 +653,7 @@ func (f *fakeS3ObjectClient) List(bucket string, prefix string, delimiter string
 	objects := make([]S3ListedObject, 0)
 	for _, key := range matching {
 		rest := strings.TrimPrefix(key, prefix)
-		if idx := strings.Index(rest, delimiter); idx >= 0 {
+		if idx := strings.Index(rest, delimiter); delimiter != "" && idx >= 0 {
 			prefixSet[prefix+rest[:idx+1]] = true
 			continue
 		}

@@ -68,7 +68,7 @@ The [Helm guide](docs/getting-started/helm.md) explains production adaptation, s
 | File experiences | Text/source editing, Markdown, JSON/YAML, read-only Parquet/Avro/Arrow/NDJSON/CSV/TSV inspection, logs, diffs, media, PDF, archives |
 | Deployment | Release images, Docker Compose examples, OCI Helm chart, GitHub release automation |
 
-OIDC declarations reserve the future SSO contract, but end-to-end OIDC login is not yet production-ready. Active transfer jobs are currently process-local and are lost when the backend restarts. These limits are documented rather than hidden.
+OIDC declarations reserve the future SSO contract, but end-to-end OIDC login is not yet production-ready. Active background tasks are currently process-local and are lost when the backend restarts. These limits are documented rather than hidden.
 
 ## Configuration And Extension
 

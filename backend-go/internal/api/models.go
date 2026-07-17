@@ -241,6 +241,7 @@ type TransferRequest struct {
 	Sources        []TransferSourceRequest    `json:"sources"`
 	Destination    TransferDestinationRequest `json:"destination"`
 	ConflictPolicy string                     `json:"conflictPolicy"`
+	InitiatedFrom  *TaskLocation              `json:"initiatedFrom,omitempty"`
 }
 
 type ResolveTransferJobRequest struct {
@@ -265,41 +266,111 @@ type TransferResponse struct {
 	Results []TransferItemResult `json:"results"`
 }
 
-type TransferTaskProgress struct {
+type TaskProgress struct {
 	BytesTransferred int64  `json:"bytesTransferred"`
 	TotalBytes       *int64 `json:"totalBytes"`
+	BytesDelivered   int64  `json:"bytesDelivered,omitempty"`
+	TotalDelivered   *int64 `json:"totalDeliveredBytes,omitempty"`
 	ItemsCompleted   int    `json:"itemsCompleted"`
 	TotalItems       *int   `json:"totalItems"`
 }
 
-type TransferJobTask struct {
-	ID           string               `json:"id"`
-	Intent       string               `json:"intent"`
-	SourceTunnel string               `json:"sourceTunnel"`
-	SourceRootID string               `json:"sourceRootId"`
-	SourcePath   string               `json:"sourcePath"`
-	TargetPath   *string              `json:"targetPath"`
-	Phase        string               `json:"phase"`
-	Status       string               `json:"status"`
-	Message      string               `json:"message"`
-	Progress     TransferTaskProgress `json:"progress"`
-	Result       *TransferItemResult  `json:"result"`
-	Children     []TransferJobTask    `json:"children"`
+type TaskItem struct {
+	ID           string              `json:"id"`
+	ParentID     *string             `json:"parentId,omitempty"`
+	Depth        int                 `json:"depth,omitempty"`
+	Name         string              `json:"name,omitempty"`
+	Kind         string              `json:"kind,omitempty"`
+	Intent       string              `json:"intent"`
+	SourceTunnel string              `json:"sourceTunnel"`
+	SourceRootID string              `json:"sourceRootId"`
+	SourcePath   string              `json:"sourcePath"`
+	TargetPath   *string             `json:"targetPath"`
+	Phase        string              `json:"phase"`
+	Status       string              `json:"status"`
+	Message      string              `json:"message"`
+	Progress     TaskProgress        `json:"progress"`
+	Result       *TransferItemResult `json:"result"`
+	Children     []TaskItem          `json:"children"`
 }
 
-type TransferJobResponse struct {
+type TaskResponse struct {
 	ID             string                     `json:"id"`
 	Status         string                     `json:"status"`
 	Message        string                     `json:"message"`
 	CreatedAt      string                     `json:"createdAt"`
 	UpdatedAt      string                     `json:"updatedAt"`
 	Operation      string                     `json:"operation"`
+	Revision       int64                      `json:"revision"`
+	InitiatedFrom  *TaskLocation              `json:"initiatedFrom,omitempty"`
+	MutationCount  int                        `json:"mutationCount"`
+	Progress       TaskProgress               `json:"progress"`
+	Download       *TaskDownloadDescriptor    `json:"download,omitempty"`
 	Destination    TransferDestinationRequest `json:"destination"`
 	ConflictPolicy string                     `json:"conflictPolicy"`
-	Tasks          []TransferJobTask          `json:"tasks"`
+	Tasks          []TaskItem                 `json:"tasks"`
 	Results        []TransferItemResult       `json:"results"`
 }
 
 type TransferJobListResponse struct {
-	Jobs []TransferJobResponse `json:"jobs"`
+	Jobs []TaskResponse `json:"jobs"`
+}
+
+type TaskLocation struct {
+	Tunnel string `json:"tunnel"`
+	RootID string `json:"rootId"`
+	Path   string `json:"path"`
+}
+
+type TaskDownloadDescriptor struct {
+	URL      string `json:"url"`
+	FileName string `json:"fileName"`
+	Archive  bool   `json:"archive"`
+}
+
+type TaskListResponse struct {
+	Tasks []TaskResponse `json:"tasks"`
+}
+
+type TaskItemPage struct {
+	Items       []TaskItem `json:"items"`
+	NextPageRef *string    `json:"nextPageRef,omitempty"`
+	TotalCount  int        `json:"totalCount"`
+}
+
+type TaskSourceRequest struct {
+	Tunnel string `json:"tunnel"`
+	RootID string `json:"rootId"`
+	Path   string `json:"path"`
+}
+
+type DeleteTaskRequest struct {
+	Sources       []TaskSourceRequest `json:"sources"`
+	InitiatedFrom TaskLocation        `json:"initiatedFrom"`
+	Confirmed     bool                `json:"confirmed"`
+}
+
+type DownloadTaskRequest struct {
+	Sources []TaskSourceRequest `json:"sources"`
+}
+
+type UploadManifestItem struct {
+	RelativePath string  `json:"relativePath"`
+	Kind         string  `json:"kind"`
+	Size         *int64  `json:"size,omitempty"`
+	MIMEType     *string `json:"mimeType,omitempty"`
+}
+
+type UploadTaskRequest struct {
+	Destination    TaskLocation         `json:"destination"`
+	InitiatedFrom  TaskLocation         `json:"initiatedFrom"`
+	ConflictPolicy string               `json:"conflictPolicy"`
+	Items          []UploadManifestItem `json:"items"`
+}
+
+type UploadItemResponse struct {
+	TaskID  string `json:"taskId"`
+	ItemID  string `json:"itemId"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
 }

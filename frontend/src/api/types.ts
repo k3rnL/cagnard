@@ -137,16 +137,17 @@ export interface OperationResponse {
 
 export type TransferIntent = "copy" | "move";
 export type TransferConflictPolicy = "fail" | "skip" | "keep-both" | "replace";
+export type StorageTunnel = "personal" | "global";
 
 export interface TransferSourceRequest {
   intent: TransferIntent;
-  tunnel: "personal" | "global";
+  tunnel: StorageTunnel;
   rootId: string;
   path: string;
 }
 
 export interface TransferDestinationRequest {
-  tunnel: "personal" | "global";
+  tunnel: StorageTunnel;
   rootId: string;
   path: string;
 }
@@ -155,9 +156,10 @@ export interface TransferRequest {
   sources: TransferSourceRequest[];
   destination: TransferDestinationRequest;
   conflictPolicy: TransferConflictPolicy;
+  initiatedFrom: TaskLocation;
 }
 
-export interface ResolveTransferJobRequest {
+export interface ResolveTaskRequest {
   conflictPolicy: TransferConflictPolicy;
 }
 
@@ -179,16 +181,22 @@ export interface TransferResponse {
   results: TransferItemResult[];
 }
 
-export interface TransferTaskProgress {
+export interface TaskProgress {
   bytesTransferred: number;
   totalBytes?: number | null;
+  bytesDelivered?: number;
+  totalDeliveredBytes?: number | null;
   itemsCompleted: number;
   totalItems?: number | null;
 }
 
-export interface TransferJobTask {
+export interface TaskItem {
   id: string;
-  intent: TransferIntent;
+  parentId?: string;
+  depth?: number;
+  name?: string;
+  kind?: string;
+  intent: string;
   sourceTunnel: string;
   sourceRootId: string;
   sourcePath: string;
@@ -196,27 +204,93 @@ export interface TransferJobTask {
   phase: string;
   status: string;
   message: string;
-  progress: TransferTaskProgress;
+  progress: TaskProgress;
   result?: TransferItemResult;
-  children: TransferJobTask[];
+  children?: TaskItem[] | null;
 }
 
-export interface TransferJobResponse {
+export interface TaskLocation {
+  tunnel: StorageTunnel;
+  rootId: string;
+  path: string;
+}
+
+export interface TaskDownloadDescriptor {
+  url: string;
+  fileName: string;
+  archive: boolean;
+}
+
+export interface TaskResponse {
   id: string;
   status: "pending" | "blocked" | "canceled" | "running" | "completed" | "error" | string;
   message: string;
   createdAt: string;
   updatedAt: string;
-  operation: TransferIntent | "mixed" | string;
+  operation: "copy" | "move" | "delete" | "download" | "upload" | "mixed" | string;
+  revision: number;
+  initiatedFrom?: TaskLocation;
+  mutationCount: number;
+  progress: TaskProgress;
+  download?: TaskDownloadDescriptor;
   destination: TransferDestinationRequest;
   conflictPolicy: TransferConflictPolicy;
-  tasks: TransferJobTask[];
-  results: TransferItemResult[];
+  tasks: TaskItem[];
+  results?: TransferItemResult[] | null;
 }
 
-export interface TransferJobListResponse {
-  jobs: TransferJobResponse[];
+export interface TaskListResponse {
+  tasks: TaskResponse[];
 }
+
+export interface TaskItemPage {
+  items: TaskItem[];
+  nextPageRef?: string | null;
+  totalCount: number;
+}
+
+export interface TaskSourceRequest {
+  tunnel: StorageTunnel;
+  rootId: string;
+  path: string;
+}
+
+export interface DeleteTaskRequest {
+  sources: TaskSourceRequest[];
+  initiatedFrom: TaskLocation;
+  confirmed: boolean;
+}
+
+export interface DownloadTaskRequest {
+  sources: TaskSourceRequest[];
+}
+
+export interface UploadManifestItem {
+  relativePath: string;
+  kind: "file" | "directory";
+  size?: number;
+  mimeType?: string;
+}
+
+export interface UploadTaskRequest {
+  destination: TaskLocation;
+  initiatedFrom: TaskLocation;
+  conflictPolicy: TransferConflictPolicy;
+  items: UploadManifestItem[];
+}
+
+export interface UploadItemResponse {
+  taskId: string;
+  itemId: string;
+  status: string;
+  message: string;
+}
+
+export type ResolveTransferJobRequest = ResolveTaskRequest;
+export type TransferTaskProgress = TaskProgress;
+export type TransferJobTask = TaskItem;
+export type TransferJobResponse = TaskResponse;
+export interface TransferJobListResponse { jobs: TaskResponse[]; }
 
 export interface PreviewResponse {
   path: string;

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/k3rnl/cagnard/backend-go/internal/auth"
 	"github.com/k3rnl/cagnard/backend-go/internal/config"
@@ -19,25 +19,22 @@ const defaultEntryPageSize = 100
 const maxEntryPageSize = 500
 
 type Server struct {
-	cfg                  *config.CagnardConfig
-	mux                  *http.ServeMux
-	resolver             *auth.UserResolver
-	access               *auth.AccessService
-	registry             *storage.Registry
-	transferMu           sync.RWMutex
-	transferJobs         map[string]storedTransferJob
-	canceledTransferJobs map[string]bool
+	cfg      *config.CagnardConfig
+	mux      *http.ServeMux
+	resolver *auth.UserResolver
+	access   *auth.AccessService
+	registry *storage.Registry
+	tasks    *taskManager
 }
 
 func NewServer(cfg *config.CagnardConfig) *Server {
 	s := &Server{
-		cfg:                  cfg,
-		mux:                  http.NewServeMux(),
-		resolver:             auth.NewUserResolver(cfg),
-		access:               auth.NewAccessService(cfg),
-		registry:             storage.NewRegistry(cfg),
-		transferJobs:         map[string]storedTransferJob{},
-		canceledTransferJobs: map[string]bool{},
+		cfg:      cfg,
+		mux:      http.NewServeMux(),
+		resolver: auth.NewUserResolver(cfg),
+		access:   auth.NewAccessService(cfg),
+		registry: storage.NewRegistry(cfg),
+		tasks:    newTaskManager(),
 	}
 	s.routes()
 	return s
@@ -77,6 +74,18 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/storage/transfer/jobs/{jobId}", s.transferJob)
 	s.mux.HandleFunc("POST /api/storage/transfer/jobs/{jobId}/cancel", s.cancelTransferJob)
 	s.mux.HandleFunc("POST /api/storage/transfer/jobs/{jobId}/resolve", s.resolveTransferJob)
+	s.mux.HandleFunc("POST /api/tasks/transfers", s.startTransferJob)
+	s.mux.HandleFunc("POST /api/tasks/deletes", s.startDeleteTask)
+	s.mux.HandleFunc("POST /api/tasks/downloads", s.startDownloadTask)
+	s.mux.HandleFunc("POST /api/tasks/uploads", s.startUploadTask)
+	s.mux.HandleFunc("PUT /api/tasks/{taskId}/uploads/{itemId}", s.uploadTaskItem)
+	s.mux.HandleFunc("GET /api/tasks/{taskId}/content", s.downloadTaskContent)
+	s.mux.HandleFunc("POST /api/tasks/clear", s.clearTasks)
+	s.mux.HandleFunc("GET /api/tasks", s.taskList)
+	s.mux.HandleFunc("GET /api/tasks/{taskId}", s.taskDetail)
+	s.mux.HandleFunc("GET /api/tasks/{taskId}/items", s.taskItems)
+	s.mux.HandleFunc("POST /api/tasks/{taskId}/cancel", s.cancelTask)
+	s.mux.HandleFunc("POST /api/tasks/{taskId}/resolve", s.resolveTask)
 }
 
 func (s *Server) appearance(w http.ResponseWriter, r *http.Request) {
@@ -315,12 +324,21 @@ func (s *Server) uploadContent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	bytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		writeAPIError(w, http.StatusBadRequest, APIError{Code: "invalid_request", Message: "Upload request body could not be read"})
-		return
+	uploadPath := queryValue(r, "path")
+	var size *int64
+	if r.ContentLength >= 0 {
+		value := r.ContentLength
+		size = &value
 	}
-	entry, err := provider.Upload(root, queryValue(r, "path"), bytes, queryBool(r, "overwrite"))
+	var mimeType *string
+	if value := strings.TrimSpace(r.Header.Get("Content-Type")); value != "" {
+		mimeType = &value
+	}
+	entry, err := provider.StreamWriteContext(r.Context(), root, uploadPath, r.Body, storage.FileContentInfo{
+		FileName: path.Base(uploadPath),
+		MIMEType: mimeType,
+		Size:     size,
+	}, queryBool(r, "overwrite"), nil)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, operationError(err))
 		return

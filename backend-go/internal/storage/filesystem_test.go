@@ -1,6 +1,9 @@
 package storage
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,6 +11,53 @@ import (
 
 	"github.com/k3rnl/cagnard/backend-go/internal/config"
 )
+
+func TestFilesystemContextStreamsAndRecursiveDelete(t *testing.T) {
+	base := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "tree", "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "tree", "nested", "file.bin"), bytes.Repeat([]byte("x"), 1024), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(base, "tree", "link")); err != nil {
+		t.Fatal(err)
+	}
+	provider := NewFilesystemProvider(config.ProviderConfig{ID: "local", Type: "filesystem", Family: "unix", DisplayName: "Local"})
+	root := filesystemRoot(base)
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := provider.StreamReadContext(canceled, root, "tree/nested/file.bin", &bytes.Buffer{}, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled read error = %v", err)
+	}
+	if _, err := provider.StreamWriteContext(canceled, root, "never-created.bin", bytes.NewReader([]byte("data")), FileContentInfo{}, false, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled write error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(base, "never-created.bin")); !os.IsNotExist(err) {
+		t.Fatalf("canceled write left a file: %v", err)
+	}
+
+	var completed []string
+	summary, err := provider.DeleteRecursive(context.Background(), root, "tree", func(event DeleteItemEvent) {
+		if event.Status == "completed" {
+			completed = append(completed, event.Path)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Deleted != 4 || summary.Failed != 0 || completed[len(completed)-1] != "tree" {
+		t.Fatalf("unexpected recursive delete summary=%#v events=%#v", summary, completed)
+	}
+	if content, err := os.ReadFile(outside); err != nil || string(content) != "keep" {
+		t.Fatalf("recursive delete followed symlink: content=%q err=%v", content, err)
+	}
+}
 
 func TestFilesystemProviderReadAndMutationPaths(t *testing.T) {
 	base := t.TempDir()

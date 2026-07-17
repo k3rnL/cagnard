@@ -108,3 +108,41 @@ jobs:
 
       - name: Validate documentation links and assets
         run: pnpm docs:check
+
+  s3-provider:
+    name: Validate S3 provider with MinIO
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend-go/go.mod
+          cache-dependency-path: backend-go/go.sum
+
+      - name: Start MinIO
+        run: |
+          docker run --detach --rm --name cagnard-minio \
+            --publish 9000:9000 \
+            --env MINIO_ROOT_USER=cagnard \
+            --env MINIO_ROOT_PASSWORD=cagnard-secret \
+            quay.io/minio/minio:latest server /data
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs cagnard-minio
+          exit 1
+
+      - name: Run S3 provider integration tests
+        working-directory: backend-go
+        env:
+          CAGNARD_S3_TEST_ENDPOINT: http://127.0.0.1:9000
+          CAGNARD_S3_TEST_ACCESS_KEY: cagnard
+          CAGNARD_S3_TEST_SECRET_KEY: cagnard-secret
+        run: go test ./internal/storage -run TestS3MinIOStreamingIntegration -count=1 -v

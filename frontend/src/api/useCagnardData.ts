@@ -8,9 +8,10 @@ import type {
   NavigationRoot,
   SessionResponse,
   StorageEntry,
+  TaskItemPage,
   TransferConflictPolicy,
   TransferItemResult,
-  TransferJobResponse
+  TaskResponse
 } from "./types";
 import { canWriteBack, openerBlockedReason, resolveFileOpener } from "../openers/fileOpeners";
 import type { FileOpenerMatch, OpenerView } from "../openers/fileOpeners";
@@ -135,6 +136,12 @@ export interface PasteboardItem {
   entry: StorageEntry;
 }
 
+export interface BrowserUploadItem {
+  relativePath: string;
+  kind: "file" | "directory";
+  file?: File;
+}
+
 export interface CagnardDataState {
   session?: SessionResponse;
   authProviders: AuthProviderMetadata[];
@@ -160,7 +167,7 @@ export interface CagnardDataState {
   pasteboardItems: PasteboardItem[];
   pasteboardSelectedCount: number;
   pasteboardBusy: boolean;
-  transferJobs: TransferJobResponse[];
+  tasks: TaskResponse[];
   operationMessage?: string;
   loginLoading: boolean;
   loginError?: string;
@@ -202,13 +209,15 @@ export interface CagnardDataState {
   clearPasteboard: () => void;
   togglePasteboardItem: (id: string) => void;
   pasteboardTransfer: (intent?: PasteboardIntent) => Promise<void>;
-  resolveTransferJob: (jobId: string) => Promise<void>;
-  cancelTransferJob: (jobId: string) => Promise<void>;
-  clearTransferJobs: () => Promise<void>;
+  resolveTask: (jobId: string) => Promise<void>;
+  cancelTask: (jobId: string) => Promise<void>;
+  clearTasks: () => Promise<void>;
+  loadTaskItems: (taskId: string, pageRef?: string, pageSize?: number) => Promise<TaskItemPage>;
   cancelModal: () => void;
   submitModal: (value: BrowserModalResult) => void;
   showMessage: (title: string, message: string, danger?: boolean) => Promise<void>;
   uploadFile: (file: File) => Promise<void>;
+  uploadItems: (items: BrowserUploadItem[]) => Promise<void>;
   downloadSelected: () => Promise<void>;
 }
 
@@ -236,7 +245,7 @@ export function useCagnardData(): CagnardDataState {
   const [modal, setModal] = useState<BrowserModalState>();
   const [pasteboardItems, setPasteboardItems] = useState<PasteboardItem[]>([]);
   const [pasteboardBusy, setPasteboardBusy] = useState(false);
-  const [transferJobs, setTransferJobs] = useState<TransferJobResponse[]>([]);
+  const [tasks, setTasks] = useState<TaskResponse[]>([]);
   const [operationMessage, setOperationMessage] = useState<string>();
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string>();
@@ -249,8 +258,13 @@ export function useCagnardData(): CagnardDataState {
   const pasteboardItemsRef = useRef<PasteboardItem[]>([]);
   const pasteboardBroadcastReady = useRef(false);
   const suppressPasteboardBroadcast = useRef(false);
-  const transferJobsRef = useRef<TransferJobResponse[]>([]);
-  const transferPollingStartedAt = useRef<number>();
+  const tasksRef = useRef<TaskResponse[]>([]);
+  const taskPollingStartedAt = useRef<number>();
+  const handledTerminalRevisions = useRef<Map<string, number>>(new Map());
+  const selectedRootRef = useRef<NavigationRoot>();
+  const currentPathRef = useRef("");
+  const uploadControllers = useRef<Map<string, AbortController[]>>(new Map());
+  const activeUploadTaskIds = useRef<Set<string>>(new Set());
   const urlRestoredRef = useRef(false);
   const locationHistoryModeRef = useRef<LocationHistoryMode>("replace");
 
@@ -258,9 +272,9 @@ export function useCagnardData(): CagnardDataState {
     () => pasteboardItems.filter((item) => item.selected).length,
     [pasteboardItems]
   );
-  const hasActiveTransferJobs = useMemo(
-    () => transferJobs.some(isActiveTransferJob),
-    [transferJobs]
+  const hasActiveTasks = useMemo(
+    () => tasks.some(isActiveTask),
+    [tasks]
   );
 
   const sourceEntries = useMemo(() => entryResponse?.entries ?? [], [entryResponse]);
@@ -314,8 +328,16 @@ export function useCagnardData(): CagnardDataState {
   }, [pasteboardItems]);
 
   useEffect(() => {
-    transferJobsRef.current = transferJobs;
-  }, [transferJobs]);
+    tasksRef.current = tasks;
+  }, [tasks]);
+
+  useEffect(() => {
+    selectedRootRef.current = selectedRoot;
+  }, [selectedRoot]);
+
+  useEffect(() => {
+    currentPathRef.current = normalizeBrowserPath(currentPath);
+  }, [currentPath]);
 
   const openModal = useCallback((nextModal: BrowserModalDraft) => {
     modalResolver.current?.(undefined);
@@ -359,7 +381,11 @@ export function useCagnardData(): CagnardDataState {
     modalResolver.current = undefined;
     setModal(undefined);
     setPasteboardItems([]);
-    setTransferJobs([]);
+    setTasks([]);
+    handledTerminalRevisions.current.clear();
+    activeUploadTaskIds.current.clear();
+    uploadControllers.current.forEach((controllers) => controllers.forEach((controller) => controller.abort()));
+    uploadControllers.current.clear();
     setOperationMessage(undefined);
     clearSelection();
   }, [clearSelection]);
@@ -393,13 +419,23 @@ export function useCagnardData(): CagnardDataState {
     [clearSelection]
   );
 
-  const refreshTransferJobs = useCallback(async () => {
+  const refreshTasks = useCallback(async () => {
     try {
-      const response = await cagnardApi.transferJobs();
-      const previousJobs = new Map(transferJobsRef.current.map((job) => [job.id, job]));
-      const newlyTerminal = response.jobs.some((job) => isTerminalTransferJob(job) && !isTerminalTransferJob(previousJobs.get(job.id)));
-      setTransferJobs(response.jobs);
-      if (newlyTerminal) {
+      const response = await cagnardApi.tasks();
+      const previousTasks = new Map(tasksRef.current.map((task) => [task.id, task]));
+      let refreshCurrentLocation = false;
+      for (const task of response.tasks) {
+        if (!isTerminalTask(task)) continue;
+        const previous = previousTasks.get(task.id);
+        const handledRevision = handledTerminalRevisions.current.get(task.id);
+        const newlyTerminal = !isTerminalTask(previous) && (handledRevision === undefined || task.revision > handledRevision);
+        handledTerminalRevisions.current.set(task.id, Math.max(task.revision, handledRevision ?? 0));
+        if (newlyTerminal && task.mutationCount > 0 && taskMatchesCurrentLocation(task, selectedRootRef.current, currentPathRef.current)) {
+          refreshCurrentLocation = true;
+        }
+      }
+      setTasks((current) => mergeTaskSnapshots(current, response.tasks));
+      if (refreshCurrentLocation) {
         setRefreshTick((value) => value + 1);
       }
     } catch (caught) {
@@ -410,17 +446,32 @@ export function useCagnardData(): CagnardDataState {
     }
   }, [handleUnauthorized]);
 
+  const applyTaskUpdate = useCallback((task: TaskResponse) => {
+    const previous = tasksRef.current.find((candidate) => candidate.id === task.id);
+    setTasks((current) => mergeTasks(current, task));
+    if (!isTerminalTask(task)) return;
+    const handledRevision = handledTerminalRevisions.current.get(task.id);
+    const newlyTerminal = !isTerminalTask(previous) && (handledRevision === undefined || task.revision > handledRevision);
+    handledTerminalRevisions.current.set(task.id, Math.max(task.revision, handledRevision ?? 0));
+    if (newlyTerminal && task.mutationCount > 0 && taskMatchesCurrentLocation(task, selectedRootRef.current, currentPathRef.current)) {
+      setRefreshTick((value) => value + 1);
+    }
+  }, []);
+
   const loadApplication = useCallback(async () => {
     setLoading(true);
     try {
       const [nextSession, nextNavigation, jobs] = await Promise.all([
         cagnardApi.session(),
         cagnardApi.navigation(),
-        cagnardApi.transferJobs()
+        cagnardApi.tasks()
       ]);
       setSession(nextSession);
       setNavigation(nextNavigation);
-      setTransferJobs(jobs.jobs);
+      for (const task of jobs.tasks) {
+        if (isTerminalTask(task)) handledTerminalRevisions.current.set(task.id, task.revision);
+      }
+      setTasks(jobs.tasks);
       setSelectedRoot((existing) => existing ?? firstRoot(nextNavigation));
       setError(undefined);
     } catch (caught) {
@@ -454,28 +505,44 @@ export function useCagnardData(): CagnardDataState {
   }, [loadApplication]);
 
   useEffect(() => {
-    if (!session?.user.id || !hasActiveTransferJobs) {
-      transferPollingStartedAt.current = undefined;
+    if (!session?.user.id) {
+      taskPollingStartedAt.current = undefined;
       return;
     }
     let active = true;
     let timeout: number | undefined;
-    const startedAt = transferPollingStartedAt.current ?? Date.now();
-    transferPollingStartedAt.current = startedAt;
+    const startedAt = hasActiveTasks ? taskPollingStartedAt.current ?? Date.now() : Date.now();
+    taskPollingStartedAt.current = hasActiveTasks ? startedAt : undefined;
 
     const poll = async () => {
       if (!active) return;
-      await refreshTransferJobs();
+      await refreshTasks();
       if (!active) return;
-      timeout = window.setTimeout(poll, transferPollDelay(Date.now() - startedAt));
+      const activeNow = tasksRef.current.some(isActiveTask);
+      timeout = window.setTimeout(poll, activeNow ? taskPollDelay(Date.now() - startedAt) : 5000);
     };
 
-    timeout = window.setTimeout(poll, 50);
+    timeout = window.setTimeout(poll, hasActiveTasks ? 50 : 3000);
     return () => {
       active = false;
       if (timeout !== undefined) window.clearTimeout(timeout);
     };
-  }, [hasActiveTransferJobs, refreshTransferJobs, session?.user.id]);
+  }, [hasActiveTasks, refreshTasks, session?.user.id]);
+
+  useEffect(() => {
+    const cancelBrowserUploads = () => {
+      for (const taskId of activeUploadTaskIds.current) {
+        uploadControllers.current.get(taskId)?.forEach((controller) => controller.abort());
+        void fetch(`/api/tasks/${encodeURIComponent(taskId)}/cancel`, {
+          method: "POST",
+          credentials: "same-origin",
+          keepalive: true
+        });
+      }
+    };
+    window.addEventListener("beforeunload", cancelBrowserUploads);
+    return () => window.removeEventListener("beforeunload", cancelBrowserUploads);
+  }, []);
 
   useEffect(() => {
     if (!session || !navigation || urlRestoredRef.current) return;
@@ -1137,25 +1204,24 @@ export function useCagnardData(): CagnardDataState {
     [openModal]
   );
 
-  const resolveTransferJob = useCallback(async (jobId: string) => {
-    const job = transferJobsRef.current.find((candidate) => candidate.id === jobId);
-    const conflict = job ? firstTransferConflict(job.results) : undefined;
+  const resolveTask = useCallback(async (jobId: string) => {
+    const job = tasksRef.current.find((candidate) => candidate.id === jobId);
+    const conflict = job ? firstTransferConflict(job.results ?? []) : undefined;
     const choice = await askConflictPolicy(conflict?.message ?? job?.message ?? "A destination item already exists.");
 
     try {
       const nextJob = choice
-        ? await cagnardApi.resolveTransferJob(jobId, { conflictPolicy: choice.policy })
-        : await cagnardApi.cancelTransferJob(jobId);
-      setTransferJobs((current) => mergeTransferJobs(current, nextJob));
+        ? await cagnardApi.resolveTask(jobId, { conflictPolicy: choice.policy })
+        : await cagnardApi.cancelTask(jobId);
+      applyTaskUpdate(nextJob);
       setOperationMessage(nextJob.message);
-      setError(failedTransferJobMessage(nextJob));
-      if (isTerminalTransferJob(nextJob)) setRefreshTick((value) => value + 1);
+      setError(failedTaskMessage(nextJob));
     } catch (caught) {
       if (handleUnauthorized(caught)) return;
       setError(caught instanceof Error ? caught.message : String(caught));
       setOperationMessage(undefined);
     }
-  }, [askConflictPolicy, handleUnauthorized]);
+  }, [applyTaskUpdate, askConflictPolicy, handleUnauthorized]);
 
   const createFile = useCallback(async () => {
     const root = requireRoot();
@@ -1186,18 +1252,26 @@ export function useCagnardData(): CagnardDataState {
     const label = entriesToDelete.length === 1 ? entriesToDelete[0].name : `${entriesToDelete.length} entries`;
     const confirmed = await askConfirm({
       title: "Delete selected entries",
-      message: `Delete ${label}? This cannot be undone from Cagnard.`,
+      message: `Delete ${label}? Deletion runs in the background. Canceling may leave already deleted items removed, and this cannot be undone from Cagnard.`,
       confirmLabel: "Delete",
       danger: true
     });
     if (!confirmed) return;
-    await mutate(async () => {
-      for (const entry of entriesToDelete) {
-        await cagnardApi.delete(root.tunnel, root.id, entry.path, true);
-      }
-      return { message: `Deleted ${label}` };
-    });
-  }, [askConfirm, mutate, requireRoot, requireSelection]);
+    try {
+      const task = await cagnardApi.startDeleteTask({
+        sources: entriesToDelete.map((entry) => ({ tunnel: root.tunnel, rootId: root.id, path: entry.path })),
+        initiatedFrom: { tunnel: root.tunnel, rootId: root.id, path: currentPath },
+        confirmed: true
+      });
+      clearSelection();
+      applyTaskUpdate(task);
+      setOperationMessage(`Deleting ${label} in the background`);
+      setError(undefined);
+    } catch (caught) {
+      if (handleUnauthorized(caught)) return;
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [applyTaskUpdate, askConfirm, clearSelection, currentPath, handleUnauthorized, requireRoot, requireSelection]);
 
   const addSelectionToPasteboard = useCallback((intent: PasteboardIntent) => {
     const root = requireRoot();
@@ -1273,9 +1347,10 @@ export function useCagnardData(): CagnardDataState {
 
     setPasteboardBusy(true);
     try {
-      let job = await cagnardApi.startTransferJob({
+      let job = await cagnardApi.startTransferTask({
         conflictPolicy: "fail",
         destination: { tunnel: root.tunnel, rootId: root.id, path: currentPath },
+        initiatedFrom: { tunnel: root.tunnel, rootId: root.id, path: currentPath },
         sources: selectedItems.map((item) => ({
           intent,
           tunnel: item.source.tunnel,
@@ -1284,19 +1359,18 @@ export function useCagnardData(): CagnardDataState {
         }))
       });
       setPasteboardItems((current) => current.filter((item) => !selectedIds.has(item.id)));
-      setTransferJobs((current) => mergeTransferJobs(current, job));
-      if (job.status === "blocked" || hasTransferConflict(job.results)) {
-        const conflict = firstTransferConflict(job.results);
+      applyTaskUpdate(job);
+      if (job.status === "blocked" || hasTransferConflict(job.results ?? [])) {
+        const conflict = firstTransferConflict(job.results ?? []);
         const choice = await askConflictPolicy(conflict?.message ?? job.message ?? "A destination item already exists.");
         job = choice
-          ? await cagnardApi.resolveTransferJob(job.id, { conflictPolicy: choice.policy })
-          : await cagnardApi.cancelTransferJob(job.id);
-        setTransferJobs((current) => mergeTransferJobs(current, job));
+          ? await cagnardApi.resolveTask(job.id, { conflictPolicy: choice.policy })
+          : await cagnardApi.cancelTask(job.id);
+        applyTaskUpdate(job);
       }
 
       setOperationMessage(job.message);
-      setError(failedTransferJobMessage(job));
-      if (isTerminalTransferJob(job)) setRefreshTick((value) => value + 1);
+      setError(failedTaskMessage(job));
     } catch (caught) {
       if (handleUnauthorized(caught)) return;
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -1304,25 +1378,28 @@ export function useCagnardData(): CagnardDataState {
     } finally {
       setPasteboardBusy(false);
     }
-  }, [askConflictPolicy, currentPath, handleUnauthorized, pasteboardItems, requireRoot]);
+  }, [applyTaskUpdate, askConflictPolicy, currentPath, handleUnauthorized, pasteboardItems, requireRoot]);
 
-  const cancelTransferJob = useCallback(async (jobId: string) => {
+  const cancelTask = useCallback(async (jobId: string) => {
     try {
-      const job = await cagnardApi.cancelTransferJob(jobId);
-      setTransferJobs((current) => mergeTransferJobs(current, job));
+      uploadControllers.current.get(jobId)?.forEach((controller) => controller.abort());
+      uploadControllers.current.delete(jobId);
+      activeUploadTaskIds.current.delete(jobId);
+      const job = await cagnardApi.cancelTask(jobId);
+      applyTaskUpdate(job);
       setOperationMessage(job.message);
       setError(undefined);
     } catch (caught) {
       if (handleUnauthorized(caught)) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [handleUnauthorized]);
+  }, [applyTaskUpdate, handleUnauthorized]);
 
-  const clearTransferJobs = useCallback(async () => {
+  const clearTasks = useCallback(async () => {
     try {
-      const response = await cagnardApi.clearTransferJobs();
-      const jobs = await cagnardApi.transferJobs();
-      setTransferJobs(jobs.jobs);
+      const response = await cagnardApi.clearTasks();
+      const jobs = await cagnardApi.tasks();
+      setTasks(jobs.tasks);
       setOperationMessage(response.message);
       setError(undefined);
     } catch (caught) {
@@ -1331,40 +1408,111 @@ export function useCagnardData(): CagnardDataState {
     }
   }, [handleUnauthorized]);
 
+  const loadTaskItems = useCallback(
+    async (taskId: string, pageRef?: string, pageSize = 100) => cagnardApi.taskItems(taskId, pageRef, pageSize),
+    []
+  );
+
+  const uploadItems = useCallback(async (items: BrowserUploadItem[]) => {
+    const root = requireRoot();
+    if (root.readOnly) {
+      setError("Cannot upload into a read-only storage root.");
+      return;
+    }
+    if (items.length === 0) return;
+    try {
+      let task = await cagnardApi.startUploadTask({
+        destination: { tunnel: root.tunnel, rootId: root.id, path: currentPath },
+        initiatedFrom: { tunnel: root.tunnel, rootId: root.id, path: currentPath },
+        conflictPolicy: "fail",
+        items: items.map((item) => ({
+          relativePath: item.relativePath,
+          kind: item.kind,
+          size: item.file?.size,
+          mimeType: item.file?.type || undefined
+        }))
+      });
+      applyTaskUpdate(task);
+      if (task.status === "blocked") {
+        const choice = await askConflictPolicy(task.message || "One or more destination items already exist.");
+        task = choice
+          ? await cagnardApi.resolveTask(task.id, { conflictPolicy: choice.policy })
+          : await cagnardApi.cancelTask(task.id);
+        applyTaskUpdate(task);
+      }
+      if (isTerminalTask(task)) {
+        setOperationMessage(task.message);
+        return;
+      }
+
+      const itemsByPath = new Map(items.map((item) => [normalizeBrowserPath(item.relativePath), item]));
+      const pending = task.tasks.filter((item) => item.status === "pending");
+      const controllers = pending.map(() => new AbortController());
+      uploadControllers.current.set(task.id, controllers);
+      activeUploadTaskIds.current.add(task.id);
+      let deliveryFailed = false;
+      await runWithConcurrency(pending, 4, async (taskItem, index) => {
+        const uploadItem = itemsByPath.get(normalizeBrowserPath(taskItem.sourcePath));
+        if (!uploadItem || (uploadItem.kind === "file" && !uploadItem.file)) {
+          deliveryFailed = true;
+          return;
+        }
+        const body = uploadItem.file ?? new Blob([]);
+        try {
+          await cagnardApi.uploadTaskItem(task.id, taskItem.id, body, uploadItem.file?.type || "application/octet-stream", controllers[index].signal);
+        } catch (caught) {
+          if (!(caught instanceof DOMException && caught.name === "AbortError")) deliveryFailed = true;
+        }
+      });
+      uploadControllers.current.delete(task.id);
+      activeUploadTaskIds.current.delete(task.id);
+      let finalTask = await cagnardApi.task(task.id);
+      if (deliveryFailed && isActiveTask(finalTask)) {
+        finalTask = await cagnardApi.cancelTask(task.id);
+      }
+      applyTaskUpdate(finalTask);
+      setOperationMessage(finalTask.message);
+      setError(failedTaskMessage(finalTask));
+    } catch (caught) {
+      if (handleUnauthorized(caught)) return;
+      setError(caught instanceof Error ? caught.message : String(caught));
+      setOperationMessage(undefined);
+    }
+  }, [applyTaskUpdate, askConflictPolicy, currentPath, handleUnauthorized, requireRoot]);
+
   const uploadFile = useCallback(
-    async (file: File) => {
-      const root = requireRoot();
-      const target = currentPath ? `${currentPath}/${file.name}` : file.name;
-      await mutate(() => cagnardApi.upload(root.tunnel, root.id, target, file, false));
-    },
-    [currentPath, mutate, requireRoot]
+    async (file: File) => uploadItems([{ relativePath: file.name, kind: "file", file }]),
+    [uploadItems]
   );
 
   const downloadSelected = useCallback(async () => {
     const root = requireRoot();
-    const files = requireSelection().filter((entry) => entry.kind === "file");
-    if (files.length === 0) {
-      setError("Select at least one file to download.");
+    const selection = requireSelection();
+    if (selection.length === 0) {
+      setError("Select at least one item to download.");
       return;
     }
 
     try {
-      for (const entry of files) {
-        const blob = await cagnardApi.download(root.tunnel, root.id, entry.path);
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = entry.name;
-        link.click();
-        window.setTimeout(() => URL.revokeObjectURL(url), 0);
-      }
-      setOperationMessage(files.length === 1 ? `Downloaded ${files[0].name}` : `Downloaded ${files.length} files`);
+      const task = await cagnardApi.startDownloadTask({
+        sources: selection.map((entry) => ({ tunnel: root.tunnel, rootId: root.id, path: entry.path }))
+      });
+      applyTaskUpdate(task);
+      if (!task.download) throw new Error("The server did not provide a download URL.");
+      const link = document.createElement("a");
+      link.href = task.download.url;
+      link.download = task.download.fileName;
+      link.hidden = true;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setOperationMessage(selection.length === 1 ? `Downloading ${selection[0].name}` : `Preparing ${selection.length} items for download`);
       setError(undefined);
     } catch (caught) {
       if (handleUnauthorized(caught)) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [handleUnauthorized, requireRoot, requireSelection]);
+  }, [applyTaskUpdate, handleUnauthorized, requireRoot, requireSelection]);
 
   return useMemo(
     () => ({
@@ -1392,7 +1540,7 @@ export function useCagnardData(): CagnardDataState {
       pasteboardItems,
       pasteboardSelectedCount,
       pasteboardBusy,
-      transferJobs,
+      tasks,
       operationMessage,
       loginLoading,
       loginError,
@@ -1434,20 +1582,23 @@ export function useCagnardData(): CagnardDataState {
       clearPasteboard,
       togglePasteboardItem,
       pasteboardTransfer,
-      resolveTransferJob,
-      cancelTransferJob,
-      clearTransferJobs,
+      resolveTask,
+      cancelTask,
+      clearTasks,
+      loadTaskItems,
       cancelModal,
       submitModal,
       showMessage,
       uploadFile,
+      uploadItems,
       downloadSelected
     }),
     [
       authProviders,
       cancelModal,
-      cancelTransferJob,
-      clearTransferJobs,
+      cancelTask,
+      clearTasks,
+      loadTaskItems,
       copySelected,
       createFile,
       createFolder,
@@ -1485,7 +1636,7 @@ export function useCagnardData(): CagnardDataState {
       refresh,
       renameSelected,
       removePasteboardItem,
-      resolveTransferJob,
+      resolveTask,
       clearSelection,
       clearPasteboard,
       selectEntry,
@@ -1499,7 +1650,7 @@ export function useCagnardData(): CagnardDataState {
       setEntryPageSize,
       setOpenedFileViewMode,
       submitModal,
-      transferJobs,
+      tasks,
       session,
       showMessage,
       sortDirection,
@@ -1514,6 +1665,7 @@ export function useCagnardData(): CagnardDataState {
       reloadOpenedFile,
       setSort,
       uploadFile,
+      uploadItems,
       totalEntryCount
     ]
   );
@@ -1745,27 +1897,70 @@ function flattenTransferResults(results: TransferItemResult[]): TransferItemResu
   return results.flatMap((result) => [result, ...flattenTransferResults(result.children ?? [])]);
 }
 
-function mergeTransferJobs(current: TransferJobResponse[], job: TransferJobResponse): TransferJobResponse[] {
-  const withoutJob = current.filter((existing) => existing.id !== job.id);
-  return [job, ...withoutJob].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+export function mergeTasks(current: TaskResponse[], job: TaskResponse): TaskResponse[] {
+  const existing = current.find((candidate) => candidate.id === job.id);
+  const next = existing && existing.revision > job.revision ? existing : job;
+  const withoutJob = current.filter((candidate) => candidate.id !== job.id);
+  return [next, ...withoutJob].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
-function isActiveTransferJob(job?: TransferJobResponse): boolean {
+export function mergeTaskSnapshots(current: TaskResponse[], incoming: TaskResponse[]): TaskResponse[] {
+  const currentById = new Map(current.map((task) => [task.id, task]));
+  const unique = new Map<string, TaskResponse>();
+  for (const task of incoming) {
+    const existing = currentById.get(task.id);
+    const candidate = existing && existing.revision > task.revision ? existing : task;
+    const duplicate = unique.get(task.id);
+    if (!duplicate || candidate.revision >= duplicate.revision) unique.set(task.id, candidate);
+  }
+  return [...unique.values()].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+}
+
+export function isActiveTask(job?: TaskResponse): boolean {
   return Boolean(job && ["pending", "running", "queued", "canceling"].includes(job.status));
 }
 
-function isTerminalTransferJob(job?: TransferJobResponse): boolean {
+export function isTerminalTask(job?: TaskResponse): boolean {
   return Boolean(job && ["completed", "canceled", "error", "failed", "partial"].includes(job.status));
 }
 
-function failedTransferJobMessage(job: TransferJobResponse): string | undefined {
+function failedTaskMessage(job: TaskResponse): string | undefined {
   if (!["error", "failed", "partial"].includes(job.status)) return undefined;
-  return transferErrorSummary(job.results) ?? job.message;
+  return transferErrorSummary(job.results ?? []) ?? job.message;
 }
 
-function transferPollDelay(elapsedMs: number): number {
+export function taskPollDelay(elapsedMs: number): number {
   if (elapsedMs < 1000) return 50;
   if (elapsedMs < 5000) return 300;
   if (elapsedMs < 30000) return 1000;
   return 2000;
+}
+
+export function taskMatchesCurrentLocation(task: TaskResponse, root: NavigationRoot | undefined, path: string): boolean {
+  if (!task.initiatedFrom || !root) return false;
+  return task.initiatedFrom.tunnel === root.tunnel
+    && task.initiatedFrom.rootId === root.id
+    && normalizeBrowserPath(task.initiatedFrom.path) === normalizeBrowserPath(path);
+}
+
+export function taskOperationLabel(operation: string): string {
+  switch (operation) {
+    case "copy": return "Copy";
+    case "move": return "Move";
+    case "delete": return "Delete";
+    case "download": return "Download";
+    case "upload": return "Upload";
+    default: return "Task";
+  }
+}
+
+export async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>): Promise<void> {
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(Math.max(1, limit), items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
 }

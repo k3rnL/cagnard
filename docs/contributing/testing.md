@@ -21,13 +21,17 @@ pnpm check
 
 ## Backend
 
-Go unit and API tests live under `backend-go`. Provider-independent tests must run without Docker. Integration tests that require MinIO belong to the S3 plugin/provider scope and should run in a separate Docker-backed CI job.
+Go unit and API tests live under `backend-go`. Provider-independent tests must run without Docker. `TestS3MinIOStreamingIntegration` is enabled by `CAGNARD_S3_TEST_ENDPOINT` and belongs to the separate Docker-backed S3 provider CI job.
+
+Task-engine changes should cover owner isolation, state transitions, item pagination, cancellation, partial mutations, and disconnect handling. Provider stream tests must include unknown content lengths and cancellation during I/O; S3 write changes also require multipart verification against MinIO.
 
 ## Frontend
 
 Vitest covers focused state and contract behavior. TypeScript typecheck and the production Vite build catch integration and bundling failures. User-facing workflow changes also require browser verification at desktop and constrained widths.
 
 For appearance changes, verify Classic light/dark and Solar light/dark, system-mode changes, reload persistence, operator lock, keyboard focus, status contrast, menus, dialogs, toasts, file openers, and responsive navigation.
+
+Task workflow changes require desktop and narrow-width browser checks for copy, move, recursive delete, direct and ZIP downloads, multi-file and directory uploads, conflict resolution, cancellation, queue pagination, and exact-location refresh. Inspect progress while operations are active rather than only their terminal state.
 
 ## Examples And Packaging
 

@@ -77,7 +77,7 @@ func TestHealthAndDiscoveryRoutes(t *testing.T) {
 		t.Fatalf("unexpected transfer jobs: %#v", jobs)
 	}
 
-	emptyJob := postJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs", cookie, `{"sources":[],"destination":{"tunnel":"personal","rootId":"home","path":""},"conflictPolicy":"fail"}`)
+	emptyJob := postJSON[TaskResponse](t, server, "/api/storage/transfer/jobs", cookie, `{"sources":[],"destination":{"tunnel":"personal","rootId":"home","path":""},"conflictPolicy":"fail"}`)
 	if emptyJob.Status != "error" || emptyJob.Message != "No entries selected for transfer" {
 		t.Fatalf("unexpected empty transfer job response: %#v", emptyJob)
 	}
@@ -108,7 +108,7 @@ func TestDevelopmentSessionCompatibility(t *testing.T) {
 	request.Header.Set("X-Cagnard-User", "alice")
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
+	if response.Code < http.StatusOK || response.Code >= http.StatusMultipleChoices {
 		t.Fatalf("header session status = %d body = %s", response.Code, response.Body.String())
 	}
 }
@@ -231,7 +231,7 @@ func TestTransferRoutes(t *testing.T) {
 	assertFileContent(t, filepath.Join(global, "dirs", "tree", "child", "note.txt"), "tree")
 
 	writeTestFile(t, filepath.Join(home, "docs", "job.txt"), []byte("job-content"))
-	job := postJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs", "", `{"sources":[{"intent":"copy","tunnel":"personal","rootId":"home","path":"docs/job.txt"}],"destination":{"tunnel":"global","rootId":"shared","path":"jobs"},"conflictPolicy":"fail"}`)
+	job := postJSON[TaskResponse](t, server, "/api/storage/transfer/jobs", "", `{"sources":[{"intent":"copy","tunnel":"personal","rootId":"home","path":"docs/job.txt"}],"destination":{"tunnel":"global","rootId":"shared","path":"jobs"},"conflictPolicy":"fail"}`)
 	if job.ID == "" || len(job.Tasks) != 1 {
 		t.Fatalf("unexpected transfer job response: %#v", job)
 	}
@@ -245,7 +245,7 @@ func TestTransferRoutes(t *testing.T) {
 	assertFileContent(t, filepath.Join(global, "jobs", "job.txt"), "job-content")
 
 	writeTestFile(t, filepath.Join(home, "docs", "same-root.txt"), []byte("same-root"))
-	sameRootJob := postJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs", "", `{"sources":[{"intent":"copy","tunnel":"personal","rootId":"home","path":"docs/same-root.txt"}],"destination":{"tunnel":"personal","rootId":"home","path":"copies"},"conflictPolicy":"fail"}`)
+	sameRootJob := postJSON[TaskResponse](t, server, "/api/storage/transfer/jobs", "", `{"sources":[{"intent":"copy","tunnel":"personal","rootId":"home","path":"docs/same-root.txt"}],"destination":{"tunnel":"personal","rootId":"home","path":"copies"},"conflictPolicy":"fail"}`)
 	finalSameRootJob := waitTransferJob(t, server, sameRootJob.ID)
 	if finalSameRootJob.Status != "completed" || len(finalSameRootJob.Tasks) != 1 {
 		t.Fatalf("unexpected same-root transfer job: %#v", finalSameRootJob)
@@ -256,7 +256,7 @@ func TestTransferRoutes(t *testing.T) {
 	assertFileContent(t, filepath.Join(home, "copies", "same-root.txt"), "same-root")
 
 	writeTestFile(t, filepath.Join(home, "job-tree", "child", "note.txt"), []byte("job-tree"))
-	folderJob := postJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs", "", `{"sources":[{"intent":"copy","tunnel":"personal","rootId":"home","path":"job-tree"}],"destination":{"tunnel":"global","rootId":"shared","path":"jobs"},"conflictPolicy":"fail"}`)
+	folderJob := postJSON[TaskResponse](t, server, "/api/storage/transfer/jobs", "", `{"sources":[{"intent":"copy","tunnel":"personal","rootId":"home","path":"job-tree"}],"destination":{"tunnel":"global","rootId":"shared","path":"jobs"},"conflictPolicy":"fail"}`)
 	finalFolderJob := waitTransferJob(t, server, folderJob.ID)
 	if finalFolderJob.Status != "completed" || len(finalFolderJob.Tasks) != 1 || len(finalFolderJob.Tasks[0].Children) != 1 {
 		t.Fatalf("unexpected folder transfer task: %#v", finalFolderJob)
@@ -272,11 +272,11 @@ func TestTransferRoutes(t *testing.T) {
 
 	writeTestFile(t, filepath.Join(home, "docs", "job-conflict.txt"), []byte("new"))
 	writeTestFile(t, filepath.Join(global, "jobs", "job-conflict.txt"), []byte("old"))
-	blockedJob := postJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs", "", `{"sources":[{"intent":"copy","tunnel":"personal","rootId":"home","path":"docs/job-conflict.txt"}],"destination":{"tunnel":"global","rootId":"shared","path":"jobs"},"conflictPolicy":"fail"}`)
+	blockedJob := postJSON[TaskResponse](t, server, "/api/storage/transfer/jobs", "", `{"sources":[{"intent":"copy","tunnel":"personal","rootId":"home","path":"docs/job-conflict.txt"}],"destination":{"tunnel":"global","rootId":"shared","path":"jobs"},"conflictPolicy":"fail"}`)
 	if blockedJob.Status != "blocked" || blockedJob.ID == "" {
 		t.Fatalf("unexpected blocked transfer job: %#v", blockedJob)
 	}
-	resolvedJob := postJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs/"+blockedJob.ID+"/resolve", "", `{"conflictPolicy":"keep-both"}`)
+	resolvedJob := postJSON[TaskResponse](t, server, "/api/storage/transfer/jobs/"+blockedJob.ID+"/resolve", "", `{"conflictPolicy":"keep-both"}`)
 	if resolvedJob.ID != blockedJob.ID || resolvedJob.Status != "pending" {
 		t.Fatalf("expected conflict resolution to reuse task id, got: %#v", resolvedJob)
 	}
@@ -445,7 +445,7 @@ func doJSON[T any](t *testing.T, server *Server, request *http.Request) T {
 	t.Helper()
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
+	if response.Code < http.StatusOK || response.Code >= http.StatusMultipleChoices {
 		t.Fatalf("%s status = %d body = %s", request.URL.Path, response.Code, response.Body.String())
 	}
 	var out T
@@ -550,6 +550,7 @@ func newTransferTestServer(t *testing.T) (*Server, string, string) {
 		},
 		Users: []config.ConfiguredUser{
 			{ID: "alice", DisplayName: "Alice", Roles: []string{"user"}, Groups: []string{}, Claims: map[string]string{}},
+			{ID: "bob", DisplayName: "Bob", Roles: []string{"user"}, Groups: []string{}, Claims: map[string]string{}},
 		},
 		Providers: []config.ProviderConfig{
 			{ID: "unix", Type: "filesystem", Family: "filesystem", DisplayName: "Unix filesystem", Settings: map[string]string{}},
@@ -588,11 +589,11 @@ func assertFileContent(t *testing.T, path string, expected string) {
 	}
 }
 
-func waitTransferJob(t *testing.T, server *Server, id string) TransferJobResponse {
+func waitTransferJob(t *testing.T, server *Server, id string) TaskResponse {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		job := getJSON[TransferJobResponse](t, server, "/api/storage/transfer/jobs/"+id)
+		job := getJSON[TaskResponse](t, server, "/api/storage/transfer/jobs/"+id)
 		switch job.Status {
 		case "completed", "error", "failed", "canceled", "partial", "blocked":
 			return job

@@ -37,8 +37,9 @@ Cagnard is a self-hosted, provider-neutral storage browser. Start with a runnabl
 - [Storage providers and capabilities](architecture/storage-plugins.md)
 - [First-party file openers](architecture/file-openers.md)
 - [Structured-data runtime and limits](architecture/structured-data-limits.md)
-- [Transfer task engine](architecture/transfer-jobs.md)
+- [Background task engine](architecture/tasks.md)
 - [Configuration reference](reference/configuration.md)
+- [Task API reference](reference/task-api.md)
 - [Provider capability reference](reference/provider-capabilities.md)
 
 ## Contribute

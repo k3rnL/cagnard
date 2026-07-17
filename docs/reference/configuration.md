@@ -7,7 +7,7 @@ This reference describes the implemented HOCON model. See [Configuration](../ope
 | Key | Purpose |
 | --- | --- |
 | `server` | HTTP bind host and port |
-| `tasks` | Transfer worker limits |
+| `tasks` | Background task worker limits |
 | `appearance` | Operator palette/mode defaults and user override policy |
 | `auth` | Authentication mode, session, static provider, future OIDC declarations |
 | `users` | Configured identities and static verifier material |
@@ -27,7 +27,10 @@ This reference describes the implemented HOCON model. See [Configuration](../ope
 
 | Field | Type | Default |
 | --- | --- | --- |
-| `maxConcurrentTransfers` | positive integer | `4` |
+| `maxConcurrentItems` | positive integer | `4` |
+| `maxConcurrentTransfers` | positive integer | compatibility fallback |
+
+`maxConcurrentItems` bounds eligible copy, move, delete, and browser-fed upload items. Incremental ZIP reads remain sequential. When the generic key is absent, Cagnard uses `maxConcurrentTransfers`; new configurations should use only `maxConcurrentItems`.
 
 ## `appearance`
 

@@ -15,17 +15,18 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	awscfg "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
-	smithymiddleware "github.com/aws/smithy-go/middleware"
 	"github.com/k3rnl/cagnard/backend-go/internal/config"
 )
 
 const defaultMaxBufferedObjectBytes int64 = 64 * 1024 * 1024
+const s3MultipartThreshold int64 = 64 * 1024 * 1024
+const s3MultipartDefaultPartSize int64 = 8 * 1024 * 1024
+const s3MultipartMaximumParts int64 = 10000
 
 type S3StorageProvider struct {
 	descriptor ProviderDescriptor
@@ -63,6 +64,14 @@ type S3ObjectClient interface {
 	StreamPut(bucket string, key string, input io.Reader, info FileContentInfo, contentType *string, onBytes func(int64)) (S3ObjectMetadata, error)
 	Copy(bucket string, sourceKey string, targetKey string) (S3ObjectMetadata, error)
 	Delete(bucket string, key string) error
+}
+
+type S3ContextObjectClient interface {
+	ListContext(ctx context.Context, bucket string, prefix string, delimiter string, continuationToken *string, maxKeys int32) (S3ListPage, error)
+	StreamGetContext(ctx context.Context, bucket string, key string, output io.Writer, onBytes func(int64)) (S3ObjectMetadata, error)
+	StreamPutContext(ctx context.Context, bucket string, key string, input io.Reader, info FileContentInfo, contentType *string, onBytes func(int64)) (S3ObjectMetadata, error)
+	DeleteContext(ctx context.Context, bucket string, key string) error
+	DeleteBatchContext(ctx context.Context, bucket string, keys []string) map[string]error
 }
 
 type S3ListPage struct {
@@ -437,11 +446,23 @@ func (p *S3StorageProvider) Move(root ResolvedStorageRoot, sourcePath string, ta
 }
 
 func (p *S3StorageProvider) StreamRead(root ResolvedStorageRoot, path string, output io.Writer, onBytes func(int64)) (FileContentInfo, error) {
+	return p.StreamReadContext(context.Background(), root, path, output, onBytes)
+}
+
+func (p *S3StorageProvider) StreamReadContext(ctx context.Context, root ResolvedStorageRoot, path string, output io.Writer, onBytes func(int64)) (FileContentInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return FileContentInfo{}, err
+	}
 	target, client, relative, err := p.objectRequest(root, path, "Cannot stream S3 storage root")
 	if err != nil {
 		return FileContentInfo{}, err
 	}
-	metadata, err := client.StreamGet(target.Bucket, keyFor(target, relative, false), output, onBytes)
+	var metadata S3ObjectMetadata
+	if contextual, ok := client.(S3ContextObjectClient); ok {
+		metadata, err = contextual.StreamGetContext(ctx, target.Bucket, keyFor(target, relative, false), output, onBytes)
+	} else {
+		metadata, err = client.StreamGet(target.Bucket, keyFor(target, relative, false), contextWriter{ctx: ctx, writer: output}, onBytes)
+	}
 	if err != nil {
 		return FileContentInfo{}, err
 	}
@@ -518,6 +539,13 @@ func (p *S3StorageProvider) Watch(root ResolvedStorageRoot, path string, cancel 
 }
 
 func (p *S3StorageProvider) StreamWrite(root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error) {
+	return p.StreamWriteContext(context.Background(), root, path, input, info, overwrite, onBytes)
+}
+
+func (p *S3StorageProvider) StreamWriteContext(ctx context.Context, root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return StorageEntry{}, err
+	}
 	if err := ensureWritable(root); err != nil {
 		return StorageEntry{}, err
 	}
@@ -542,11 +570,156 @@ func (p *S3StorageProvider) StreamWrite(root ResolvedStorageRoot, path string, i
 	} else if exists && !overwrite {
 		return StorageEntry{}, errors.New("Target already exists")
 	}
-	metadata, err := client.StreamPut(target.Bucket, key, input, info, contentType(relative), onBytes)
+	var metadata S3ObjectMetadata
+	if contextual, ok := client.(S3ContextObjectClient); ok {
+		metadata, err = contextual.StreamPutContext(ctx, target.Bucket, key, input, info, contentType(relative), onBytes)
+	} else {
+		metadata, err = client.StreamPut(target.Bucket, key, contextReader{ctx: ctx, reader: input}, info, contentType(relative), onBytes)
+	}
 	if err != nil {
 		return StorageEntry{}, err
 	}
 	return p.fileEntry(root, target, metadata), nil
+}
+
+func (p *S3StorageProvider) DeleteRecursive(ctx context.Context, root ResolvedStorageRoot, relativePath string, onItem func(DeleteItemEvent)) (DeleteSummary, error) {
+	if err := ensureWritable(root); err != nil {
+		return DeleteSummary{}, err
+	}
+	target, err := objectTarget(root)
+	if err != nil {
+		return DeleteSummary{}, err
+	}
+	client, err := p.client(root)
+	if err != nil {
+		return DeleteSummary{}, err
+	}
+	relative, err := normalizeObjectPath(relativePath)
+	if err != nil {
+		return DeleteSummary{}, err
+	}
+	if relative == "" {
+		return DeleteSummary{}, errors.New("Cannot delete S3 storage root")
+	}
+	if err := ctx.Err(); err != nil {
+		return DeleteSummary{}, err
+	}
+	exactKey := keyFor(target, relative, false)
+	if exists, existsErr := client.Exists(target.Bucket, exactKey); existsErr != nil {
+		return DeleteSummary{}, existsErr
+	} else if exists {
+		event := DeleteItemEvent{Path: relative, Name: fileName(relative), Kind: "file", Status: "running"}
+		if metadata, headErr := client.Head(target.Bucket, exactKey); headErr == nil {
+			event.Size = metadata.Size
+		}
+		if onItem != nil {
+			onItem(event)
+		}
+		err := s3DeleteContext(ctx, client, target.Bucket, exactKey)
+		if err != nil {
+			event.Status, event.Message = "error", err.Error()
+			if onItem != nil {
+				onItem(event)
+			}
+			return DeleteSummary{Discovered: 1, Failed: 1}, err
+		}
+		event.Status, event.Message = "completed", "Deleted"
+		if onItem != nil {
+			onItem(event)
+		}
+		return DeleteSummary{Discovered: 1, Deleted: 1}, nil
+	}
+
+	prefix := keyFor(target, relative, true)
+	objects := make([]S3ListedObject, 0)
+	var token *string
+	for pages := 0; ; pages++ {
+		if err := ctx.Err(); err != nil {
+			return DeleteSummary{Discovered: len(objects)}, err
+		}
+		if pages >= p.settings.MaxListPages {
+			return DeleteSummary{Discovered: len(objects)}, fmt.Errorf("S3 listing exceeded configured page limit of %d", p.settings.MaxListPages)
+		}
+		page, pageErr := s3ListContext(ctx, client, target.Bucket, prefix, "", token, 1000)
+		if pageErr != nil {
+			return DeleteSummary{Discovered: len(objects)}, pageErr
+		}
+		objects = append(objects, page.Objects...)
+		if page.NextContinuationToken == nil || *page.NextContinuationToken == "" {
+			break
+		}
+		token = page.NextContinuationToken
+	}
+	if len(objects) == 0 {
+		return DeleteSummary{}, fmt.Errorf("Path does not exist: %s", relativePath)
+	}
+	for _, object := range objects {
+		if onItem != nil {
+			rel := relativeKey(target, object.Key)
+			onItem(DeleteItemEvent{Path: strings.TrimSuffix(rel, "/"), Name: fileName(strings.TrimSuffix(rel, "/")), Kind: map[bool]string{true: "directory", false: "file"}[isFolderMarker(object.Key)], Status: "running", Size: object.Size})
+		}
+	}
+	summary := DeleteSummary{Discovered: len(objects)}
+	var failures []error
+	for start := 0; start < len(objects); start += 1000 {
+		if err := ctx.Err(); err != nil {
+			return summary, errors.Join(append(failures, err)...)
+		}
+		end := min(len(objects), start+1000)
+		keys := make([]string, 0, end-start)
+		for _, object := range objects[start:end] {
+			keys = append(keys, object.Key)
+		}
+		batchErrors := s3DeleteBatchContext(ctx, client, target.Bucket, keys)
+		for _, object := range objects[start:end] {
+			rel := strings.TrimSuffix(relativeKey(target, object.Key), "/")
+			event := DeleteItemEvent{Path: rel, Name: fileName(rel), Kind: map[bool]string{true: "directory", false: "file"}[isFolderMarker(object.Key)], Status: "completed", Message: "Deleted", Size: object.Size}
+			if itemErr := batchErrors[object.Key]; itemErr != nil {
+				event.Status, event.Message = "error", itemErr.Error()
+				summary.Failed++
+				failures = append(failures, itemErr)
+			} else {
+				summary.Deleted++
+			}
+			if onItem != nil {
+				onItem(event)
+			}
+		}
+	}
+	return summary, errors.Join(failures...)
+}
+
+func s3ListContext(ctx context.Context, client S3ObjectClient, bucket string, prefix string, delimiter string, token *string, maxKeys int32) (S3ListPage, error) {
+	if err := ctx.Err(); err != nil {
+		return S3ListPage{}, err
+	}
+	if contextual, ok := client.(S3ContextObjectClient); ok {
+		return contextual.ListContext(ctx, bucket, prefix, delimiter, token, maxKeys)
+	}
+	return client.List(bucket, prefix, delimiter, token, maxKeys)
+}
+
+func s3DeleteContext(ctx context.Context, client S3ObjectClient, bucket string, key string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if contextual, ok := client.(S3ContextObjectClient); ok {
+		return contextual.DeleteContext(ctx, bucket, key)
+	}
+	return client.Delete(bucket, key)
+}
+
+func s3DeleteBatchContext(ctx context.Context, client S3ObjectClient, bucket string, keys []string) map[string]error {
+	if contextual, ok := client.(S3ContextObjectClient); ok {
+		return contextual.DeleteBatchContext(ctx, bucket, keys)
+	}
+	out := map[string]error{}
+	for _, key := range keys {
+		if err := s3DeleteContext(ctx, client, bucket, key); err != nil {
+			out[key] = err
+		}
+	}
+	return out
 }
 
 func (p *S3StorageProvider) objectRequest(root ResolvedStorageRoot, path string, emptyMessage string) (ObjectStoreRootTarget, S3ObjectClient, string, error) {
@@ -936,19 +1109,6 @@ func filteredMap(values map[string]string) map[string]string {
 	return out
 }
 
-type progressReader struct {
-	reader  io.Reader
-	onBytes func(int64)
-}
-
-func (r progressReader) Read(p []byte) (int, error) {
-	count, err := r.reader.Read(p)
-	if count > 0 && r.onBytes != nil {
-		r.onBytes(int64(count))
-	}
-	return count, err
-}
-
 func s3ProviderSettingsFromConfig(provider config.ProviderConfig) (S3ProviderSettings, error) {
 	region := strings.TrimSpace(provider.Settings["region"])
 	if region == "" {
@@ -1105,11 +1265,18 @@ func NewAwsS3ObjectClient(provider S3ProviderSettings, account S3AccountSettings
 }
 
 func (c *AwsS3ObjectClient) List(bucket string, prefix string, delimiter string, continuationToken *string, maxKeys int32) (S3ListPage, error) {
-	input := &s3.ListObjectsV2Input{Bucket: &bucket, Prefix: &prefix, Delimiter: &delimiter, ContinuationToken: continuationToken}
+	return c.ListContext(context.Background(), bucket, prefix, delimiter, continuationToken, maxKeys)
+}
+
+func (c *AwsS3ObjectClient) ListContext(ctx context.Context, bucket string, prefix string, delimiter string, continuationToken *string, maxKeys int32) (S3ListPage, error) {
+	input := &s3.ListObjectsV2Input{Bucket: &bucket, Prefix: &prefix, ContinuationToken: continuationToken}
+	if delimiter != "" {
+		input.Delimiter = &delimiter
+	}
 	if maxKeys > 0 {
 		input.MaxKeys = &maxKeys
 	}
-	out, err := c.client.ListObjectsV2(context.Background(), input)
+	out, err := c.client.ListObjectsV2(ctx, input)
 	if err != nil {
 		return S3ListPage{}, safeS3Error(err)
 	}
@@ -1171,7 +1338,11 @@ func (c *AwsS3ObjectClient) Put(bucket string, key string, body []byte, contentT
 }
 
 func (c *AwsS3ObjectClient) StreamGet(bucket string, key string, output io.Writer, onBytes func(int64)) (S3ObjectMetadata, error) {
-	out, err := c.client.GetObject(context.Background(), &s3.GetObjectInput{Bucket: &bucket, Key: &key})
+	return c.StreamGetContext(context.Background(), bucket, key, output, onBytes)
+}
+
+func (c *AwsS3ObjectClient) StreamGetContext(ctx context.Context, bucket string, key string, output io.Writer, onBytes func(int64)) (S3ObjectMetadata, error) {
+	out, err := c.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &bucket, Key: &key})
 	if err != nil {
 		return S3ObjectMetadata{}, safeS3Error(err)
 	}
@@ -1195,22 +1366,119 @@ func (c *AwsS3ObjectClient) RangeGet(bucket string, key string, offset int64, le
 }
 
 func (c *AwsS3ObjectClient) StreamPut(bucket string, key string, input io.Reader, info FileContentInfo, contentType *string, onBytes func(int64)) (S3ObjectMetadata, error) {
-	body := progressReader{reader: input, onBytes: onBytes}
-	put := &s3.PutObjectInput{Bucket: &bucket, Key: &key, Body: body, ContentType: contentType}
+	return c.StreamPutContext(context.Background(), bucket, key, input, info, contentType, onBytes)
+}
+
+func (c *AwsS3ObjectClient) StreamPutContext(ctx context.Context, bucket string, key string, input io.Reader, info FileContentInfo, contentType *string, onBytes func(int64)) (S3ObjectMetadata, error) {
+	seekable, canSeek := input.(io.ReadSeeker)
+	if !canSeek || info.Size == nil || *info.Size > s3MultipartThreshold {
+		return c.multipartStreamPut(ctx, bucket, key, input, info, contentType, onBytes)
+	}
+	put := &s3.PutObjectInput{Bucket: &bucket, Key: &key, Body: seekable, ContentType: contentType}
 	if info.Size != nil {
 		put.ContentLength = info.Size
 	}
-	_, err := c.client.PutObject(context.Background(), put, s3.WithAPIOptions(useUnsignedPayload))
+	_, err := c.client.PutObject(ctx, put)
 	if err != nil {
 		return S3ObjectMetadata{}, safeS3Error(err)
 	}
-	return c.Head(bucket, key)
+	if onBytes != nil && info.Size != nil {
+		onBytes(*info.Size)
+	}
+	out, err := c.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &bucket, Key: &key})
+	if err != nil {
+		return S3ObjectMetadata{}, safeS3Error(err)
+	}
+	return metadataFromHead(key, out), nil
 }
 
-func useUnsignedPayload(stack *smithymiddleware.Stack) error {
-	v4.RemoveContentSHA256HeaderMiddleware(stack)
-	v4.RemoveComputePayloadSHA256Middleware(stack)
-	return v4.AddUnsignedPayloadMiddleware(stack)
+func (c *AwsS3ObjectClient) multipartStreamPut(ctx context.Context, bucket string, key string, input io.Reader, info FileContentInfo, contentType *string, onBytes func(int64)) (S3ObjectMetadata, error) {
+	created, err := c.client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{Bucket: &bucket, Key: &key, ContentType: contentType})
+	if err != nil {
+		return S3ObjectMetadata{}, safeS3Error(err)
+	}
+	uploadID := created.UploadId
+	completed := false
+	defer func() {
+		if completed || uploadID == nil {
+			return
+		}
+		abortCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, _ = c.client.AbortMultipartUpload(abortCtx, &s3.AbortMultipartUploadInput{Bucket: &bucket, Key: &key, UploadId: uploadID})
+	}()
+
+	partSize := s3MultipartPartSize(info.Size)
+	parts := make([]types.CompletedPart, 0)
+	reader := contextReader{ctx: ctx, reader: input}
+	for partNumber := int32(1); ; partNumber++ {
+		if int64(partNumber) > s3MultipartMaximumParts {
+			return S3ObjectMetadata{}, fmt.Errorf("S3 multipart upload exceeded %d parts", s3MultipartMaximumParts)
+		}
+		buffer := make([]byte, int(partSize))
+		read, readErr := io.ReadFull(reader, buffer)
+		if read == 0 && readErr == io.EOF {
+			break
+		}
+		if readErr != nil && readErr != io.ErrUnexpectedEOF {
+			return S3ObjectMetadata{}, readErr
+		}
+		buffer = buffer[:read]
+		length := int64(read)
+		uploaded, uploadErr := c.client.UploadPart(ctx, &s3.UploadPartInput{
+			Bucket: &bucket, Key: &key, UploadId: uploadID, PartNumber: &partNumber,
+			Body: bytes.NewReader(buffer), ContentLength: &length,
+		})
+		if uploadErr != nil {
+			return S3ObjectMetadata{}, safeS3Error(uploadErr)
+		}
+		parts = append(parts, types.CompletedPart{ETag: uploaded.ETag, PartNumber: &partNumber})
+		if onBytes != nil {
+			onBytes(length)
+		}
+		if readErr == io.ErrUnexpectedEOF {
+			break
+		}
+	}
+	if len(parts) == 0 {
+		uploaded, uploadErr := c.client.UploadPart(ctx, &s3.UploadPartInput{
+			Bucket: &bucket, Key: &key, UploadId: uploadID, PartNumber: aws.Int32(1),
+			Body: bytes.NewReader(nil), ContentLength: aws.Int64(0),
+		})
+		if uploadErr != nil {
+			return S3ObjectMetadata{}, safeS3Error(uploadErr)
+		}
+		parts = append(parts, types.CompletedPart{ETag: uploaded.ETag, PartNumber: aws.Int32(1)})
+	}
+	if err := ctx.Err(); err != nil {
+		return S3ObjectMetadata{}, err
+	}
+	_, err = c.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
+		Bucket: &bucket, Key: &key, UploadId: uploadID,
+		MultipartUpload: &types.CompletedMultipartUpload{Parts: parts},
+	})
+	if err != nil {
+		return S3ObjectMetadata{}, safeS3Error(err)
+	}
+	completed = true
+	out, err := c.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &bucket, Key: &key})
+	if err != nil {
+		return S3ObjectMetadata{}, safeS3Error(err)
+	}
+	return metadataFromHead(key, out), nil
+}
+
+func s3MultipartPartSize(size *int64) int64 {
+	partSize := s3MultipartDefaultPartSize
+	if size == nil || *size <= 0 {
+		return partSize
+	}
+	required := (*size + s3MultipartMaximumParts - 1) / s3MultipartMaximumParts
+	if required > partSize {
+		partSize = required
+	}
+	const mebibyte int64 = 1024 * 1024
+	return ((partSize + mebibyte - 1) / mebibyte) * mebibyte
 }
 
 func (c *AwsS3ObjectClient) Copy(bucket string, sourceKey string, targetKey string) (S3ObjectMetadata, error) {
@@ -1223,11 +1491,44 @@ func (c *AwsS3ObjectClient) Copy(bucket string, sourceKey string, targetKey stri
 }
 
 func (c *AwsS3ObjectClient) Delete(bucket string, key string) error {
-	_, err := c.client.DeleteObject(context.Background(), &s3.DeleteObjectInput{Bucket: &bucket, Key: &key})
+	return c.DeleteContext(context.Background(), bucket, key)
+}
+
+func (c *AwsS3ObjectClient) DeleteContext(ctx context.Context, bucket string, key string) error {
+	_, err := c.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: &bucket, Key: &key})
 	if err != nil {
 		return safeS3Error(err)
 	}
 	return nil
+}
+
+func (c *AwsS3ObjectClient) DeleteBatchContext(ctx context.Context, bucket string, keys []string) map[string]error {
+	result := map[string]error{}
+	if len(keys) == 0 {
+		return result
+	}
+	objects := make([]types.ObjectIdentifier, 0, len(keys))
+	for _, key := range keys {
+		value := key
+		objects = append(objects, types.ObjectIdentifier{Key: &value})
+	}
+	out, err := c.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{Bucket: &bucket, Delete: &types.Delete{Objects: objects, Quiet: aws.Bool(false)}})
+	if err != nil {
+		safe := safeS3Error(err)
+		for _, key := range keys {
+			result[key] = safe
+		}
+		return result
+	}
+	for _, item := range out.Errors {
+		key := stringPtrValue(item.Key)
+		message := "S3 delete failed"
+		if value := firstNonEmpty(stringPtrValue(item.Message), stringPtrValue(item.Code)); value != nil {
+			message = *value
+		}
+		result[key] = errors.New(message)
+	}
+	return result
 }
 
 func metadataFromHead(key string, out *s3.HeadObjectOutput) S3ObjectMetadata {

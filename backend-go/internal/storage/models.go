@@ -1,6 +1,9 @@
 package storage
 
-import "io"
+import (
+	"context"
+	"io"
+)
 
 type CapabilityStatus struct {
 	Name        string
@@ -113,6 +116,21 @@ type TextPreview struct {
 	TotalSize  *int64
 }
 
+type DeleteItemEvent struct {
+	Path    string
+	Name    string
+	Kind    string
+	Status  string
+	Message string
+	Size    *int64
+}
+
+type DeleteSummary struct {
+	Discovered int
+	Deleted    int
+	Failed     int
+}
+
 type StorageProvider interface {
 	Descriptor() ProviderDescriptor
 	Capabilities(root ResolvedStorageRoot) []CapabilityStatus
@@ -132,6 +150,7 @@ type StorageProvider interface {
 	Move(root ResolvedStorageRoot, sourcePath string, targetPath string, overwrite bool) (StorageEntry, error)
 	ContentInfo(root ResolvedStorageRoot, path string) (FileContentInfo, error)
 	StreamRead(root ResolvedStorageRoot, path string, output io.Writer, onBytes func(int64)) (FileContentInfo, error)
+	StreamReadContext(ctx context.Context, root ResolvedStorageRoot, path string, output io.Writer, onBytes func(int64)) (FileContentInfo, error)
 	// RangeRead returns a reader over [offset, offset+length) of the file content.
 	// A negative length reads to the end of the file. The returned FileContentInfo
 	// reports the total file size, not the range length.
@@ -140,4 +159,6 @@ type StorageProvider interface {
 	// returned channel is closed by the provider when watching stops.
 	Watch(root ResolvedStorageRoot, path string, cancel <-chan struct{}) (<-chan FileWatchEvent, error)
 	StreamWrite(root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error)
+	StreamWriteContext(ctx context.Context, root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error)
+	DeleteRecursive(ctx context.Context, root ResolvedStorageRoot, path string, onItem func(DeleteItemEvent)) (DeleteSummary, error)
 }

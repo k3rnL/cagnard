@@ -62,6 +62,7 @@ type ServerConfig struct {
 
 type TaskConfig struct {
 	MaxConcurrentTransfers int
+	MaxConcurrentItems     int
 }
 
 type AuthConfig struct {

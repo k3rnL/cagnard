@@ -38,7 +38,7 @@ The chart can route `/api` to the backend through one Ingress when `ingress.rout
 
 ## Filesystem Storage
 
-Container filesystems are ephemeral. If a filesystem provider stores real data, mount a persistent volume at the exact path used by each root. Ensure the backend process can read and, for writable roots, create content there. Multiple backend replicas must see the same filesystem and still do not share transfer-task memory.
+Container filesystems are ephemeral. If a filesystem provider stores real data, mount a persistent volume at the exact path used by each root. Ensure the backend process can read and, for writable roots, create content there. Multiple backend replicas must see the same filesystem and still do not share task memory.
 
 S3 roots do not need a data volume, but their endpoint and credentials must be reachable from every backend pod.
 
@@ -56,9 +56,15 @@ kubectl port-forward service/cagnard-frontend 5173:80
 
 Then test authentication, visible roots, one listing, and expected read-only behavior.
 
+## Streaming Proxy Settings
+
+Downloads and uploads are long-lived streaming requests. Configure ingress and reverse-proxy read, send, and request-body timeouts for the largest expected operation. Disable response buffering for `/api/tasks/*/content`; disable request buffering for `/api/tasks/*/uploads/*` when the proxy would otherwise store a complete upload before forwarding it.
+
+Do not impose a proxy body-size limit below the intended maximum file size. Preserve byte-range headers and avoid middleware that transforms ZIP or binary responses. A stream failure after headers is reported in the task queue and server logs because the response can no longer become a JSON error.
+
 ## Scaling Limits
 
-The request API is stateless, but active transfer jobs are currently held in backend memory. A backend restart loses active task state, and replicas do not share a queue. Until a durable task store is introduced, use one backend replica when users depend on transfer progress and conflict resolution. Provider data already written remains in the provider.
+The request API is stateless, but active tasks are held in backend memory. A backend restart loses active task state, and replicas do not share the queue, authenticated download URLs, or upload manifests. Until a durable task store is introduced, use one backend replica. If multiple replicas are unavoidable, configure session affinity so task creation, polling, and streaming reach the same process. Provider data already written remains in the provider.
 
 ## Production Checklist
 
@@ -66,6 +72,7 @@ The request API is stateless, but active transfer jobs are currently held in bac
 - Use TLS and secure cookies.
 - Mount durable filesystem roots or use external object storage.
 - Apply CPU/memory requests and limits based on transfer and opener workloads.
+- Set streaming timeouts and buffering rules for large upload/download requests.
 - Restrict backend network access and filesystem mounts to required providers.
 - Configure log collection without secret-bearing configuration dumps.
 - Validate backup, object versioning, retention, and deletion behavior at the provider layer.

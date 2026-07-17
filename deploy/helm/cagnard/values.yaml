@@ -26,6 +26,10 @@ backend:
           port = 8080
         }
 
+        tasks {
+          maxConcurrentItems = 4
+        }
+
         appearance {
           defaultPalette = classic
           defaultMode = system

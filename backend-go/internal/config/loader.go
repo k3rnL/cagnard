@@ -56,9 +56,7 @@ func decode(root hocon.Object) (*CagnardConfig, error) {
 			DefaultMode:       AppearanceMode(stringOrDefault(appearance, "defaultMode", string(AppearanceModeSystem))),
 			AllowUserOverride: boolOrDefault(appearance, "allowUserOverride", true),
 		},
-		Tasks: TaskConfig{
-			MaxConcurrentTransfers: intOrDefault(tasks, "maxConcurrentTransfers", 4),
-		},
+		Tasks: decodeTaskConfig(tasks),
 		Auth: AuthConfig{
 			Mode:                   optionalString(auth, "mode"),
 			ConfiguredUsersEnabled: boolOrDefault(auth, "configuredUsersEnabled", false),
@@ -73,6 +71,15 @@ func decode(root hocon.Object) (*CagnardConfig, error) {
 		PersonalStorage: decodeStorageRoots(arrayAt(root, "personalStorage")),
 		GlobalStorage:   decodeStorageRoots(arrayAt(root, "globalStorage")),
 	}, nil
+}
+
+func decodeTaskConfig(tasks hocon.Object) TaskConfig {
+	transfers := intOrDefault(tasks, "maxConcurrentTransfers", 4)
+	items := transfers
+	if configured := optionalInt64(tasks, "maxConcurrentItems"); configured != nil {
+		items = int(*configured)
+	}
+	return TaskConfig{MaxConcurrentTransfers: transfers, MaxConcurrentItems: items}
 }
 
 func decodeSession(obj hocon.Object) *SessionConfig {
@@ -232,6 +239,12 @@ func validate(path string, cfg *CagnardConfig) error {
 	}
 	if !validAppearanceModes[appearance.DefaultMode] {
 		errs = append(errs, "appearance.defaultMode must be one of dark, light, system")
+	}
+	if cfg.Tasks.MaxConcurrentItems <= 0 {
+		errs = append(errs, "tasks.maxConcurrentItems must be a positive integer")
+	}
+	if cfg.Tasks.MaxConcurrentTransfers <= 0 {
+		errs = append(errs, "tasks.maxConcurrentTransfers must be a positive integer when configured")
 	}
 	if !validModes[authMode] {
 		errs = append(errs, "auth.mode must be one of development, external, static")

@@ -12,6 +12,10 @@ backend:
           port = 8080
         }
 
+        tasks {
+          maxConcurrentItems = 4
+        }
+
         appearance {
           defaultPalette = solar
           defaultMode = system

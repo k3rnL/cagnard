@@ -19,6 +19,9 @@ func TestLoadExampleConfig(t *testing.T) {
 	if cfg.Tasks.MaxConcurrentTransfers != 4 {
 		t.Fatalf("max concurrent transfers = %d", cfg.Tasks.MaxConcurrentTransfers)
 	}
+	if cfg.Tasks.MaxConcurrentItems != 4 {
+		t.Fatalf("max concurrent items = %d", cfg.Tasks.MaxConcurrentItems)
+	}
 	if cfg.Appearance != DefaultAppearanceConfig() {
 		t.Fatalf("appearance = %#v", cfg.Appearance)
 	}
@@ -54,6 +57,26 @@ func TestAppearanceConfiguration(t *testing.T) {
 	}
 	if configured.Appearance.DefaultPalette != AppearancePaletteSolar || configured.Appearance.DefaultMode != AppearanceModeDark || configured.Appearance.AllowUserOverride {
 		t.Fatalf("configured appearance = %#v", configured.Appearance)
+	}
+}
+
+func TestTaskConcurrencyConfigurationAndCompatibilityFallback(t *testing.T) {
+	legacy, err := Load(writeConfigFixture(t, `tasks { maxConcurrentTransfers = 7 }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Tasks.MaxConcurrentItems != 7 {
+		t.Fatalf("legacy task fallback = %d", legacy.Tasks.MaxConcurrentItems)
+	}
+	configured, err := Load(writeConfigFixture(t, `tasks { maxConcurrentTransfers = 7, maxConcurrentItems = 3 }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if configured.Tasks.MaxConcurrentItems != 3 {
+		t.Fatalf("generic task concurrency = %d", configured.Tasks.MaxConcurrentItems)
+	}
+	if _, err := Load(writeConfigFixture(t, `tasks { maxConcurrentItems = 0 }`)); err == nil || !strings.Contains(err.Error(), "tasks.maxConcurrentItems") {
+		t.Fatalf("invalid task concurrency error = %v", err)
 	}
 }
 

@@ -10,11 +10,16 @@ import type {
   PreviewResponse,
   SessionResponse,
   StorageEntry,
+  DeleteTaskRequest,
+  DownloadTaskRequest,
+  ResolveTaskRequest,
+  TaskItemPage,
+  TaskListResponse,
+  TaskResponse,
   TransferRequest,
-  ResolveTransferJobRequest,
-  TransferJobListResponse,
-  TransferJobResponse,
-  TransferResponse
+  TransferResponse,
+  UploadItemResponse,
+  UploadTaskRequest
 } from "./types";
 
 interface ApiResponseBody {
@@ -197,26 +202,56 @@ export const cagnardApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request)
     }),
-  startTransferJob: (request: TransferRequest) =>
-    fetchJson<TransferJobResponse>("/api/storage/transfer/jobs", {
+  startTransferTask: (request: TransferRequest) =>
+    fetchJson<TaskResponse>("/api/tasks/transfers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request)
     }),
-  transferJobs: () => fetchJson<TransferJobListResponse>("/api/storage/transfer/jobs"),
-  transferJob: (jobId: string) => fetchJson<TransferJobResponse>(`/api/storage/transfer/jobs/${encodeURIComponent(jobId)}`),
-  resolveTransferJob: (jobId: string, request: ResolveTransferJobRequest) =>
-    fetchJson<TransferJobResponse>(`/api/storage/transfer/jobs/${encodeURIComponent(jobId)}/resolve`, {
+  startDeleteTask: (request: DeleteTaskRequest) =>
+    fetchJson<TaskResponse>("/api/tasks/deletes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request)
     }),
-  cancelTransferJob: (jobId: string) =>
-    fetchJson<TransferJobResponse>(`/api/storage/transfer/jobs/${encodeURIComponent(jobId)}/cancel`, {
+  startDownloadTask: (request: DownloadTaskRequest) =>
+    fetchJson<TaskResponse>("/api/tasks/downloads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    }),
+  startUploadTask: (request: UploadTaskRequest) =>
+    fetchJson<TaskResponse>("/api/tasks/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    }),
+  uploadTaskItem: (taskId: string, itemId: string, body: BodyInit, contentType: string, signal?: AbortSignal) =>
+    fetchJson<UploadItemResponse>(`/api/tasks/${encodeURIComponent(taskId)}/uploads/${encodeURIComponent(itemId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": contentType || "application/octet-stream" },
+      body,
+      signal
+    }),
+  tasks: () => fetchJson<TaskListResponse>("/api/tasks"),
+  task: (taskId: string) => fetchJson<TaskResponse>(`/api/tasks/${encodeURIComponent(taskId)}`),
+  taskItems: (taskId: string, pageRef?: string, pageSize = 100) => {
+    const params = new URLSearchParams({ pageSize: String(pageSize) });
+    if (pageRef) params.set("pageRef", pageRef);
+    return fetchJson<TaskItemPage>(`/api/tasks/${encodeURIComponent(taskId)}/items?${params}`);
+  },
+  resolveTask: (taskId: string, request: ResolveTaskRequest) =>
+    fetchJson<TaskResponse>(`/api/tasks/${encodeURIComponent(taskId)}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    }),
+  cancelTask: (taskId: string) =>
+    fetchJson<TaskResponse>(`/api/tasks/${encodeURIComponent(taskId)}/cancel`, {
       method: "POST"
     }),
-  clearTransferJobs: () =>
-    fetchJson<OperationResponse>("/api/storage/transfer/jobs/clear", {
+  clearTasks: () =>
+    fetchJson<OperationResponse>("/api/tasks/clear", {
       method: "POST"
     })
 };

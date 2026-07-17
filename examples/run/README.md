@@ -10,6 +10,8 @@ Each directory is a complete Cagnard starter environment. Docker Compose uses ma
 
 All examples use `alice` / `cagnard` as local demo credentials and expose the frontend at `http://127.0.0.1:5173` unless `.env` overrides the port.
 
+The examples enable the generic task queue with four concurrent child items. They can be used immediately to exercise background recursive deletion, native single-file and ZIP downloads, multi-file or directory uploads, and copy or move between the configured roots. Keep the browser tab open while an upload is running because the browser supplies those file streams.
+
 ## Standard Workflow
 
 ```bash

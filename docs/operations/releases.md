@@ -48,7 +48,7 @@ Keep `backend.image.tag` and `frontend.image.tag` aligned with the application r
 - Back up the active HOCON and Helm values without exposing them in tickets or logs.
 - Confirm changed configuration keys, removed API contracts, and migration diagnostics.
 - Test provider listing, login, file opening, and a transfer against non-production data.
-- Account for active in-memory transfer tasks; let them finish before restarting the backend.
+- Account for active in-memory tasks and browser streams; let them finish before restarting the backend.
 - Confirm the chart and images exist in GHCR before rollout.
 
 Release verification should include anonymous image and chart pulls when the project promises public onboarding. A `401` from `ghcr.io` is a package visibility/access failure, not a Cagnard runtime failure.
