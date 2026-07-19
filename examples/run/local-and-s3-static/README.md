@@ -13,7 +13,13 @@ Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
 MinIO console: `http://127.0.0.1:9001`, using `cagnard` / `cagnard-secret`. The initializer creates `cagnard-combined` and seeds `documents/` and `shared/`.
 
-The filesystem and MinIO global roots both include **Structured data**, with generated Parquet, Avro OCF, Arrow IPC/Feather, NDJSON, CSV, and TSV samples. Use them to compare the same first-party viewer over local and S3-backed content access.
+The filesystem and MinIO global roots both include the same generated corpus:
+
+- **Structured data** for Parquet, Avro OCF, Arrow IPC/Feather, NDJSON, CSV, and TSV query parity.
+- **Iceberg > lineitem** for explicit table opening, snapshots, filters, ordered sorts, and SQL.
+- **NetCDF** for groups, dimensions, variables, CF-aware slices, line/heatmap/table views, and bounded SQL projection.
+
+Use the duplicate roots to compare local and S3-backed access without changing viewer behavior.
 
 ## Build The Current Source
 

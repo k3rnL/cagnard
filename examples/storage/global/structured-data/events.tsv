@@ -1,6 +1,6 @@
 id	name	active	score	created_at	category	note
-1		false	0	1735689600000	alpha	quoted value, row 1
-with a second line and "double quotes"
+1		false	0	1735689600000	alpha	"quoted value, row 1
+with a second line and ""double quotes"""
 2	record-0002	true	19.37	1738458060000	beta	Deterministic analytical fixture row 2: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 3	record-0003	true	38.74	1740967320000	gamma	Deterministic analytical fixture row 3: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 4	record-0004	false	58.11	1743735780000	delta	Deterministic analytical fixture row 4: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -29,8 +29,8 @@ with a second line and "double quotes"
 27	record-0027	true	503.62	1743042360000	gamma	Deterministic analytical fixture row 27: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 28	record-0028	false	522.99	1743478020000	delta	Deterministic analytical fixture row 28: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 29	record-0029	true	542.36	1746160080000	alpha	Deterministic analytical fixture row 29: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-30	record-0030	true	561.73	1748928540000	beta	quoted value, row 30
-with a second line and "double quotes"
+30	record-0030	true	561.73	1748928540000	beta	"quoted value, row 30
+with a second line and ""double quotes"""
 31	record-0031	false	581.1	1751610600000	gamma	Deterministic analytical fixture row 31: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 32	record-0032	true	600.47	1754379060000	delta	Deterministic analytical fixture row 32: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 33	record-0033	true	619.84	1757147520000	alpha	Deterministic analytical fixture row 33: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -59,8 +59,8 @@ with a second line and "double quotes"
 56	record-0056	true	65.35	1754121300000	delta	Deterministic analytical fixture row 56: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 57	record-0057	true	84.72	1756889760000	alpha	Deterministic analytical fixture row 57: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 58	record-0058	false	104.09	1759571820000	beta	Deterministic analytical fixture row 58: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-59	record-0059	true	123.46	1762340280000	gamma	quoted value, row 59
-with a second line and "double quotes"
+59	record-0059	true	123.46	1762340280000	gamma	"quoted value, row 59
+with a second line and ""double quotes"""
 60	record-0060	true	142.83	1765022340000	delta	Deterministic analytical fixture row 60: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 61	record-0061	false	162.2	1736251200000	alpha	Deterministic analytical fixture row 61: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 62	record-0062	true	181.57	1739019660000	beta	Deterministic analytical fixture row 62: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -89,8 +89,8 @@ with a second line and "double quotes"
 85	record-0085	false	627.08	1735993440000	alpha	Deterministic analytical fixture row 85: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 86		true	646.45	1738761900000	beta	Deterministic analytical fixture row 86: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 87	record-0087	true	665.82	1741271160000	gamma	Deterministic analytical fixture row 87: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-88	record-0088	false	685.19	1744039620000	delta	quoted value, row 88
-with a second line and "double quotes"
+88	record-0088	false	685.19	1744039620000	delta	"quoted value, row 88
+with a second line and ""double quotes"""
 89	record-0089	true	704.56	1746721680000	alpha	Deterministic analytical fixture row 89: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 90	record-0090	true	723.93	1749490140000	beta	Deterministic analytical fixture row 90: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 91	record-0091	false	743.3	1752172200000	gamma	Deterministic analytical fixture row 91: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -119,8 +119,8 @@ with a second line and "double quotes"
 114	record-0114	true	188.81	1749232380000	beta	Deterministic analytical fixture row 114: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 115	record-0115	false	208.18	1751914440000	gamma	Deterministic analytical fixture row 115: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 116	record-0116	true	227.55	1754682900000	delta	Deterministic analytical fixture row 116: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-117	record-0117	true	246.92	1757451360000	alpha	quoted value, row 117
-with a second line and "double quotes"
+117	record-0117	true	246.92	1757451360000	alpha	"quoted value, row 117
+with a second line and ""double quotes"""
 118	record-0118	false	266.29	1760133420000	beta	Deterministic analytical fixture row 118: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 119	record-0119	true	285.66	1762901880000	gamma	Deterministic analytical fixture row 119: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 120		true	305.03	1765583940000	delta	Deterministic analytical fixture row 120: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -149,8 +149,8 @@ with a second line and "double quotes"
 143	record-0143	true	750.54	1762640520000	gamma	Deterministic analytical fixture row 143: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 144	record-0144	true	769.91	1765322580000	delta	Deterministic analytical fixture row 144: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 145	record-0145	false	789.28	1736468640000	alpha	Deterministic analytical fixture row 145: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-146	record-0146	true	808.65	1739237100000	beta	quoted value, row 146
-with a second line and "double quotes"
+146	record-0146	true	808.65	1739237100000	beta	"quoted value, row 146
+with a second line and ""double quotes"""
 147	record-0147	true	828.02	1741746360000	gamma	Deterministic analytical fixture row 147: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 148	record-0148	false	847.39	1744514820000	delta	Deterministic analytical fixture row 148: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 149	record-0149	true	866.76	1747196880000	alpha	Deterministic analytical fixture row 149: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -179,8 +179,8 @@ with a second line and "double quotes"
 172	record-0172	false	312.27	1744257060000	delta	Deterministic analytical fixture row 172: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 173	record-0173	true	331.64	1746939120000	alpha	Deterministic analytical fixture row 173: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 174	record-0174	true	351.01	1749707580000	beta	Deterministic analytical fixture row 174: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-175	record-0175	false	370.38	1752389640000	gamma	quoted value, row 175
-with a second line and "double quotes"
+175	record-0175	false	370.38	1752389640000	gamma	"quoted value, row 175
+with a second line and ""double quotes"""
 176	record-0176	true	389.75	1755158100000	delta	Deterministic analytical fixture row 176: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 177	record-0177	true	409.12	1757926560000	alpha	Deterministic analytical fixture row 177: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 178	record-0178	false	428.49	1760608620000	beta	Deterministic analytical fixture row 178: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -209,8 +209,8 @@ with a second line and "double quotes"
 201	record-0201	true	874	1757665200000	alpha	Deterministic analytical fixture row 201: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 202	record-0202	false	893.37	1760347260000	beta	Deterministic analytical fixture row 202: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 203	record-0203	true	912.74	1763115720000	gamma	Deterministic analytical fixture row 203: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-204	record-0204	true	932.11	1765797780000	delta	quoted value, row 204
-with a second line and "double quotes"
+204	record-0204	true	932.11	1765797780000	delta	"quoted value, row 204
+with a second line and ""double quotes"""
 205		false	951.48	1737030240000	alpha	Deterministic analytical fixture row 205: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 206	record-0206	true	970.85	1739798700000	beta	Deterministic analytical fixture row 206: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 207	record-0207	true	990.22	1742307960000	gamma	Deterministic analytical fixture row 207: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -239,8 +239,8 @@ with a second line and "double quotes"
 230	record-0230	true	435.73	1739540940000	beta	Deterministic analytical fixture row 230: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 231	record-0231	true	455.1	1742050200000	gamma	Deterministic analytical fixture row 231: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 232	record-0232	false	474.47	1744818660000	delta	Deterministic analytical fixture row 232: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-233	record-0233	true	493.84	1747500720000	alpha	quoted value, row 233
-with a second line and "double quotes"
+233	record-0233	true	493.84	1747500720000	alpha	"quoted value, row 233
+with a second line and ""double quotes"""
 234	record-0234	true	513.21	1750269180000	beta	Deterministic analytical fixture row 234: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 235	record-0235	false	532.58	1752951240000	gamma	Deterministic analytical fixture row 235: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 236	record-0236	true	551.95	1755719700000	delta	Deterministic analytical fixture row 236: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -269,8 +269,8 @@ with a second line and "double quotes"
 259	record-0259	false	997.46	1752689880000	gamma	Deterministic analytical fixture row 259: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 260	record-0260	true	16.83	1755458340000	delta	Deterministic analytical fixture row 260: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 261	record-0261	true	36.2	1758226800000	alpha	Deterministic analytical fixture row 261: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-262	record-0262	false	55.57	1760908860000	beta	quoted value, row 262
-with a second line and "double quotes"
+262	record-0262	false	55.57	1760908860000	beta	"quoted value, row 262
+with a second line and ""double quotes"""
 263	record-0263	true	74.94	1763677320000	gamma	Deterministic analytical fixture row 263: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 264	record-0264	true	94.31	1766359380000	delta	Deterministic analytical fixture row 264: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 265	record-0265	false	113.68	1737505440000	alpha	Deterministic analytical fixture row 265: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -299,8 +299,8 @@ with a second line and "double quotes"
 288	record-0288	true	559.19	1766101620000	delta	Deterministic analytical fixture row 288: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 289	record-0289	false	578.56	1737247680000	alpha	Deterministic analytical fixture row 289: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 290		true	597.93	1740016140000	beta	Deterministic analytical fixture row 290: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-291	record-0291	true	617.3	1742525400000	gamma	quoted value, row 291
-with a second line and "double quotes"
+291	record-0291	true	617.3	1742525400000	gamma	"quoted value, row 291
+with a second line and ""double quotes"""
 292	record-0292	false	636.67	1745293860000	delta	Deterministic analytical fixture row 292: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 293	record-0293	true	656.04	1747975920000	alpha	Deterministic analytical fixture row 293: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 294	record-0294	true	675.41	1750744380000	beta	Deterministic analytical fixture row 294: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -329,8 +329,8 @@ with a second line and "double quotes"
 317	record-0317	true	120.92	1747714560000	alpha	Deterministic analytical fixture row 317: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 318	record-0318	true	140.29	1750483020000	beta	Deterministic analytical fixture row 318: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 319	record-0319	false	159.66	1753165080000	gamma	Deterministic analytical fixture row 319: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-320	record-0320	true	179.03	1755933540000	delta	quoted value, row 320
-with a second line and "double quotes"
+320	record-0320	true	179.03	1755933540000	delta	"quoted value, row 320
+with a second line and ""double quotes"""
 321	record-0321	true	198.4	1758702000000	alpha	Deterministic analytical fixture row 321: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 322	record-0322	false	217.77	1761384060000	beta	Deterministic analytical fixture row 322: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 323	record-0323	true	237.14	1764152520000	gamma	Deterministic analytical fixture row 323: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -359,8 +359,8 @@ with a second line and "double quotes"
 346	record-0346	false	682.65	1761126300000	beta	Deterministic analytical fixture row 346: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 347	record-0347	true	702.02	1763894760000	gamma	Deterministic analytical fixture row 347: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 348	record-0348	true	721.39	1766576820000	delta	Deterministic analytical fixture row 348: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-349	record-0349	false	740.76	1737809280000	alpha	quoted value, row 349
-with a second line and "double quotes"
+349	record-0349	false	740.76	1737809280000	alpha	"quoted value, row 349
+with a second line and ""double quotes"""
 350	record-0350	true	760.13	1740577740000	beta	Deterministic analytical fixture row 350: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 351	record-0351	true	779.5	1743087000000	gamma	Deterministic analytical fixture row 351: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 352	record-0352	false	798.87	1743522660000	delta	Deterministic analytical fixture row 352: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -389,8 +389,8 @@ with a second line and "double quotes"
 375		true	244.38	1742825640000	gamma	Deterministic analytical fixture row 375: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 376	record-0376	false	263.75	1745594100000	delta	Deterministic analytical fixture row 376: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 377	record-0377	true	283.12	1748276160000	alpha	Deterministic analytical fixture row 377: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-378	record-0378	true	302.49	1751044620000	beta	quoted value, row 378
-with a second line and "double quotes"
+378	record-0378	true	302.49	1751044620000	beta	"quoted value, row 378
+with a second line and ""double quotes"""
 379	record-0379	false	321.86	1751393880000	gamma	Deterministic analytical fixture row 379: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 380	record-0380	true	341.23	1754162340000	delta	Deterministic analytical fixture row 380: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 381	record-0381	true	360.6	1756930800000	alpha	Deterministic analytical fixture row 381: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -419,8 +419,8 @@ with a second line and "double quotes"
 404	record-0404	true	806.11	1756237380000	delta	Deterministic analytical fixture row 404: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 405	record-0405	true	825.48	1759005840000	alpha	Deterministic analytical fixture row 405: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 406	record-0406	false	844.85	1759355100000	beta	Deterministic analytical fixture row 406: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-407	record-0407	true	864.22	1762123560000	gamma	quoted value, row 407
-with a second line and "double quotes"
+407	record-0407	true	864.22	1762123560000	gamma	"quoted value, row 407
+with a second line and ""double quotes"""
 408	record-0408	true	883.59	1764805620000	delta	Deterministic analytical fixture row 408: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 409		false	902.96	1735951680000	alpha	Deterministic analytical fixture row 409: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 410	record-0410	true	922.33	1738720140000	beta	Deterministic analytical fixture row 410: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -449,8 +449,8 @@ with a second line and "double quotes"
 433	record-0433	false	367.84	1735690320000	alpha	Deterministic analytical fixture row 433: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 434	record-0434	true	387.21	1738458780000	beta	Deterministic analytical fixture row 434: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 435	record-0435	true	406.58	1740968040000	gamma	Deterministic analytical fixture row 435: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-436	record-0436	false	425.95	1743736500000	delta	quoted value, row 436
-with a second line and "double quotes"
+436	record-0436	false	425.95	1743736500000	delta	"quoted value, row 436
+with a second line and ""double quotes"""
 437	record-0437	true	445.32	1746418560000	alpha	Deterministic analytical fixture row 437: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 438	record-0438	true	464.69	1749187020000	beta	Deterministic analytical fixture row 438: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 439	record-0439	false	484.06	1751869080000	gamma	Deterministic analytical fixture row 439: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -479,8 +479,8 @@ with a second line and "double quotes"
 462	record-0462	true	929.57	1748929260000	beta	Deterministic analytical fixture row 462: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 463	record-0463	false	948.94	1751611320000	gamma	Deterministic analytical fixture row 463: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 464	record-0464	true	968.31	1754379780000	delta	Deterministic analytical fixture row 464: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-465	record-0465	true	987.68	1757148240000	alpha	quoted value, row 465
-with a second line and "double quotes"
+465	record-0465	true	987.68	1757148240000	alpha	"quoted value, row 465
+with a second line and ""double quotes"""
 466	record-0466	false	7.05	1759830300000	beta	Deterministic analytical fixture row 466: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 467	record-0467	true	26.42	1762598760000	gamma	Deterministic analytical fixture row 467: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 468	record-0468	true	45.79	1765280820000	delta	Deterministic analytical fixture row 468: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -509,8 +509,8 @@ with a second line and "double quotes"
 491	record-0491	true	491.3	1762337400000	gamma	Deterministic analytical fixture row 491: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 492	record-0492	true	510.67	1765019460000	delta	Deterministic analytical fixture row 492: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 493	record-0493	false	530.04	1736251920000	alpha	Deterministic analytical fixture row 493: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-494		true	549.41	1739020380000	beta	quoted value, row 494
-with a second line and "double quotes"
+494		true	549.41	1739020380000	beta	"quoted value, row 494
+with a second line and ""double quotes"""
 495	record-0495	true	568.78	1741529640000	gamma	Deterministic analytical fixture row 495: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 496	record-0496	false	588.15	1744298100000	delta	Deterministic analytical fixture row 496: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 497	record-0497	true	607.52	1746980160000	alpha	Deterministic analytical fixture row 497: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -539,8 +539,8 @@ with a second line and "double quotes"
 520	record-0520	false	53.03	1744040340000	delta	Deterministic analytical fixture row 520: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 521	record-0521	true	72.4	1746722400000	alpha	Deterministic analytical fixture row 521: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 522	record-0522	true	91.77	1749490860000	beta	Deterministic analytical fixture row 522: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-523	record-0523	false	111.14	1752172920000	gamma	quoted value, row 523
-with a second line and "double quotes"
+523	record-0523	false	111.14	1752172920000	gamma	"quoted value, row 523
+with a second line and ""double quotes"""
 524	record-0524	true	130.51	1754941380000	delta	Deterministic analytical fixture row 524: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 525	record-0525	true	149.88	1757709840000	alpha	Deterministic analytical fixture row 525: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 526	record-0526	false	169.25	1760391900000	beta	Deterministic analytical fixture row 526: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -569,8 +569,8 @@ with a second line and "double quotes"
 549	record-0549	true	614.76	1757448480000	alpha	Deterministic analytical fixture row 549: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 550	record-0550	false	634.13	1760130540000	beta	Deterministic analytical fixture row 550: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 551	record-0551	true	653.5	1762899000000	gamma	Deterministic analytical fixture row 551: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-552	record-0552	true	672.87	1765581060000	delta	quoted value, row 552
-with a second line and "double quotes"
+552	record-0552	true	672.87	1765581060000	delta	"quoted value, row 552
+with a second line and ""double quotes"""
 553	record-0553	false	692.24	1736727120000	alpha	Deterministic analytical fixture row 553: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 554	record-0554	true	711.61	1739495580000	beta	Deterministic analytical fixture row 554: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 555	record-0555	true	730.98	1742004840000	gamma	Deterministic analytical fixture row 555: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -599,8 +599,8 @@ with a second line and "double quotes"
 578	record-0578	true	176.49	1739237820000	beta	Deterministic analytical fixture row 578: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 579		true	195.86	1741747080000	gamma	Deterministic analytical fixture row 579: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 580	record-0580	false	215.23	1744515540000	delta	Deterministic analytical fixture row 580: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-581	record-0581	true	234.6	1747197600000	alpha	quoted value, row 581
-with a second line and "double quotes"
+581	record-0581	true	234.6	1747197600000	alpha	"quoted value, row 581
+with a second line and ""double quotes"""
 582	record-0582	true	253.97	1749966060000	beta	Deterministic analytical fixture row 582: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 583	record-0583	false	273.34	1752648120000	gamma	Deterministic analytical fixture row 583: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 584	record-0584	true	292.71	1755416580000	delta	Deterministic analytical fixture row 584: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -629,8 +629,8 @@ with a second line and "double quotes"
 607	record-0607	false	738.22	1752386760000	gamma	Deterministic analytical fixture row 607: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 608	record-0608	true	757.59	1755155220000	delta	Deterministic analytical fixture row 608: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 609	record-0609	true	776.96	1757923680000	alpha	Deterministic analytical fixture row 609: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-610	record-0610	false	796.33	1760605740000	beta	quoted value, row 610
-with a second line and "double quotes"
+610	record-0610	false	796.33	1760605740000	beta	"quoted value, row 610
+with a second line and ""double quotes"""
 611	record-0611	true	815.7	1763374200000	gamma	Deterministic analytical fixture row 611: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 612	record-0612	true	835.07	1766056260000	delta	Deterministic analytical fixture row 612: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 613		false	854.44	1737288720000	alpha	Deterministic analytical fixture row 613: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -659,8 +659,8 @@ with a second line and "double quotes"
 636	record-0636	true	299.95	1765798500000	delta	Deterministic analytical fixture row 636: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 637	record-0637	false	319.32	1737030960000	alpha	Deterministic analytical fixture row 637: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 638	record-0638	true	338.69	1739799420000	beta	Deterministic analytical fixture row 638: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-639	record-0639	true	358.06	1742308680000	gamma	quoted value, row 639
-with a second line and "double quotes"
+639	record-0639	true	358.06	1742308680000	gamma	"quoted value, row 639
+with a second line and ""double quotes"""
 640	record-0640	false	377.43	1745077140000	delta	Deterministic analytical fixture row 640: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 641	record-0641	true	396.8	1747759200000	alpha	Deterministic analytical fixture row 641: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 642	record-0642	true	416.17	1750527660000	beta	Deterministic analytical fixture row 642: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -689,8 +689,8 @@ with a second line and "double quotes"
 665	record-0665	true	861.68	1747497840000	alpha	Deterministic analytical fixture row 665: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 666	record-0666	true	881.05	1750266300000	beta	Deterministic analytical fixture row 666: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 667	record-0667	false	900.42	1752948360000	gamma	Deterministic analytical fixture row 667: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-668	record-0668	true	919.79	1755716820000	delta	quoted value, row 668
-with a second line and "double quotes"
+668	record-0668	true	919.79	1755716820000	delta	"quoted value, row 668
+with a second line and ""double quotes"""
 669	record-0669	true	939.16	1758485280000	alpha	Deterministic analytical fixture row 669: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 670	record-0670	false	958.53	1761167340000	beta	Deterministic analytical fixture row 670: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 671	record-0671	true	977.9	1763935800000	gamma	Deterministic analytical fixture row 671: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -719,8 +719,8 @@ with a second line and "double quotes"
 694	record-0694	false	423.41	1760909580000	beta	Deterministic analytical fixture row 694: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 695	record-0695	true	442.78	1763678040000	gamma	Deterministic analytical fixture row 695: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 696	record-0696	true	462.15	1766360100000	delta	Deterministic analytical fixture row 696: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-697	record-0697	false	481.52	1737506160000	alpha	quoted value, row 697
-with a second line and "double quotes"
+697	record-0697	false	481.52	1737506160000	alpha	"quoted value, row 697
+with a second line and ""double quotes"""
 698		true	500.89	1740274620000	beta	Deterministic analytical fixture row 698: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 699	record-0699	true	520.26	1742783880000	gamma	Deterministic analytical fixture row 699: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 700	record-0700	false	539.63	1745552340000	delta	Deterministic analytical fixture row 700: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -749,8 +749,8 @@ with a second line and "double quotes"
 723	record-0723	true	985.14	1742522520000	gamma	Deterministic analytical fixture row 723: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 724	record-0724	false	4.51	1745290980000	delta	Deterministic analytical fixture row 724: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 725	record-0725	true	23.88	1747973040000	alpha	Deterministic analytical fixture row 725: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-726	record-0726	true	43.25	1750741500000	beta	quoted value, row 726
-with a second line and "double quotes"
+726	record-0726	true	43.25	1750741500000	beta	"quoted value, row 726
+with a second line and ""double quotes"""
 727	record-0727	false	62.62	1753423560000	gamma	Deterministic analytical fixture row 727: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 728	record-0728	true	81.99	1756192020000	delta	Deterministic analytical fixture row 728: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 729	record-0729	true	101.36	1758960480000	alpha	Deterministic analytical fixture row 729: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -779,8 +779,8 @@ with a second line and "double quotes"
 752	record-0752	true	546.87	1755934260000	delta	Deterministic analytical fixture row 752: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 753	record-0753	true	566.24	1758702720000	alpha	Deterministic analytical fixture row 753: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 754	record-0754	false	585.61	1761384780000	beta	Deterministic analytical fixture row 754: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-755	record-0755	true	604.98	1764153240000	gamma	quoted value, row 755
-with a second line and "double quotes"
+755	record-0755	true	604.98	1764153240000	gamma	"quoted value, row 755
+with a second line and ""double quotes"""
 756	record-0756	true	624.35	1766835300000	delta	Deterministic analytical fixture row 756: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 757	record-0757	false	643.72	1735734960000	alpha	Deterministic analytical fixture row 757: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 758	record-0758	true	663.09	1738503420000	beta	Deterministic analytical fixture row 758: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -809,8 +809,8 @@ with a second line and "double quotes"
 781	record-0781	false	108.6	1737806400000	alpha	Deterministic analytical fixture row 781: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 782	record-0782	true	127.97	1740574860000	beta	Deterministic analytical fixture row 782: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 783		true	147.34	1743084120000	gamma	Deterministic analytical fixture row 783: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-784	record-0784	false	166.71	1743519780000	delta	quoted value, row 784
-with a second line and "double quotes"
+784	record-0784	false	166.71	1743519780000	delta	"quoted value, row 784
+with a second line and ""double quotes"""
 785	record-0785	true	186.08	1746201840000	alpha	Deterministic analytical fixture row 785: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 786	record-0786	true	205.45	1748970300000	beta	Deterministic analytical fixture row 786: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 787	record-0787	false	224.82	1751652360000	gamma	Deterministic analytical fixture row 787: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -839,8 +839,8 @@ with a second line and "double quotes"
 810	record-0810	true	670.33	1751045340000	beta	Deterministic analytical fixture row 810: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 811	record-0811	false	689.7	1751394600000	gamma	Deterministic analytical fixture row 811: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 812	record-0812	true	709.07	1754163060000	delta	Deterministic analytical fixture row 812: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-813	record-0813	true	728.44	1756931520000	alpha	quoted value, row 813
-with a second line and "double quotes"
+813	record-0813	true	728.44	1756931520000	alpha	"quoted value, row 813
+with a second line and ""double quotes"""
 814	record-0814	false	747.81	1759613580000	beta	Deterministic analytical fixture row 814: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 815	record-0815	true	767.18	1762382040000	gamma	Deterministic analytical fixture row 815: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 816	record-0816	true	786.55	1765064100000	delta	Deterministic analytical fixture row 816: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -869,8 +869,8 @@ with a second line and "double quotes"
 839	record-0839	true	232.06	1762124280000	gamma	Deterministic analytical fixture row 839: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 840	record-0840	true	251.43	1764806340000	delta	Deterministic analytical fixture row 840: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 841	record-0841	false	270.8	1735948800000	alpha	Deterministic analytical fixture row 841: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-842	record-0842	true	290.17	1738717260000	beta	quoted value, row 842
-with a second line and "double quotes"
+842	record-0842	true	290.17	1738717260000	beta	"quoted value, row 842
+with a second line and ""double quotes"""
 843	record-0843	true	309.54	1741226520000	gamma	Deterministic analytical fixture row 843: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 844	record-0844	false	328.91	1743994980000	delta	Deterministic analytical fixture row 844: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 845	record-0845	true	348.28	1746677040000	alpha	Deterministic analytical fixture row 845: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -899,8 +899,8 @@ with a second line and "double quotes"
 868		false	793.79	1743737220000	delta	Deterministic analytical fixture row 868: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 869	record-0869	true	813.16	1746419280000	alpha	Deterministic analytical fixture row 869: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 870	record-0870	true	832.53	1749187740000	beta	Deterministic analytical fixture row 870: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-871	record-0871	false	851.9	1751869800000	gamma	quoted value, row 871
-with a second line and "double quotes"
+871	record-0871	false	851.9	1751869800000	gamma	"quoted value, row 871
+with a second line and ""double quotes"""
 872	record-0872	true	871.27	1754638260000	delta	Deterministic analytical fixture row 872: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 873	record-0873	true	890.64	1757406720000	alpha	Deterministic analytical fixture row 873: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 874	record-0874	false	910.01	1760088780000	beta	Deterministic analytical fixture row 874: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -929,8 +929,8 @@ with a second line and "double quotes"
 897	record-0897	true	355.52	1757148960000	alpha	Deterministic analytical fixture row 897: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 898	record-0898	false	374.89	1759831020000	beta	Deterministic analytical fixture row 898: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 899	record-0899	true	394.26	1762599480000	gamma	Deterministic analytical fixture row 899: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-900	record-0900	true	413.63	1765281540000	delta	quoted value, row 900
-with a second line and "double quotes"
+900	record-0900	true	413.63	1765281540000	delta	"quoted value, row 900
+with a second line and ""double quotes"""
 901	record-0901	false	433	1736510400000	alpha	Deterministic analytical fixture row 901: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 902		true	452.37	1739278860000	beta	Deterministic analytical fixture row 902: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 903	record-0903	true	471.74	1741788120000	gamma	Deterministic analytical fixture row 903: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -959,8 +959,8 @@ with a second line and "double quotes"
 926	record-0926	true	917.25	1739021100000	beta	Deterministic analytical fixture row 926: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 927	record-0927	true	936.62	1741530360000	gamma	Deterministic analytical fixture row 927: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 928	record-0928	false	955.99	1744298820000	delta	Deterministic analytical fixture row 928: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-929	record-0929	true	975.36	1746980880000	alpha	quoted value, row 929
-with a second line and "double quotes"
+929	record-0929	true	975.36	1746980880000	alpha	"quoted value, row 929
+with a second line and ""double quotes"""
 930	record-0930	true	994.73	1749749340000	beta	Deterministic analytical fixture row 930: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 931	record-0931	false	14.1	1752431400000	gamma	Deterministic analytical fixture row 931: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 932	record-0932	true	33.47	1755199860000	delta	Deterministic analytical fixture row 932: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -989,8 +989,8 @@ with a second line and "double quotes"
 955	record-0955	false	478.98	1752173640000	gamma	Deterministic analytical fixture row 955: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 956	record-0956	true	498.35	1754942100000	delta	Deterministic analytical fixture row 956: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 957	record-0957	true	517.72	1757710560000	alpha	Deterministic analytical fixture row 957: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-958	record-0958	false	537.09	1760392620000	beta	quoted value, row 958
-with a second line and "double quotes"
+958	record-0958	false	537.09	1760392620000	beta	"quoted value, row 958
+with a second line and ""double quotes"""
 959	record-0959	true	556.46	1763161080000	gamma	Deterministic analytical fixture row 959: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 960	record-0960	true	575.83	1765843140000	delta	Deterministic analytical fixture row 960: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 961	record-0961	false	595.2	1736985600000	alpha	Deterministic analytical fixture row 961: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1019,8 +1019,8 @@ with a second line and "double quotes"
 984	record-0984	true	40.71	1765581780000	delta	Deterministic analytical fixture row 984: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 985	record-0985	false	60.08	1736727840000	alpha	Deterministic analytical fixture row 985: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 986	record-0986	true	79.45	1739496300000	beta	Deterministic analytical fixture row 986: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-987		true	98.82	1742005560000	gamma	quoted value, row 987
-with a second line and "double quotes"
+987		true	98.82	1742005560000	gamma	"quoted value, row 987
+with a second line and ""double quotes"""
 988	record-0988	false	118.19	1744774020000	delta	Deterministic analytical fixture row 988: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 989	record-0989	true	137.56	1747456080000	alpha	Deterministic analytical fixture row 989: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 990	record-0990	true	156.93	1750224540000	beta	Deterministic analytical fixture row 990: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1049,8 +1049,8 @@ with a second line and "double quotes"
 1013	record-1013	true	602.44	1747198320000	alpha	Deterministic analytical fixture row 1013: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1014	record-1014	true	621.81	1749966780000	beta	Deterministic analytical fixture row 1014: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1015	record-1015	false	641.18	1752648840000	gamma	Deterministic analytical fixture row 1015: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1016	record-1016	true	660.55	1755417300000	delta	quoted value, row 1016
-with a second line and "double quotes"
+1016	record-1016	true	660.55	1755417300000	delta	"quoted value, row 1016
+with a second line and ""double quotes"""
 1017	record-1017	true	679.92	1758185760000	alpha	Deterministic analytical fixture row 1017: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1018	record-1018	false	699.29	1760867820000	beta	Deterministic analytical fixture row 1018: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1019	record-1019	true	718.66	1763636280000	gamma	Deterministic analytical fixture row 1019: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1079,8 +1079,8 @@ with a second line and "double quotes"
 1042	record-1042	false	164.17	1760606460000	beta	Deterministic analytical fixture row 1042: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1043	record-1043	true	183.54	1763374920000	gamma	Deterministic analytical fixture row 1043: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1044	record-1044	true	202.91	1766056980000	delta	Deterministic analytical fixture row 1044: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1045	record-1045	false	222.28	1737289440000	alpha	quoted value, row 1045
-with a second line and "double quotes"
+1045	record-1045	false	222.28	1737289440000	alpha	"quoted value, row 1045
+with a second line and ""double quotes"""
 1046	record-1046	true	241.65	1740057900000	beta	Deterministic analytical fixture row 1046: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1047	record-1047	true	261.02	1742567160000	gamma	Deterministic analytical fixture row 1047: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1048	record-1048	false	280.39	1745335620000	delta	Deterministic analytical fixture row 1048: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1109,8 +1109,8 @@ with a second line and "double quotes"
 1071	record-1071	true	725.9	1742309400000	gamma	Deterministic analytical fixture row 1071: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1072		false	745.27	1745077860000	delta	Deterministic analytical fixture row 1072: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1073	record-1073	true	764.64	1747759920000	alpha	Deterministic analytical fixture row 1073: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1074	record-1074	true	784.01	1750528380000	beta	quoted value, row 1074
-with a second line and "double quotes"
+1074	record-1074	true	784.01	1750528380000	beta	"quoted value, row 1074
+with a second line and ""double quotes"""
 1075	record-1075	false	803.38	1753210440000	gamma	Deterministic analytical fixture row 1075: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1076	record-1076	true	822.75	1755978900000	delta	Deterministic analytical fixture row 1076: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1077	record-1077	true	842.12	1758747360000	alpha	Deterministic analytical fixture row 1077: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1139,8 +1139,8 @@ with a second line and "double quotes"
 1100	record-1100	true	287.63	1755717540000	delta	Deterministic analytical fixture row 1100: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1101	record-1101	true	307	1758486000000	alpha	Deterministic analytical fixture row 1101: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1102	record-1102	false	326.37	1761168060000	beta	Deterministic analytical fixture row 1102: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1103	record-1103	true	345.74	1763936520000	gamma	quoted value, row 1103
-with a second line and "double quotes"
+1103	record-1103	true	345.74	1763936520000	gamma	"quoted value, row 1103
+with a second line and ""double quotes"""
 1104	record-1104	true	365.11	1766618580000	delta	Deterministic analytical fixture row 1104: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1105	record-1105	false	384.48	1737764640000	alpha	Deterministic analytical fixture row 1105: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1106		true	403.85	1740533100000	beta	Deterministic analytical fixture row 1106: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1169,8 +1169,8 @@ with a second line and "double quotes"
 1129	record-1129	false	849.36	1737506880000	alpha	Deterministic analytical fixture row 1129: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1130	record-1130	true	868.73	1740275340000	beta	Deterministic analytical fixture row 1130: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1131	record-1131	true	888.1	1742784600000	gamma	Deterministic analytical fixture row 1131: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1132	record-1132	false	907.47	1745553060000	delta	quoted value, row 1132
-with a second line and "double quotes"
+1132	record-1132	false	907.47	1745553060000	delta	"quoted value, row 1132
+with a second line and ""double quotes"""
 1133	record-1133	true	926.84	1748235120000	alpha	Deterministic analytical fixture row 1133: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1134	record-1134	true	946.21	1751003580000	beta	Deterministic analytical fixture row 1134: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1135	record-1135	false	965.58	1751352840000	gamma	Deterministic analytical fixture row 1135: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1199,8 +1199,8 @@ with a second line and "double quotes"
 1158	record-1158	true	411.09	1750742220000	beta	Deterministic analytical fixture row 1158: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1159	record-1159	false	430.46	1753424280000	gamma	Deterministic analytical fixture row 1159: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1160	record-1160	true	449.83	1756192740000	delta	Deterministic analytical fixture row 1160: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1161	record-1161	true	469.2	1758961200000	alpha	quoted value, row 1161
-with a second line and "double quotes"
+1161	record-1161	true	469.2	1758961200000	alpha	"quoted value, row 1161
+with a second line and ""double quotes"""
 1162	record-1162	false	488.57	1759310460000	beta	Deterministic analytical fixture row 1162: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1163	record-1163	true	507.94	1762078920000	gamma	Deterministic analytical fixture row 1163: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1164	record-1164	true	527.31	1764760980000	delta	Deterministic analytical fixture row 1164: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1229,8 +1229,8 @@ with a second line and "double quotes"
 1187	record-1187	true	972.82	1764153960000	gamma	Deterministic analytical fixture row 1187: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1188	record-1188	true	992.19	1766836020000	delta	Deterministic analytical fixture row 1188: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1189	record-1189	false	11.56	1735735680000	alpha	Deterministic analytical fixture row 1189: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1190	record-1190	true	30.93	1738504140000	beta	quoted value, row 1190
-with a second line and "double quotes"
+1190	record-1190	true	30.93	1738504140000	beta	"quoted value, row 1190
+with a second line and ""double quotes"""
 1191		true	50.3	1741013400000	gamma	Deterministic analytical fixture row 1191: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1192	record-1192	false	69.67	1743781860000	delta	Deterministic analytical fixture row 1192: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1193	record-1193	true	89.04	1746463920000	alpha	Deterministic analytical fixture row 1193: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1259,8 +1259,8 @@ with a second line and "double quotes"
 1216	record-1216	false	534.55	1743520500000	delta	Deterministic analytical fixture row 1216: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1217	record-1217	true	553.92	1746202560000	alpha	Deterministic analytical fixture row 1217: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1218	record-1218	true	573.29	1748971020000	beta	Deterministic analytical fixture row 1218: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1219	record-1219	false	592.66	1751653080000	gamma	quoted value, row 1219
-with a second line and "double quotes"
+1219	record-1219	false	592.66	1751653080000	gamma	"quoted value, row 1219
+with a second line and ""double quotes"""
 1220	record-1220	true	612.03	1754421540000	delta	Deterministic analytical fixture row 1220: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1221	record-1221	true	631.4	1757190000000	alpha	Deterministic analytical fixture row 1221: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1222	record-1222	false	650.77	1759872060000	beta	Deterministic analytical fixture row 1222: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1289,8 +1289,8 @@ with a second line and "double quotes"
 1245	record-1245	true	96.28	1756932240000	alpha	Deterministic analytical fixture row 1245: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1246	record-1246	false	115.65	1759614300000	beta	Deterministic analytical fixture row 1246: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1247	record-1247	true	135.02	1762382760000	gamma	Deterministic analytical fixture row 1247: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1248	record-1248	true	154.39	1765064820000	delta	quoted value, row 1248
-with a second line and "double quotes"
+1248	record-1248	true	154.39	1765064820000	delta	"quoted value, row 1248
+with a second line and ""double quotes"""
 1249	record-1249	false	173.76	1736210880000	alpha	Deterministic analytical fixture row 1249: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1250	record-1250	true	193.13	1738979340000	beta	Deterministic analytical fixture row 1250: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1251	record-1251	true	212.5	1741488600000	gamma	Deterministic analytical fixture row 1251: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1319,8 +1319,8 @@ with a second line and "double quotes"
 1274	record-1274	true	658.01	1738717980000	beta	Deterministic analytical fixture row 1274: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1275	record-1275	true	677.38	1741227240000	gamma	Deterministic analytical fixture row 1275: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1276		false	696.75	1743995700000	delta	Deterministic analytical fixture row 1276: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1277	record-1277	true	716.12	1746677760000	alpha	quoted value, row 1277
-with a second line and "double quotes"
+1277	record-1277	true	716.12	1746677760000	alpha	"quoted value, row 1277
+with a second line and ""double quotes"""
 1278	record-1278	true	735.49	1749446220000	beta	Deterministic analytical fixture row 1278: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1279	record-1279	false	754.86	1752128280000	gamma	Deterministic analytical fixture row 1279: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1280	record-1280	true	774.23	1754896740000	delta	Deterministic analytical fixture row 1280: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1349,8 +1349,8 @@ with a second line and "double quotes"
 1303	record-1303	false	219.74	1751870520000	gamma	Deterministic analytical fixture row 1303: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1304	record-1304	true	239.11	1754638980000	delta	Deterministic analytical fixture row 1304: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1305	record-1305	true	258.48	1757407440000	alpha	Deterministic analytical fixture row 1305: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1306	record-1306	false	277.85	1760089500000	beta	quoted value, row 1306
-with a second line and "double quotes"
+1306	record-1306	false	277.85	1760089500000	beta	"quoted value, row 1306
+with a second line and ""double quotes"""
 1307	record-1307	true	297.22	1762857960000	gamma	Deterministic analytical fixture row 1307: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1308	record-1308	true	316.59	1765540020000	delta	Deterministic analytical fixture row 1308: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1309	record-1309	false	335.96	1736772480000	alpha	Deterministic analytical fixture row 1309: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1379,8 +1379,8 @@ with a second line and "double quotes"
 1332	record-1332	true	781.47	1765278660000	delta	Deterministic analytical fixture row 1332: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1333	record-1333	false	800.84	1736511120000	alpha	Deterministic analytical fixture row 1333: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1334	record-1334	true	820.21	1739279580000	beta	Deterministic analytical fixture row 1334: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1335	record-1335	true	839.58	1741788840000	gamma	quoted value, row 1335
-with a second line and "double quotes"
+1335	record-1335	true	839.58	1741788840000	gamma	"quoted value, row 1335
+with a second line and ""double quotes"""
 1336	record-1336	false	858.95	1744557300000	delta	Deterministic analytical fixture row 1336: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1337	record-1337	true	878.32	1747239360000	alpha	Deterministic analytical fixture row 1337: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1338	record-1338	true	897.69	1750007820000	beta	Deterministic analytical fixture row 1338: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1409,8 +1409,8 @@ with a second line and "double quotes"
 1361		true	343.2	1746981600000	alpha	Deterministic analytical fixture row 1361: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1362	record-1362	true	362.57	1749750060000	beta	Deterministic analytical fixture row 1362: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1363	record-1363	false	381.94	1752432120000	gamma	Deterministic analytical fixture row 1363: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1364	record-1364	true	401.31	1755200580000	delta	quoted value, row 1364
-with a second line and "double quotes"
+1364	record-1364	true	401.31	1755200580000	delta	"quoted value, row 1364
+with a second line and ""double quotes"""
 1365	record-1365	true	420.68	1757969040000	alpha	Deterministic analytical fixture row 1365: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1366	record-1366	false	440.05	1760651100000	beta	Deterministic analytical fixture row 1366: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1367	record-1367	true	459.42	1763419560000	gamma	Deterministic analytical fixture row 1367: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1439,8 +1439,8 @@ with a second line and "double quotes"
 1390	record-1390	false	904.93	1760389740000	beta	Deterministic analytical fixture row 1390: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1391	record-1391	true	924.3	1763158200000	gamma	Deterministic analytical fixture row 1391: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1392	record-1392	true	943.67	1765840260000	delta	Deterministic analytical fixture row 1392: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1393	record-1393	false	963.04	1736986320000	alpha	quoted value, row 1393
-with a second line and "double quotes"
+1393	record-1393	false	963.04	1736986320000	alpha	"quoted value, row 1393
+with a second line and ""double quotes"""
 1394	record-1394	true	982.41	1739754780000	beta	Deterministic analytical fixture row 1394: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1395		true	1.78	1742264040000	gamma	Deterministic analytical fixture row 1395: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1396	record-1396	false	21.15	1745032500000	delta	Deterministic analytical fixture row 1396: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1469,8 +1469,8 @@ with a second line and "double quotes"
 1419	record-1419	true	466.66	1742006280000	gamma	Deterministic analytical fixture row 1419: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1420	record-1420	false	486.03	1744774740000	delta	Deterministic analytical fixture row 1420: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1421	record-1421	true	505.4	1747456800000	alpha	Deterministic analytical fixture row 1421: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1422	record-1422	true	524.77	1750225260000	beta	quoted value, row 1422
-with a second line and "double quotes"
+1422	record-1422	true	524.77	1750225260000	beta	"quoted value, row 1422
+with a second line and ""double quotes"""
 1423	record-1423	false	544.14	1752907320000	gamma	Deterministic analytical fixture row 1423: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1424	record-1424	true	563.51	1755675780000	delta	Deterministic analytical fixture row 1424: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1425	record-1425	true	582.88	1758444240000	alpha	Deterministic analytical fixture row 1425: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1499,8 +1499,8 @@ with a second line and "double quotes"
 1448	record-1448	true	28.39	1755414420000	delta	Deterministic analytical fixture row 1448: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1449	record-1449	true	47.76	1758182880000	alpha	Deterministic analytical fixture row 1449: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1450	record-1450	false	67.13	1760864940000	beta	Deterministic analytical fixture row 1450: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1451	record-1451	true	86.5	1763633400000	gamma	quoted value, row 1451
-with a second line and "double quotes"
+1451	record-1451	true	86.5	1763633400000	gamma	"quoted value, row 1451
+with a second line and ""double quotes"""
 1452	record-1452	true	105.87	1766315460000	delta	Deterministic analytical fixture row 1452: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1453	record-1453	false	125.24	1737547920000	alpha	Deterministic analytical fixture row 1453: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1454	record-1454	true	144.61	1740316380000	beta	Deterministic analytical fixture row 1454: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1529,8 +1529,8 @@ with a second line and "double quotes"
 1477	record-1477	false	590.12	1737290160000	alpha	Deterministic analytical fixture row 1477: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1478	record-1478	true	609.49	1740058620000	beta	Deterministic analytical fixture row 1478: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1479	record-1479	true	628.86	1742567880000	gamma	Deterministic analytical fixture row 1479: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1480		false	648.23	1745336340000	delta	quoted value, row 1480
-with a second line and "double quotes"
+1480		false	648.23	1745336340000	delta	"quoted value, row 1480
+with a second line and ""double quotes"""
 1481	record-1481	true	667.6	1748018400000	alpha	Deterministic analytical fixture row 1481: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1482	record-1482	true	686.97	1750786860000	beta	Deterministic analytical fixture row 1482: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1483	record-1483	false	706.34	1753468920000	gamma	Deterministic analytical fixture row 1483: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1559,8 +1559,8 @@ with a second line and "double quotes"
 1506	record-1506	true	151.85	1750525500000	beta	Deterministic analytical fixture row 1506: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1507	record-1507	false	171.22	1753207560000	gamma	Deterministic analytical fixture row 1507: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1508	record-1508	true	190.59	1755976020000	delta	Deterministic analytical fixture row 1508: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1509	record-1509	true	209.96	1758744480000	alpha	quoted value, row 1509
-with a second line and "double quotes"
+1509	record-1509	true	209.96	1758744480000	alpha	"quoted value, row 1509
+with a second line and ""double quotes"""
 1510	record-1510	false	229.33	1761426540000	beta	Deterministic analytical fixture row 1510: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1511	record-1511	true	248.7	1764195000000	gamma	Deterministic analytical fixture row 1511: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1512	record-1512	true	268.07	1766877060000	delta	Deterministic analytical fixture row 1512: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1589,8 +1589,8 @@ with a second line and "double quotes"
 1535	record-1535	true	713.58	1763937240000	gamma	Deterministic analytical fixture row 1535: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1536	record-1536	true	732.95	1766619300000	delta	Deterministic analytical fixture row 1536: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1537	record-1537	false	752.32	1737765360000	alpha	Deterministic analytical fixture row 1537: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1538	record-1538	true	771.69	1740533820000	beta	quoted value, row 1538
-with a second line and "double quotes"
+1538	record-1538	true	771.69	1740533820000	beta	"quoted value, row 1538
+with a second line and ""double quotes"""
 1539	record-1539	true	791.06	1743043080000	gamma	Deterministic analytical fixture row 1539: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1540	record-1540	false	810.43	1743478740000	delta	Deterministic analytical fixture row 1540: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1541	record-1541	true	829.8	1746160800000	alpha	Deterministic analytical fixture row 1541: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1619,8 +1619,8 @@ with a second line and "double quotes"
 1564	record-1564	false	275.31	1745550180000	delta	Deterministic analytical fixture row 1564: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1565		true	294.68	1748232240000	alpha	Deterministic analytical fixture row 1565: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1566	record-1566	true	314.05	1751000700000	beta	Deterministic analytical fixture row 1566: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1567	record-1567	false	333.42	1751349960000	gamma	quoted value, row 1567
-with a second line and "double quotes"
+1567	record-1567	false	333.42	1751349960000	gamma	"quoted value, row 1567
+with a second line and ""double quotes"""
 1568	record-1568	true	352.79	1754118420000	delta	Deterministic analytical fixture row 1568: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1569	record-1569	true	372.16	1756886880000	alpha	Deterministic analytical fixture row 1569: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1570	record-1570	false	391.53	1759568940000	beta	Deterministic analytical fixture row 1570: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1649,8 +1649,8 @@ with a second line and "double quotes"
 1593	record-1593	true	837.04	1758961920000	alpha	Deterministic analytical fixture row 1593: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1594	record-1594	false	856.41	1759311180000	beta	Deterministic analytical fixture row 1594: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1595	record-1595	true	875.78	1762079640000	gamma	Deterministic analytical fixture row 1595: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1596	record-1596	true	895.15	1764761700000	delta	quoted value, row 1596
-with a second line and "double quotes"
+1596	record-1596	true	895.15	1764761700000	delta	"quoted value, row 1596
+with a second line and ""double quotes"""
 1597	record-1597	false	914.52	1735994160000	alpha	Deterministic analytical fixture row 1597: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1598	record-1598	true	933.89	1738762620000	beta	Deterministic analytical fixture row 1598: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1599		true	953.26	1741271880000	gamma	Deterministic analytical fixture row 1599: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1679,8 +1679,8 @@ with a second line and "double quotes"
 1622	record-1622	true	398.77	1738501260000	beta	Deterministic analytical fixture row 1622: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1623	record-1623	true	418.14	1741010520000	gamma	Deterministic analytical fixture row 1623: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1624	record-1624	false	437.51	1743778980000	delta	Deterministic analytical fixture row 1624: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1625	record-1625	true	456.88	1746461040000	alpha	quoted value, row 1625
-with a second line and "double quotes"
+1625	record-1625	true	456.88	1746461040000	alpha	"quoted value, row 1625
+with a second line and ""double quotes"""
 1626	record-1626	true	476.25	1749229500000	beta	Deterministic analytical fixture row 1626: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1627	record-1627	false	495.62	1751911560000	gamma	Deterministic analytical fixture row 1627: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1628	record-1628	true	514.99	1754680020000	delta	Deterministic analytical fixture row 1628: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1709,8 +1709,8 @@ with a second line and "double quotes"
 1651	record-1651	false	960.5	1751653800000	gamma	Deterministic analytical fixture row 1651: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1652	record-1652	true	979.87	1754422260000	delta	Deterministic analytical fixture row 1652: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1653	record-1653	true	999.24	1757190720000	alpha	Deterministic analytical fixture row 1653: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1654	record-1654	false	18.61	1759872780000	beta	quoted value, row 1654
-with a second line and "double quotes"
+1654	record-1654	false	18.61	1759872780000	beta	"quoted value, row 1654
+with a second line and ""double quotes"""
 1655	record-1655	true	37.98	1762641240000	gamma	Deterministic analytical fixture row 1655: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1656	record-1656	true	57.35	1765323300000	delta	Deterministic analytical fixture row 1656: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1657	record-1657	false	76.72	1736469360000	alpha	Deterministic analytical fixture row 1657: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1739,8 +1739,8 @@ with a second line and "double quotes"
 1680	record-1680	true	522.23	1765065540000	delta	Deterministic analytical fixture row 1680: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1681	record-1681	false	541.6	1736208000000	alpha	Deterministic analytical fixture row 1681: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1682	record-1682	true	560.97	1738976460000	beta	Deterministic analytical fixture row 1682: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1683	record-1683	true	580.34	1741485720000	gamma	quoted value, row 1683
-with a second line and "double quotes"
+1683	record-1683	true	580.34	1741485720000	gamma	"quoted value, row 1683
+with a second line and ""double quotes"""
 1684		false	599.71	1744254180000	delta	Deterministic analytical fixture row 1684: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1685	record-1685	true	619.08	1746936240000	alpha	Deterministic analytical fixture row 1685: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1686	record-1686	true	638.45	1749704700000	beta	Deterministic analytical fixture row 1686: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1769,8 +1769,8 @@ with a second line and "double quotes"
 1709	record-1709	true	83.96	1746678480000	alpha	Deterministic analytical fixture row 1709: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1710	record-1710	true	103.33	1749446940000	beta	Deterministic analytical fixture row 1710: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1711	record-1711	false	122.7	1752129000000	gamma	Deterministic analytical fixture row 1711: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1712	record-1712	true	142.07	1754897460000	delta	quoted value, row 1712
-with a second line and "double quotes"
+1712	record-1712	true	142.07	1754897460000	delta	"quoted value, row 1712
+with a second line and ""double quotes"""
 1713	record-1713	true	161.44	1757665920000	alpha	Deterministic analytical fixture row 1713: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1714	record-1714	false	180.81	1760347980000	beta	Deterministic analytical fixture row 1714: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1715	record-1715	true	200.18	1763116440000	gamma	Deterministic analytical fixture row 1715: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1799,8 +1799,8 @@ with a second line and "double quotes"
 1738	record-1738	false	645.69	1760090220000	beta	Deterministic analytical fixture row 1738: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1739	record-1739	true	665.06	1762858680000	gamma	Deterministic analytical fixture row 1739: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1740	record-1740	true	684.43	1765540740000	delta	Deterministic analytical fixture row 1740: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1741	record-1741	false	703.8	1736769600000	alpha	quoted value, row 1741
-with a second line and "double quotes"
+1741	record-1741	false	703.8	1736769600000	alpha	"quoted value, row 1741
+with a second line and ""double quotes"""
 1742	record-1742	true	723.17	1739538060000	beta	Deterministic analytical fixture row 1742: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1743	record-1743	true	742.54	1742047320000	gamma	Deterministic analytical fixture row 1743: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1744	record-1744	false	761.91	1744815780000	delta	Deterministic analytical fixture row 1744: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1829,8 +1829,8 @@ with a second line and "double quotes"
 1767	record-1767	true	207.42	1741789560000	gamma	Deterministic analytical fixture row 1767: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1768	record-1768	false	226.79	1744558020000	delta	Deterministic analytical fixture row 1768: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1769		true	246.16	1747240080000	alpha	Deterministic analytical fixture row 1769: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1770	record-1770	true	265.53	1750008540000	beta	quoted value, row 1770
-with a second line and "double quotes"
+1770	record-1770	true	265.53	1750008540000	beta	"quoted value, row 1770
+with a second line and ""double quotes"""
 1771	record-1771	false	284.9	1752690600000	gamma	Deterministic analytical fixture row 1771: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1772	record-1772	true	304.27	1755459060000	delta	Deterministic analytical fixture row 1772: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1773	record-1773	true	323.64	1758227520000	alpha	Deterministic analytical fixture row 1773: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1859,8 +1859,8 @@ with a second line and "double quotes"
 1796	record-1796	true	769.15	1755201300000	delta	Deterministic analytical fixture row 1796: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1797	record-1797	true	788.52	1757969760000	alpha	Deterministic analytical fixture row 1797: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1798	record-1798	false	807.89	1760651820000	beta	Deterministic analytical fixture row 1798: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1799	record-1799	true	827.26	1763420280000	gamma	quoted value, row 1799
-with a second line and "double quotes"
+1799	record-1799	true	827.26	1763420280000	gamma	"quoted value, row 1799
+with a second line and ""double quotes"""
 1800	record-1800	true	846.63	1766102340000	delta	Deterministic analytical fixture row 1800: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1801	record-1801	false	866	1737244800000	alpha	Deterministic analytical fixture row 1801: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1802	record-1802	true	885.37	1740013260000	beta	Deterministic analytical fixture row 1802: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1889,8 +1889,8 @@ with a second line and "double quotes"
 1825	record-1825	false	330.88	1736987040000	alpha	Deterministic analytical fixture row 1825: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1826	record-1826	true	350.25	1739755500000	beta	Deterministic analytical fixture row 1826: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1827	record-1827	true	369.62	1742264760000	gamma	Deterministic analytical fixture row 1827: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1828	record-1828	false	388.99	1745033220000	delta	quoted value, row 1828
-with a second line and "double quotes"
+1828	record-1828	false	388.99	1745033220000	delta	"quoted value, row 1828
+with a second line and ""double quotes"""
 1829	record-1829	true	408.36	1747715280000	alpha	Deterministic analytical fixture row 1829: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1830	record-1830	true	427.73	1750483740000	beta	Deterministic analytical fixture row 1830: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1831	record-1831	false	447.1	1753165800000	gamma	Deterministic analytical fixture row 1831: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1919,8 +1919,8 @@ with a second line and "double quotes"
 1854		true	892.61	1750225980000	beta	Deterministic analytical fixture row 1854: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1855	record-1855	false	911.98	1752908040000	gamma	Deterministic analytical fixture row 1855: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1856	record-1856	true	931.35	1755676500000	delta	Deterministic analytical fixture row 1856: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1857	record-1857	true	950.72	1758444960000	alpha	quoted value, row 1857
-with a second line and "double quotes"
+1857	record-1857	true	950.72	1758444960000	alpha	"quoted value, row 1857
+with a second line and ""double quotes"""
 1858	record-1858	false	970.09	1761127020000	beta	Deterministic analytical fixture row 1858: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1859	record-1859	true	989.46	1763895480000	gamma	Deterministic analytical fixture row 1859: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1860	record-1860	true	8.83	1766577540000	delta	Deterministic analytical fixture row 1860: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1949,8 +1949,8 @@ with a second line and "double quotes"
 1883	record-1883	true	454.34	1763634120000	gamma	Deterministic analytical fixture row 1883: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1884	record-1884	true	473.71	1766316180000	delta	Deterministic analytical fixture row 1884: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1885	record-1885	false	493.08	1737548640000	alpha	Deterministic analytical fixture row 1885: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1886	record-1886	true	512.45	1740317100000	beta	quoted value, row 1886
-with a second line and "double quotes"
+1886	record-1886	true	512.45	1740317100000	beta	"quoted value, row 1886
+with a second line and ""double quotes"""
 1887	record-1887	true	531.82	1742826360000	gamma	Deterministic analytical fixture row 1887: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1888		false	551.19	1745594820000	delta	Deterministic analytical fixture row 1888: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1889	record-1889	true	570.56	1748276880000	alpha	Deterministic analytical fixture row 1889: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -1979,8 +1979,8 @@ with a second line and "double quotes"
 1912	record-1912	false	16.07	1745337060000	delta	Deterministic analytical fixture row 1912: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1913	record-1913	true	35.44	1748019120000	alpha	Deterministic analytical fixture row 1913: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1914	record-1914	true	54.81	1750787580000	beta	Deterministic analytical fixture row 1914: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1915	record-1915	false	74.18	1753469640000	gamma	quoted value, row 1915
-with a second line and "double quotes"
+1915	record-1915	false	74.18	1753469640000	gamma	"quoted value, row 1915
+with a second line and ""double quotes"""
 1916	record-1916	true	93.55	1756238100000	delta	Deterministic analytical fixture row 1916: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1917	record-1917	true	112.92	1759006560000	alpha	Deterministic analytical fixture row 1917: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1918	record-1918	false	132.29	1759355820000	beta	Deterministic analytical fixture row 1918: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2009,8 +2009,8 @@ with a second line and "double quotes"
 1941	record-1941	true	577.8	1758745200000	alpha	Deterministic analytical fixture row 1941: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1942	record-1942	false	597.17	1761427260000	beta	Deterministic analytical fixture row 1942: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1943	record-1943	true	616.54	1764195720000	gamma	Deterministic analytical fixture row 1943: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1944	record-1944	true	635.91	1766877780000	delta	quoted value, row 1944
-with a second line and "double quotes"
+1944	record-1944	true	635.91	1766877780000	delta	"quoted value, row 1944
+with a second line and ""double quotes"""
 1945	record-1945	false	655.28	1735691040000	alpha	Deterministic analytical fixture row 1945: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1946	record-1946	true	674.65	1738459500000	beta	Deterministic analytical fixture row 1946: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1947	record-1947	true	694.02	1740968760000	gamma	Deterministic analytical fixture row 1947: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2039,8 +2039,8 @@ with a second line and "double quotes"
 1970	record-1970	true	139.53	1740534540000	beta	Deterministic analytical fixture row 1970: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1971	record-1971	true	158.9	1743043800000	gamma	Deterministic analytical fixture row 1971: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1972	record-1972	false	178.27	1743479460000	delta	Deterministic analytical fixture row 1972: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-1973		true	197.64	1746161520000	alpha	quoted value, row 1973
-with a second line and "double quotes"
+1973		true	197.64	1746161520000	alpha	"quoted value, row 1973
+with a second line and ""double quotes"""
 1974	record-1974	true	217.01	1748929980000	beta	Deterministic analytical fixture row 1974: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1975	record-1975	false	236.38	1751612040000	gamma	Deterministic analytical fixture row 1975: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 1976	record-1976	true	255.75	1754380500000	delta	Deterministic analytical fixture row 1976: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2069,8 +2069,8 @@ with a second line and "double quotes"
 1999	record-1999	false	701.26	1751350680000	gamma	Deterministic analytical fixture row 1999: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2000	record-2000	true	720.63	1754119140000	delta	Deterministic analytical fixture row 2000: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2001	record-2001	true	740	1756887600000	alpha	Deterministic analytical fixture row 2001: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2002	record-2002	false	759.37	1759569660000	beta	quoted value, row 2002
-with a second line and "double quotes"
+2002	record-2002	false	759.37	1759569660000	beta	"quoted value, row 2002
+with a second line and ""double quotes"""
 2003	record-2003	true	778.74	1762338120000	gamma	Deterministic analytical fixture row 2003: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2004	record-2004	true	798.11	1765020180000	delta	Deterministic analytical fixture row 2004: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2005	record-2005	false	817.48	1736252640000	alpha	Deterministic analytical fixture row 2005: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2099,8 +2099,8 @@ with a second line and "double quotes"
 2028	record-2028	true	262.99	1764762420000	delta	Deterministic analytical fixture row 2028: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2029	record-2029	false	282.36	1735994880000	alpha	Deterministic analytical fixture row 2029: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2030	record-2030	true	301.73	1738763340000	beta	Deterministic analytical fixture row 2030: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2031	record-2031	true	321.1	1741272600000	gamma	quoted value, row 2031
-with a second line and "double quotes"
+2031	record-2031	true	321.1	1741272600000	gamma	"quoted value, row 2031
+with a second line and ""double quotes"""
 2032	record-2032	false	340.47	1744041060000	delta	Deterministic analytical fixture row 2032: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2033	record-2033	true	359.84	1746723120000	alpha	Deterministic analytical fixture row 2033: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2034	record-2034	true	379.21	1749491580000	beta	Deterministic analytical fixture row 2034: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2129,8 +2129,8 @@ with a second line and "double quotes"
 2057	record-2057	true	824.72	1746461760000	alpha	Deterministic analytical fixture row 2057: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2058		true	844.09	1749230220000	beta	Deterministic analytical fixture row 2058: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2059	record-2059	false	863.46	1751912280000	gamma	Deterministic analytical fixture row 2059: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2060	record-2060	true	882.83	1754680740000	delta	quoted value, row 2060
-with a second line and "double quotes"
+2060	record-2060	true	882.83	1754680740000	delta	"quoted value, row 2060
+with a second line and ""double quotes"""
 2061	record-2061	true	902.2	1757449200000	alpha	Deterministic analytical fixture row 2061: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2062	record-2062	false	921.57	1760131260000	beta	Deterministic analytical fixture row 2062: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2063	record-2063	true	940.94	1762899720000	gamma	Deterministic analytical fixture row 2063: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2159,8 +2159,8 @@ with a second line and "double quotes"
 2086	record-2086	false	386.45	1759873500000	beta	Deterministic analytical fixture row 2086: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2087	record-2087	true	405.82	1762641960000	gamma	Deterministic analytical fixture row 2087: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2088	record-2088	true	425.19	1765324020000	delta	Deterministic analytical fixture row 2088: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2089	record-2089	false	444.56	1736470080000	alpha	quoted value, row 2089
-with a second line and "double quotes"
+2089	record-2089	false	444.56	1736470080000	alpha	"quoted value, row 2089
+with a second line and ""double quotes"""
 2090	record-2090	true	463.93	1739238540000	beta	Deterministic analytical fixture row 2090: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2091	record-2091	true	483.3	1741747800000	gamma	Deterministic analytical fixture row 2091: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2092		false	502.67	1744516260000	delta	Deterministic analytical fixture row 2092: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2189,8 +2189,8 @@ with a second line and "double quotes"
 2115	record-2115	true	948.18	1741486440000	gamma	Deterministic analytical fixture row 2115: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2116	record-2116	false	967.55	1744254900000	delta	Deterministic analytical fixture row 2116: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2117	record-2117	true	986.92	1746936960000	alpha	Deterministic analytical fixture row 2117: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2118	record-2118	true	6.29	1749705420000	beta	quoted value, row 2118
-with a second line and "double quotes"
+2118	record-2118	true	6.29	1749705420000	beta	"quoted value, row 2118
+with a second line and ""double quotes"""
 2119	record-2119	false	25.66	1752387480000	gamma	Deterministic analytical fixture row 2119: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2120	record-2120	true	45.03	1755155940000	delta	Deterministic analytical fixture row 2120: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2121	record-2121	true	64.4	1757924400000	alpha	Deterministic analytical fixture row 2121: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2219,8 +2219,8 @@ with a second line and "double quotes"
 2144	record-2144	true	509.91	1754898180000	delta	Deterministic analytical fixture row 2144: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2145	record-2145	true	529.28	1757666640000	alpha	Deterministic analytical fixture row 2145: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2146	record-2146	false	548.65	1760348700000	beta	Deterministic analytical fixture row 2146: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2147	record-2147	true	568.02	1763117160000	gamma	quoted value, row 2147
-with a second line and "double quotes"
+2147	record-2147	true	568.02	1763117160000	gamma	"quoted value, row 2147
+with a second line and ""double quotes"""
 2148	record-2148	true	587.39	1765799220000	delta	Deterministic analytical fixture row 2148: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2149	record-2149	false	606.76	1737031680000	alpha	Deterministic analytical fixture row 2149: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2150	record-2150	true	626.13	1739800140000	beta	Deterministic analytical fixture row 2150: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2249,8 +2249,8 @@ with a second line and "double quotes"
 2173	record-2173	false	71.64	1736770320000	alpha	Deterministic analytical fixture row 2173: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2174	record-2174	true	91.01	1739538780000	beta	Deterministic analytical fixture row 2174: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2175	record-2175	true	110.38	1742048040000	gamma	Deterministic analytical fixture row 2175: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2176	record-2176	false	129.75	1744816500000	delta	quoted value, row 2176
-with a second line and "double quotes"
+2176	record-2176	false	129.75	1744816500000	delta	"quoted value, row 2176
+with a second line and ""double quotes"""
 2177		true	149.12	1747498560000	alpha	Deterministic analytical fixture row 2177: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2178	record-2178	true	168.49	1750267020000	beta	Deterministic analytical fixture row 2178: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2179	record-2179	false	187.86	1752949080000	gamma	Deterministic analytical fixture row 2179: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2279,8 +2279,8 @@ with a second line and "double quotes"
 2202	record-2202	true	633.37	1750009260000	beta	Deterministic analytical fixture row 2202: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2203	record-2203	false	652.74	1752691320000	gamma	Deterministic analytical fixture row 2203: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2204	record-2204	true	672.11	1755459780000	delta	Deterministic analytical fixture row 2204: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2205	record-2205	true	691.48	1758228240000	alpha	quoted value, row 2205
-with a second line and "double quotes"
+2205	record-2205	true	691.48	1758228240000	alpha	"quoted value, row 2205
+with a second line and ""double quotes"""
 2206	record-2206	false	710.85	1760910300000	beta	Deterministic analytical fixture row 2206: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2207	record-2207	true	730.22	1763678760000	gamma	Deterministic analytical fixture row 2207: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2208	record-2208	true	749.59	1766360820000	delta	Deterministic analytical fixture row 2208: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2309,8 +2309,8 @@ with a second line and "double quotes"
 2231	record-2231	true	195.1	1763417400000	gamma	Deterministic analytical fixture row 2231: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2232	record-2232	true	214.47	1766099460000	delta	Deterministic analytical fixture row 2232: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2233	record-2233	false	233.84	1737245520000	alpha	Deterministic analytical fixture row 2233: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2234	record-2234	true	253.21	1740013980000	beta	quoted value, row 2234
-with a second line and "double quotes"
+2234	record-2234	true	253.21	1740013980000	beta	"quoted value, row 2234
+with a second line and ""double quotes"""
 2235	record-2235	true	272.58	1742523240000	gamma	Deterministic analytical fixture row 2235: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2236	record-2236	false	291.95	1745291700000	delta	Deterministic analytical fixture row 2236: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2237	record-2237	true	311.32	1747973760000	alpha	Deterministic analytical fixture row 2237: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2339,8 +2339,8 @@ with a second line and "double quotes"
 2260	record-2260	false	756.83	1745033940000	delta	Deterministic analytical fixture row 2260: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2261	record-2261	true	776.2	1747716000000	alpha	Deterministic analytical fixture row 2261: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2262		true	795.57	1750484460000	beta	Deterministic analytical fixture row 2262: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2263	record-2263	false	814.94	1753166520000	gamma	quoted value, row 2263
-with a second line and "double quotes"
+2263	record-2263	false	814.94	1753166520000	gamma	"quoted value, row 2263
+with a second line and ""double quotes"""
 2264	record-2264	true	834.31	1755934980000	delta	Deterministic analytical fixture row 2264: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2265	record-2265	true	853.68	1758703440000	alpha	Deterministic analytical fixture row 2265: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2266	record-2266	false	873.05	1761385500000	beta	Deterministic analytical fixture row 2266: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2369,8 +2369,8 @@ with a second line and "double quotes"
 2289	record-2289	true	318.56	1758442080000	alpha	Deterministic analytical fixture row 2289: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2290	record-2290	false	337.93	1761124140000	beta	Deterministic analytical fixture row 2290: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2291	record-2291	true	357.3	1763892600000	gamma	Deterministic analytical fixture row 2291: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2292	record-2292	true	376.67	1766574660000	delta	quoted value, row 2292
-with a second line and "double quotes"
+2292	record-2292	true	376.67	1766574660000	delta	"quoted value, row 2292
+with a second line and ""double quotes"""
 2293	record-2293	false	396.04	1737807120000	alpha	Deterministic analytical fixture row 2293: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2294	record-2294	true	415.41	1740575580000	beta	Deterministic analytical fixture row 2294: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2295	record-2295	true	434.78	1743084840000	gamma	Deterministic analytical fixture row 2295: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2399,8 +2399,8 @@ with a second line and "double quotes"
 2318	record-2318	true	880.29	1740317820000	beta	Deterministic analytical fixture row 2318: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2319	record-2319	true	899.66	1742827080000	gamma	Deterministic analytical fixture row 2319: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2320	record-2320	false	919.03	1745595540000	delta	Deterministic analytical fixture row 2320: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2321	record-2321	true	938.4	1748277600000	alpha	quoted value, row 2321
-with a second line and "double quotes"
+2321	record-2321	true	938.4	1748277600000	alpha	"quoted value, row 2321
+with a second line and ""double quotes"""
 2322	record-2322	true	957.77	1751046060000	beta	Deterministic analytical fixture row 2322: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2323	record-2323	false	977.14	1751395320000	gamma	Deterministic analytical fixture row 2323: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2324	record-2324	true	996.51	1754163780000	delta	Deterministic analytical fixture row 2324: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2429,8 +2429,8 @@ with a second line and "double quotes"
 2347		false	442.02	1753466760000	gamma	Deterministic analytical fixture row 2347: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2348	record-2348	true	461.39	1756235220000	delta	Deterministic analytical fixture row 2348: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2349	record-2349	true	480.76	1759003680000	alpha	Deterministic analytical fixture row 2349: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2350	record-2350	false	500.13	1759352940000	beta	quoted value, row 2350
-with a second line and "double quotes"
+2350	record-2350	false	500.13	1759352940000	beta	"quoted value, row 2350
+with a second line and ""double quotes"""
 2351	record-2351	true	519.5	1762121400000	gamma	Deterministic analytical fixture row 2351: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2352	record-2352	true	538.87	1764803460000	delta	Deterministic analytical fixture row 2352: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2353	record-2353	false	558.24	1735949520000	alpha	Deterministic analytical fixture row 2353: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
@@ -2459,8 +2459,8 @@ with a second line and "double quotes"
 2376	record-2376	true	3.75	1766878500000	delta	Deterministic analytical fixture row 2376: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2377	record-2377	false	23.12	1735691760000	alpha	Deterministic analytical fixture row 2377: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2378	record-2378	true	42.49	1738460220000	beta	Deterministic analytical fixture row 2378: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
-2379	record-2379	true	61.86	1740969480000	gamma	quoted value, row 2379
-with a second line and "double quotes"
+2379	record-2379	true	61.86	1740969480000	gamma	"quoted value, row 2379
+with a second line and ""double quotes"""
 2380	record-2380	false	81.23	1743737940000	delta	Deterministic analytical fixture row 2380: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2381		true	100.6	1746420000000	alpha	Deterministic analytical fixture row 2381: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-
 2382	record-2382	true	119.97	1749188460000	beta	Deterministic analytical fixture row 2382: sample-data-sample-data-sample-data-sample-data-sample-data-sample-data-

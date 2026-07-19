@@ -194,6 +194,7 @@ function inspection(variant: string): StructuredInspection {
       exactSort: false,
       pagination: "cursor",
       exportCurrentPage: true
+      ,sql: false
     },
     metadata: [],
     warnings: []

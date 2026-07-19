@@ -11,7 +11,11 @@ docker compose up -d
 
 Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
-Open **Global > Structured data** to try the generated Parquet, Avro OCF, Arrow IPC/Feather, NDJSON, CSV, and TSV viewers, plus their safe malformed/truncated fixtures.
+The read-only generated corpus is mounted alongside the writable demo files:
+
+- **Global > Structured data** contains equivalent Parquet, Avro OCF, Arrow IPC/Feather, NDJSON, CSV, and TSV sources.
+- Navigate into **Global > Iceberg > lineitem**, then use the first toolbar action, **Open as Iceberg table**; normal folder navigation remains unchanged.
+- **Global > NetCDF** contains classic, CDF-5, NetCDF-4, grouped, compressed, packed, malformed, and bounded large-file fixtures.
 
 `CAGNARD_VERSION` in `.env` selects the matching frontend and backend release. Ports default to frontend `5173` and backend `8080`.
 

@@ -5,6 +5,17 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    # Apache Arrow's pinned vector builder uses generated validity predicates.
+    # Permit JS evaluation only inside the isolated analytical worker, not the app.
+    location ~ ^/assets/structuredData\.worker-[A-Za-z0-9_-]+\.js$ {
+        add_header Content-Security-Policy "default-src 'self'; connect-src 'self'; object-src 'none'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; worker-src 'self' blob:" always;
+        add_header Referrer-Policy "no-referrer" always;
+        try_files $uri =404;
+    }
+
     location /api/ {
         proxy_http_version 1.1;
         proxy_request_buffering off;

@@ -1,0 +1,3 @@
+examples/storage/global/structured-data/events.csv binary
+examples/storage/global/structured-data/events-malformed.ndjson binary
+examples/storage/global/structured-data/events-utf8-boundary.ndjson binary

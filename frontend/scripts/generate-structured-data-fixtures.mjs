@@ -279,5 +279,6 @@ function csvCell(value) {
 }
 
 function tsvCell(value) {
-  return value === null || value === undefined ? "" : String(value).replaceAll("\t", " ");
+  const text = value === null || value === undefined ? "" : String(value);
+  return /["\t\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }

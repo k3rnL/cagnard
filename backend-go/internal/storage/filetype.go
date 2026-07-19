@@ -68,6 +68,9 @@ var extensionTypes = map[string]fileTypeDefinition{
 	".arrow":   binaryType("application/vnd.apache.arrow.file", "analytical-data", "file-box"),
 	".feather": binaryType("application/vnd.apache.arrow.file", "analytical-data", "file-box"),
 	".ipc":     binaryType("application/vnd.apache.arrow.stream", "analytical-data", "file-box"),
+	".nc":      binaryType("application/x-netcdf", "analytical-data", "file-box"),
+	".nc4":     binaryType("application/x-netcdf", "analytical-data", "file-box"),
+	".cdf":     binaryType("application/x-netcdf", "analytical-data", "file-box"),
 }
 
 var exactMIMETypes = map[string]fileTypeDefinition{
@@ -108,6 +111,9 @@ var exactMIMETypes = map[string]fileTypeDefinition{
 	"application/vnd.apache.arrow.file":   extensionTypes[".arrow"],
 	"application/vnd.apache.arrow.stream": extensionTypes[".ipc"],
 	"application/x-apache-arrow":          extensionTypes[".arrow"],
+	"application/x-netcdf":                extensionTypes[".nc"],
+	"application/netcdf":                  extensionTypes[".nc"],
+	"application/x-netcdf4":               extensionTypes[".nc4"],
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   extensionTypes[".docx"],
 	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         extensionTypes[".xlsx"],
 	"application/vnd.openxmlformats-officedocument.presentationml.presentation": extensionTypes[".pptx"],

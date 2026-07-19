@@ -112,6 +112,9 @@ const extensionDefinitions: Record<string, FileTypeDefinition> = {
   ".arrow": binary("application/vnd.apache.arrow.file", "analytical-data", "file-box", "Arrow IPC file"),
   ".feather": binary("application/vnd.apache.arrow.file", "analytical-data", "file-box", "Feather data"),
   ".ipc": binary("application/vnd.apache.arrow.stream", "analytical-data", "file-box", "Arrow IPC stream"),
+  ".nc": binary("application/x-netcdf", "analytical-data", "file-box", "NetCDF dataset"),
+  ".nc4": binary("application/x-netcdf", "analytical-data", "file-box", "NetCDF-4 dataset"),
+  ".cdf": binary("application/x-netcdf", "analytical-data", "file-box", "NetCDF dataset"),
   ".orc": binary("application/vnd.apache.orc", "data", "file-box", "ORC data"),
   ".db": binary("application/vnd.sqlite3", "database", "file-box", "Database"),
   ".sqlite": binary("application/vnd.sqlite3", "database", "file-box", "SQLite database"),
@@ -144,7 +147,10 @@ const exactMimeDefinitions: Record<string, FileTypeDefinition> = {
   "application/vnd.apache.arrow": extensionDefinitions[".arrow"],
   "application/vnd.apache.arrow.file": extensionDefinitions[".arrow"],
   "application/vnd.apache.arrow.stream": extensionDefinitions[".ipc"],
-  "application/x-apache-arrow": extensionDefinitions[".arrow"]
+  "application/x-apache-arrow": extensionDefinitions[".arrow"],
+  "application/x-netcdf": extensionDefinitions[".nc"],
+  "application/netcdf": extensionDefinitions[".nc"],
+  "application/x-netcdf4": extensionDefinitions[".nc4"]
 };
 
 export function classifyEntry(entry: StorageEntry): FileTypeInfo {

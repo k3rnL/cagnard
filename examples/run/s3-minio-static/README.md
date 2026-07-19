@@ -13,7 +13,7 @@ Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
 MinIO console: `http://127.0.0.1:9001`, using `cagnard` / `cagnard-secret`. These are local demo credentials only.
 
-Open **Global > Structured data** to inspect the generated fixture set through authenticated S3 range access. The MinIO initializer mirrors the canonical files from `examples/storage/global/structured-data` into the demo bucket.
+The MinIO initializer mirrors the canonical generated fixtures into the **S3 Documents** root. Open **Structured data** for equivalent relational files, **Iceberg > lineitem** for explicit Iceberg table opening, and **NetCDF** for semantic variable and slice inspection. Provider credentials remain in the backend; the browser receives only authenticated same-origin content and range URLs.
 
 ## Build The Current Source
 

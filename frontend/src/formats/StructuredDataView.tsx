@@ -7,11 +7,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns3,
+  Code2,
   Download,
   ExternalLink,
   Filter,
   LoaderCircle,
   Plus,
+  Play,
   RefreshCw,
   Search,
   Square,
@@ -25,6 +27,8 @@ import {
   useRef,
   useState,
 } from "react";
+import hljs from "highlight.js/lib/core";
+import sqlLanguage from "highlight.js/lib/languages/sql";
 
 import type { StorageEntry } from "../api/types";
 import type {
@@ -32,11 +36,20 @@ import type {
   StructuredField,
   StructuredFilter,
   StructuredInspection,
+  StructuredFormatId,
+  StructuredDataLimits,
   StructuredPage,
   StructuredPageRequest,
   StructuredSort,
+  StructuredSQLResult,
   StructuredValue,
+  IcebergSnapshot,
+  NetCDFSliceProjection,
+  NetCDFSliceRequest,
+  NetCDFDataset,
 } from "./models";
+import NetCDFWorkspace from "./NetCDFWorkspace";
+import { defaultStructuredDataLimits, loadStructuredDataLimits } from "./config";
 import {
   StructuredDataClientError,
   StructuredDataWorkerClient,
@@ -46,9 +59,11 @@ import {
   type StructuredRuntimeLease,
 } from "./runtimeManager";
 
+hljs.registerLanguage("sql", sqlLanguage);
+
 export interface StructuredDataViewProps {
   entry: StorageEntry;
-  format: "parquet" | "avro" | "arrow-ipc" | "ndjson" | "delimited-text";
+  format: StructuredFormatId;
   contentUrl: string;
 }
 
@@ -71,11 +86,12 @@ interface SortDraft {
   direction: StructuredSort["direction"];
 }
 
-type StructuredOperation = "page" | "filters" | "sorts" | "columns" | "reset";
+type StructuredOperation = "page" | "filters" | "sorts" | "columns" | "reset" | "slice";
 
-const structuredTabs = ["data", "schema", "metadata"] as const;
+const structuredTabs = ["data", "sql", "snapshots", "schema", "metadata"] as const;
 const maximumFilterDrafts = 8;
 const maximumSortDrafts = 8;
+const maximumHighlightedSQLCharacters = 64 * 1024;
 type StructuredTab = (typeof structuredTabs)[number];
 
 export default function StructuredDataView(
@@ -114,9 +130,20 @@ export default function StructuredDataView(
   );
   const [query, setQuery] = useState<QueryState>({});
   const [activeOperation, setActiveOperation] = useState<StructuredOperation>();
+  const [sqlText, setSQLText] = useState("SELECT *\nFROM data\nLIMIT 100");
+  const [sqlResult, setSQLResult] = useState<StructuredSQLResult>();
+  const [sqlError, setSQLError] = useState<StructuredErrorShape>();
+  const [sqlLoading, setSQLLoading] = useState(false);
+  const [sqlCursorHistory, setSQLCursorHistory] = useState<Array<string | undefined>>([]);
+  const [sqlCursor, setSQLCursor] = useState<string>();
+  const [icebergSnapshots, setIcebergSnapshots] = useState<IcebergSnapshot[]>([]);
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>();
+  const [netcdfProjection, setNetCDFProjection] = useState<NetCDFSliceProjection>();
+  const [limits, setLimits] = useState<StructuredDataLimits>(defaultStructuredDataLimits);
   const clientRef = useRef<StructuredDataWorkerClient>();
   const sourceIdRef = useRef("");
   const operationRef = useRef<AbortController>();
+  const sqlOperationRef = useRef<AbortController>();
   const nextFilterDraftIdRef = useRef(0);
   const nextSortDraftIdRef = useRef(0);
   const tabIdPrefix = useId().replaceAll(":", "");
@@ -205,6 +232,15 @@ export default function StructuredDataView(
     setPendingHeaderSortColumn(undefined);
     setQueryEditor(undefined);
     setActiveOperation(undefined);
+    setSQLResult(undefined);
+    setSQLError(undefined);
+    setSQLLoading(false);
+    setSQLCursorHistory([]);
+    setSQLCursor(undefined);
+    setIcebergSnapshots([]);
+    setSelectedSnapshotId(undefined);
+    setNetCDFProjection(undefined);
+    sqlOperationRef.current?.abort();
     void acquireStructuredDataRuntime()
       .then(async (nextLease) => {
         lease = nextLease;
@@ -215,6 +251,9 @@ export default function StructuredDataView(
         const { client, sourceId } = nextLease;
         clientRef.current = client;
         sourceIdRef.current = sourceId;
+				const limits = await loadStructuredDataLimits();
+				if (!active || controller.signal.aborted) return;
+        setLimits(limits);
         const nextInspection = await client.initialize(
           {
             sourceId,
@@ -223,6 +262,7 @@ export default function StructuredDataView(
             contentUrl: absoluteContentUrl,
             size: entry.metadata.size ?? undefined,
             mimeType: entry.metadata.mimeType ?? undefined,
+						limits,
             options: format === "delimited-text"
               ? {
                 delimiter: delimiter === "auto" ? undefined : delimiter,
@@ -240,6 +280,12 @@ export default function StructuredDataView(
         );
         if (!active || controller.signal.aborted) return;
         setInspection(nextInspection);
+        if (format === "iceberg") {
+          const snapshots = await client.icebergSnapshots(sourceId, controller.signal);
+          if (!active || controller.signal.aborted) return;
+          setIcebergSnapshots(snapshots);
+          setSelectedSnapshotId(snapshots.find((snapshot) => snapshot.current)?.snapshotId);
+        }
         const firstField = nextInspection.schema[0];
         nextFilterDraftIdRef.current += 1;
         setFilterDrafts([
@@ -269,6 +315,7 @@ export default function StructuredDataView(
     return () => {
       active = false;
       controller.abort();
+      sqlOperationRef.current?.abort();
       if (lease && clientRef.current === lease.client) {
         clientRef.current = undefined;
       }
@@ -288,6 +335,10 @@ export default function StructuredDataView(
 
   const allColumns = inspection?.schema.map((field) => field.name) ??
     page?.columns ?? [];
+  const visibleTabs: readonly StructuredTab[] = structuredTabs.filter((tab) =>
+    (tab !== "sql" || inspection?.capabilities.sql) &&
+    (tab !== "snapshots" || format === "iceberg")
+  );
   const displayedColumns =
     page?.columns.filter((column) => visibleColumns.has(column)) ?? [];
   const progress = loaded !== undefined && total
@@ -320,6 +371,107 @@ export default function StructuredDataView(
         retryable: true,
       },
     );
+  };
+
+  const runSQL = async (cursor?: string) => {
+    const client = clientRef.current;
+    const relation = inspection?.relation;
+    if (!client || !relation) return false;
+    sqlOperationRef.current?.abort();
+    const controller = new AbortController();
+    sqlOperationRef.current = controller;
+    setSQLLoading(true);
+    setSQLError(undefined);
+    try {
+      const result = await client.sql(sourceIdRef.current, {
+        sql: sqlText,
+        cursor,
+        limit: pageSize,
+        generation: relation.generation,
+      }, controller.signal);
+      setSQLResult(result);
+      setSQLCursor(cursor);
+      return true;
+    } catch (caught) {
+      if (!controller.signal.aborted) setSQLError(errorShape(caught));
+      return false;
+    } finally {
+      if (sqlOperationRef.current === controller) setSQLLoading(false);
+    }
+  };
+
+  const stopSQL = () => {
+    sqlOperationRef.current?.abort();
+    setSQLLoading(false);
+  };
+
+  const selectIcebergSnapshot = async (snapshotId: string | undefined) => {
+    const client = clientRef.current;
+    if (!client || format !== "iceberg") return;
+    operationRef.current?.abort();
+    const controller = new AbortController();
+    operationRef.current = controller;
+    setLoading(true);
+    setPhase("Opening snapshot");
+    setError(undefined);
+    try {
+      const nextInspection = await client.selectIcebergSnapshot(
+        sourceIdRef.current,
+        snapshotId,
+        controller.signal,
+      );
+      const nextPage = await client.page(sourceIdRef.current, { limit: pageSize }, controller.signal);
+      setInspection(nextInspection);
+      setPage(nextPage);
+      setSelectedSnapshotId(snapshotId ?? icebergSnapshots.find((snapshot) => snapshot.current)?.snapshotId);
+      setQuery({});
+      setCursorHistory([]);
+      setActiveCursor(undefined);
+      setVisibleColumns(new Set(nextPage.columns));
+      setSQLResult(undefined);
+      setSQLError(undefined);
+      setSQLCursorHistory([]);
+      setSQLCursor(undefined);
+      setActiveTab("data");
+    } catch (caught) {
+      if (!controller.signal.aborted) setError(errorShape(caught));
+    } finally {
+      if (operationRef.current === controller) setLoading(false);
+    }
+  };
+
+  const loadNetCDFSlice = async (request: NetCDFSliceRequest) => {
+    const client = clientRef.current;
+    if (!client || format !== "netcdf") return;
+    operationRef.current?.abort();
+    const controller = new AbortController();
+    operationRef.current = controller;
+    setLoading(true);
+    setActiveOperation("slice");
+    setPhase("Loading bounded NetCDF slice");
+    setError(undefined);
+    try {
+      const result = await client.netcdfSlice(sourceIdRef.current, request, controller.signal);
+      setInspection(result.inspection);
+      setPage(result.page);
+      setNetCDFProjection(result.projection);
+      setQuery({});
+      setCursorHistory([]);
+      setActiveCursor(undefined);
+      setSelectedRows(new Set());
+      setVisibleColumns(new Set(result.page.columns));
+      setSQLResult(undefined);
+      setSQLError(undefined);
+      setSQLCursorHistory([]);
+      setSQLCursor(undefined);
+    } catch (caught) {
+      if (!controller.signal.aborted) setError(errorShape(caught));
+    } finally {
+      if (operationRef.current === controller) {
+        setLoading(false);
+        setActiveOperation(undefined);
+      }
+    }
   };
 
   const applyFilters = async () => {
@@ -472,6 +624,22 @@ export default function StructuredDataView(
     ]);
   };
 
+  const exportCurrentPage = (kind: "csv" | "json") => {
+    if (!page) return;
+    try {
+      exportPage(
+        kind,
+        entry.name,
+        page,
+        displayedColumns,
+        selectedRows,
+        limits.exports,
+      );
+    } catch (caught) {
+      setError(errorShape(caught));
+    }
+  };
+
   if (error && !inspection) {
     return (
       <section
@@ -538,7 +706,7 @@ export default function StructuredDataView(
         role="tablist"
         aria-label="Data file views"
       >
-        {structuredTabs.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             type="button"
             role="tab"
@@ -549,20 +717,20 @@ export default function StructuredDataView(
             tabIndex={activeTab === tab ? 0 : -1}
             onClick={() => setActiveTab(tab)}
             onKeyDown={(event) => {
-              const currentIndex = structuredTabs.indexOf(tab);
+              const currentIndex = visibleTabs.indexOf(tab);
               const nextIndex = event.key === "ArrowRight"
-                ? (currentIndex + 1) % structuredTabs.length
+                ? (currentIndex + 1) % visibleTabs.length
                 : event.key === "ArrowLeft"
-                ? (currentIndex - 1 + structuredTabs.length) %
-                  structuredTabs.length
+                ? (currentIndex - 1 + visibleTabs.length) %
+                  visibleTabs.length
                 : event.key === "Home"
                 ? 0
                 : event.key === "End"
-                ? structuredTabs.length - 1
+                ? visibleTabs.length - 1
                 : undefined;
               if (nextIndex === undefined) return;
               event.preventDefault();
-              const nextTab = structuredTabs[nextIndex];
+              const nextTab = visibleTabs[nextIndex];
               setActiveTab(nextTab);
               event.currentTarget.parentElement
                 ?.querySelectorAll<HTMLButtonElement>("[role='tab']")
@@ -599,16 +767,12 @@ export default function StructuredDataView(
         ? (
           <div className="structured-inline-error" role="alert">
             <span>{error.message}</span>
-            {error.retryable
+            {error.detail
               ? (
-                <button
-                  className="icon-button compact"
-                  type="button"
-                  title="Retry current page"
-                  onClick={() => void loadPage(activeCursor, query)}
-                >
-                  <RefreshCw size={15} />
-                </button>
+                <details>
+                  <summary>Technical detail</summary>
+                  <pre>{error.detail}</pre>
+                </details>
               )
               : null}
           </div>
@@ -624,6 +788,17 @@ export default function StructuredDataView(
             id={`${tabIdPrefix}-panel-data`}
             role="tabpanel"
           >
+            {inspection.netcdf
+              ? (
+                <NetCDFWorkspace
+                  dataset={inspection.netcdf}
+                  loading={loading && activeOperation === "slice"}
+                  onCancel={cancelOperation}
+                  onLoad={(request) => void loadNetCDFSlice(request)}
+                  projection={netcdfProjection}
+                />
+              )
+              : null}
             <div className="structured-toolbar">
               <div className="structured-toolbar-main">
                 <div className="structured-toolbar-group">
@@ -777,30 +952,16 @@ export default function StructuredDataView(
                   <button
                     type="button"
                     className="primary-button compact subtle"
-                    disabled={!page?.rows.length}
-                    onClick={() =>
-                      exportPage(
-                        "csv",
-                        entry.name,
-                        page,
-                        displayedColumns,
-                        selectedRows,
-                      )}
+                    disabled={!inspection.capabilities.exportCurrentPage || !page?.rows.length}
+                    onClick={() => exportCurrentPage("csv")}
                   >
                     <Download size={15} /> CSV
                   </button>
                   <button
                     type="button"
                     className="primary-button compact subtle"
-                    disabled={!page?.rows.length}
-                    onClick={() =>
-                      exportPage(
-                        "json",
-                        entry.name,
-                        page,
-                        displayedColumns,
-                        selectedRows,
-                      )}
+                    disabled={!inspection.capabilities.exportCurrentPage || !page?.rows.length}
+                    onClick={() => exportCurrentPage("json")}
                   >
                     <Download size={15} /> JSON
                   </button>
@@ -818,7 +979,7 @@ export default function StructuredDataView(
                       <div>
                         <strong>Filter rows</strong>
                         <span>
-                          All conditions must match the complete file.
+                          All conditions match {inspection.relation?.label ?? "the complete file"}.
                         </span>
                       </div>
                     </div>
@@ -1386,6 +1547,64 @@ export default function StructuredDataView(
         )
         : null}
 
+      {activeTab === "snapshots" && inspection
+        ? (
+          <div
+            aria-labelledby={`${tabIdPrefix}-tab-snapshots`}
+            className="structured-snapshots"
+            id={`${tabIdPrefix}-panel-snapshots`}
+            role="tabpanel"
+          >
+            <div className="structured-snapshots-heading">
+              <div>
+                <strong>Table history</strong>
+                <span>Selecting a snapshot deliberately rebinds Data and SQL.</span>
+              </div>
+              <button
+                className="primary-button compact subtle"
+                disabled={loading || icebergSnapshots.some((snapshot) => snapshot.current && snapshot.snapshotId === selectedSnapshotId)}
+                onClick={() => void selectIcebergSnapshot(undefined)}
+                type="button"
+              >
+                Current snapshot
+              </button>
+            </div>
+            <div className="structured-snapshot-list">
+              {icebergSnapshots.map((snapshot) => {
+                const selected = snapshot.snapshotId === selectedSnapshotId;
+                return (
+                  <article className={selected ? "selected" : undefined} key={snapshot.snapshotId}>
+                    <div className="structured-snapshot-main">
+                      <strong>{snapshot.operation ?? "Snapshot"}</strong>
+                      <code>{snapshot.snapshotId}</code>
+                      {snapshot.current ? <span className="structured-count-badge">Current</span> : null}
+                    </div>
+                    <dl>
+                      <div><dt>Committed</dt><dd>{snapshot.committedAt ? new Date(snapshot.committedAt).toLocaleString() : "Unknown"}</dd></div>
+                      <div><dt>Sequence</dt><dd>{snapshot.sequenceNumber ?? "Unknown"}</dd></div>
+                      <div><dt>Parent</dt><dd>{snapshot.parentSnapshotId ?? "None"}</dd></div>
+                    </dl>
+                    {Object.keys(snapshot.summary).length > 0
+                      ? <p>{Object.entries(snapshot.summary).map(([key, value]) => `${key}: ${value}`).join(" · ")}</p>
+                      : null}
+                    <button
+                      className="primary-button compact subtle"
+                      disabled={selected || loading}
+                      onClick={() => void selectIcebergSnapshot(snapshot.snapshotId)}
+                      type="button"
+                    >
+                      {selected ? "Selected" : "Open snapshot"}
+                    </button>
+                  </article>
+                );
+              })}
+              {icebergSnapshots.length === 0
+                ? <div className="structured-sql-empty">No snapshot history is present in this metadata version.</div>
+                : null}
+            </div>
+          </div>
+        )
+        : null}
       {activeTab === "schema" && inspection
         ? (
           <div
@@ -1394,8 +1613,43 @@ export default function StructuredDataView(
             id={`${tabIdPrefix}-panel-schema`}
             role="tabpanel"
           >
-            <SchemaTree fields={inspection.schema} />
+            {inspection.netcdf
+              ? <NetCDFSchemaView dataset={inspection.netcdf} />
+              : <SchemaTree fields={inspection.schema} />}
           </div>
+        )
+        : null}
+      {activeTab === "sql" && inspection?.relation
+        ? (
+          <SQLWorkspace
+            error={sqlError}
+            loading={sqlLoading}
+            onInsertCurrentView={() => {
+              setSQLText(insertCurrentViewSQL(query, allColumns));
+              setSQLError(undefined);
+            }}
+            onNext={() => {
+              if (!sqlResult?.page.nextCursor) return;
+              setSQLCursorHistory((current) => [...current, sqlCursor]);
+              void runSQL(sqlResult.page.nextCursor);
+            }}
+            onPrevious={() => {
+              const previous = sqlCursorHistory.at(-1);
+              setSQLCursorHistory((current) => current.slice(0, -1));
+              void runSQL(previous);
+            }}
+            onRun={() => {
+              setSQLCursorHistory([]);
+              void runSQL(undefined);
+            }}
+            onStop={stopSQL}
+            result={sqlResult}
+            scope={inspection.relation}
+            sql={sqlText}
+            setSQL={setSQLText}
+            tabIdPrefix={tabIdPrefix}
+            canPrevious={sqlCursorHistory.length > 0}
+          />
         )
         : null}
       {activeTab === "metadata" && inspection
@@ -1406,12 +1660,178 @@ export default function StructuredDataView(
             id={`${tabIdPrefix}-panel-metadata`}
             role="tabpanel"
           >
-            <MetadataView inspection={inspection} />
+            {inspection.netcdf
+              ? <NetCDFMetadataView inspection={inspection} />
+              : <MetadataView inspection={inspection} />}
           </div>
         )
         : null}
     </section>
   );
+}
+
+function SQLWorkspace({
+  sql,
+  setSQL,
+  scope,
+  result,
+  error,
+  loading,
+  canPrevious,
+  tabIdPrefix,
+  onRun,
+  onStop,
+  onInsertCurrentView,
+  onPrevious,
+  onNext,
+}: {
+  sql: string;
+  setSQL: (sql: string) => void;
+  scope: NonNullable<StructuredInspection["relation"]>;
+  result?: StructuredSQLResult;
+  error?: StructuredErrorShape;
+  loading: boolean;
+  canPrevious: boolean;
+  tabIdPrefix: string;
+  onRun: () => void;
+  onStop: () => void;
+  onInsertCurrentView: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  const page = result?.page;
+  return (
+    <div
+      aria-labelledby={`${tabIdPrefix}-tab-sql`}
+      className="structured-sql-tab"
+      id={`${tabIdPrefix}-panel-sql`}
+      role="tabpanel"
+    >
+      <section className="structured-sql-editor" aria-label="SQL query editor">
+        <div className="structured-sql-heading">
+          <div>
+            <strong><Code2 size={17} /> SQL workspace</strong>
+            <span>
+              Read-only scope: <code>data</code> · {scope.label}
+              {scope.rowCount !== undefined ? ` · ${scope.rowCount.toLocaleString()} rows` : ""}
+            </span>
+          </div>
+          <button
+            className="primary-button compact subtle"
+            disabled={loading}
+            onClick={onInsertCurrentView}
+            type="button"
+          >
+            Insert current view
+          </button>
+        </div>
+        <SQLCodeEditor sql={sql} setSQL={setSQL} />
+        <div className="structured-sql-actions">
+          <span>{scope.description}</span>
+          <button
+            aria-label={loading ? "Stop SQL query" : "Run SQL query"}
+            className={`primary-button compact structured-sql-run${loading ? " running" : ""}`}
+            disabled={!loading && !sql.trim()}
+            onClick={loading ? onStop : onRun}
+            type="button"
+          >
+            {loading
+              ? (
+                <span className="structured-sql-running-icons">
+                  <LoaderCircle className="spin structured-sql-spinner" size={15} />
+                  <Square className="structured-sql-stop" size={14} />
+                </span>
+              )
+              : <Play size={15} />}
+            <span>{loading ? "Running" : "Run query"}</span>
+          </button>
+        </div>
+      </section>
+
+      {error
+        ? <div className="structured-inline-error" role="alert">{error.message}</div>
+        : null}
+      {page
+        ? (
+          <section className="structured-sql-results" aria-label="SQL results">
+            <div className="structured-grid-scroll">
+              <table className="structured-grid">
+                <thead>
+                  <tr>
+                    {page.columns.map((column) => <th key={column} scope="col">{column}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {page.rows.map((row, rowIndex) => (
+                    <tr key={`${page.offset}-${rowIndex}`}>
+                      {page.columns.map((column) => (
+                        <td key={column}><StructuredCell value={row[column]} /></td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!page.rows.length ? <p className="structured-empty">The query returned no rows.</p> : null}
+            </div>
+            <footer className="structured-pagination">
+              <span className="structured-pagination-status">
+                {page.rows.length
+                  ? `${page.offset + 1}-${page.offset + page.rows.length}${page.totalRows !== undefined ? ` of ${page.totalRows}` : ""}`
+                  : "0 rows"}
+                {result ? ` · ${result.elapsedMilliseconds} ms` : ""}
+              </span>
+              <div>
+                <button className="icon-button" disabled={!canPrevious || loading} onClick={onPrevious} title="Previous result page" type="button">
+                  <ChevronLeft size={17} />
+                </button>
+                <button className="icon-button" disabled={!page.nextCursor || loading} onClick={onNext} title="Next result page" type="button">
+                  <ChevronRight size={17} />
+                </button>
+              </div>
+            </footer>
+          </section>
+        )
+        : (
+          <div className="structured-sql-empty">
+            <Code2 size={22} />
+            <span>Run a query to inspect results from the current data scope.</span>
+          </div>
+        )}
+    </div>
+  );
+}
+
+export function SQLCodeEditor({ sql, setSQL }: { sql: string; setSQL: (sql: string) => void }) {
+  const highlightRef = useRef<HTMLPreElement>(null);
+  const mirroredSQL = sql.length === 0 ? " " : sql.endsWith("\n") ? `${sql} ` : sql;
+  const highlighted = useMemo(() => highlightSQLSyntax(mirroredSQL), [mirroredSQL]);
+
+  return (
+    <div className="structured-sql-input">
+      <pre aria-hidden="true" className="structured-sql-highlight" ref={highlightRef}>
+        {highlighted === undefined
+          ? <code>{mirroredSQL}</code>
+          : <code dangerouslySetInnerHTML={{ __html: highlighted }} />}
+      </pre>
+      <textarea
+        aria-label="SQL query"
+        onChange={(event) => setSQL(event.target.value)}
+        onScroll={(event) => {
+          if (!highlightRef.current) return;
+          highlightRef.current.scrollTop = event.currentTarget.scrollTop;
+          highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+        }}
+        spellCheck={false}
+        value={sql}
+      />
+    </div>
+  );
+}
+
+export function highlightSQLSyntax(sql: string): string | undefined {
+  if (sql.length > maximumHighlightedSQLCharacters) return undefined;
+  // Highlight.js escapes SQL before adding token spans.
+  return hljs.highlight(sql, { language: "sql", ignoreIllegals: true }).value;
 }
 
 function ColumnsMenu({
@@ -1666,6 +2086,53 @@ function SchemaTree({ fields }: { fields: StructuredField[] }) {
   );
 }
 
+function NetCDFSchemaView({ dataset }: { dataset: NetCDFDataset }) {
+  return (
+    <div className="netcdf-schema" aria-label="NetCDF schema hierarchy">
+      {dataset.groups.map((group) => (
+        <section key={group.path}>
+          <header>
+            <div>
+              <strong>{group.path === "/" ? "Root group" : group.name}</strong>
+              <span>{group.path}</span>
+            </div>
+            <span>{group.dimensions.length} dimensions · {group.variables.length} variables</span>
+          </header>
+          <div className="netcdf-schema-dimensions">
+            {group.dimensions.map((path) => {
+              const dimension = dataset.dimensions.find((candidate) => candidate.path === path);
+              if (!dimension) return null;
+              return (
+                <div key={path}>
+                  <strong>{dimension.name}</strong>
+                  <span>{dimension.size.toLocaleString()} values{dimension.unlimited ? " · unlimited" : ""}</span>
+                  <small>{dimension.coordinateVariablePath ? `Coordinate: ${dimension.coordinateVariablePath}` : "Index coordinate"}</small>
+                </div>
+              );
+            })}
+          </div>
+          <div className="netcdf-schema-variables">
+            {group.variables.map((path) => {
+              const variable = dataset.variables.find((candidate) => candidate.path === path);
+              if (!variable) return null;
+              return (
+                <div key={path}>
+                  <div>
+                    <strong>{variable.name}</strong>
+                    <span>{variable.physicalType} · {variable.shape.join(" x ") || "scalar"}</span>
+                  </div>
+                  <span>{variable.dimensions.join(" x ") || "No dimensions"}</span>
+                  <small>{variable.chunked ? `Chunks ${variable.chunks?.join(" x ") ?? "unknown"}` : "Contiguous"} · {variable.role}</small>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 function SchemaFieldNode(
   { field, depth }: { field: StructuredField; depth: number },
 ) {
@@ -1730,6 +2197,64 @@ function MetadataView({ inspection }: { inspection: StructuredInspection }) {
   );
 }
 
+function NetCDFMetadataView({ inspection }: { inspection: StructuredInspection }) {
+  const dataset = inspection.netcdf;
+  if (!dataset) return <MetadataView inspection={inspection} />;
+  return (
+    <div className="structured-metadata netcdf-metadata">
+      {inspection.warnings.map((warning) => (
+        <div className="structured-warning" key={warning}>{warning}</div>
+      ))}
+      {inspection.metadata.map((section) => (
+        <MetadataSection key={section.title} title={section.title} values={section.values} />
+      ))}
+      {dataset.groups.map((group) => (
+        <MetadataSection
+          key={`group-${group.path}`}
+          title={group.path === "/" ? "Global attributes" : `Group attributes · ${group.path}`}
+          values={Object.entries(group.attributes).map(([label, value]) => ({ label, value }))}
+          empty="No declared attributes."
+        />
+      ))}
+      {dataset.variables.filter((variable) => Object.keys(variable.attributes).length > 0).map((variable) => (
+        <MetadataSection
+          key={`variable-${variable.path}`}
+          title={`Variable attributes · ${variable.path}`}
+          values={Object.entries(variable.attributes).map(([label, value]) => ({ label, value }))}
+        />
+      ))}
+    </div>
+  );
+}
+
+function MetadataSection({
+  title,
+  values,
+  empty,
+}: {
+  title: string;
+  values: Array<{ label: string; value: StructuredValue }>;
+  empty?: string;
+}) {
+  return (
+    <section>
+      <h3>{title}</h3>
+      {values.length
+        ? (
+          <dl>
+            {values.map(({ label, value }, index) => (
+              <div key={`${label}-${index}`}>
+                <dt>{label}</dt>
+                <dd><StructuredCell value={value} /></dd>
+              </div>
+            ))}
+          </dl>
+        )
+        : <p>{empty ?? "No metadata is available."}</p>}
+    </section>
+  );
+}
+
 function toggleSet<T>(current: Set<T>, value: T): Set<T> {
   const next = new Set(current);
   if (next.has(value)) next.delete(value);
@@ -1784,6 +2309,59 @@ export function createStructuredFilter(
       ? {}
       : { value: coerceFilterValue(value, fields, column) }),
   };
+}
+
+export function insertCurrentViewSQL(
+  query: QueryState,
+  allColumns: string[],
+): string {
+  const projection = query.projection?.length
+    ? query.projection.map(sqlIdentifier).join(", ")
+    : allColumns.length > 0
+    ? allColumns.map(sqlIdentifier).join(", ")
+    : "*";
+  const lines = [`SELECT ${projection}`, "FROM data"];
+  if (query.filters?.length) {
+    lines.push(`WHERE ${query.filters.map(viewFilterSQL).join("\n  AND ")}`);
+  }
+  if (query.sorts?.length) {
+    lines.push(`ORDER BY ${query.sorts.map((sort) =>
+      `${sqlIdentifier(sort.column)} ${sort.direction.toUpperCase()}`
+    ).join(", ")}`);
+  }
+  return lines.join("\n");
+}
+
+function viewFilterSQL(filter: StructuredFilter): string {
+  const column = sqlIdentifier(filter.column);
+  if (filter.operator === "is-null") return `${column} IS NULL`;
+  if (filter.operator === "contains") {
+    const value = String(filter.value ?? "")
+      .replaceAll("\\", "\\\\")
+      .replaceAll("%", "\\%")
+      .replaceAll("_", "\\_");
+    return `${column}::VARCHAR ILIKE ${sqlValue(`%${value}%`)} ESCAPE '\\'`;
+  }
+  const operation = {
+    eq: "=",
+    neq: "<>",
+    gt: ">",
+    gte: ">=",
+    lt: "<",
+    lte: "<=",
+  }[filter.operator];
+  return `${column} ${operation} ${sqlValue(filter.value)}`;
+}
+
+function sqlIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function sqlValue(value: StructuredFilter["value"]): string {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  return `'${String(value).replaceAll("'", "''")}'`;
 }
 
 function coerceFilterValue(
@@ -1872,11 +2450,19 @@ function exportPage(
   page: StructuredPage | undefined,
   columns: string[],
   selected: Set<number>,
+  limits: StructuredDataLimits["exports"],
 ): void {
   if (!page) return;
   const rows = selected.size > 0
     ? page.rows.filter((_, index) => selected.has(index))
     : page.rows;
+  if (rows.length > limits.maxRows) {
+    throw new StructuredDataClientError({
+      code: "limit",
+      message: `Exports are limited to ${limits.maxRows.toLocaleString()} rows. Narrow the current result before exporting.`,
+      retryable: false,
+    });
+  }
   const projected = rows.map((row) =>
     Object.fromEntries(columns.map((column) => [column, row[column] ?? null]))
   );
@@ -1888,6 +2474,14 @@ function exportPage(
         columns.map((column) => csvCell(row[column])).join(",")
       ),
     ].join("\n");
+  const contentBytes = new TextEncoder().encode(content).byteLength;
+  if (contentBytes > limits.maxBytes) {
+    throw new StructuredDataClientError({
+      code: "limit",
+      message: `This export is ${formatExportBytes(contentBytes)} and exceeds the ${formatExportBytes(limits.maxBytes)} export limit. Narrow the current result before exporting.`,
+      retryable: false,
+    });
+  }
   const blob = new Blob([content], {
     type: format === "json" ? "application/json" : "text/csv",
   });
@@ -1897,6 +2491,12 @@ function exportPage(
   anchor.download = `${fileName}.page.${format}`;
   anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function formatExportBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes.toLocaleString()} bytes`;
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024).toLocaleString()} KB`;
+  return `${Math.ceil(bytes / 1024 / 1024).toLocaleString()} MB`;
 }
 
 function csvCell(value: unknown): string {

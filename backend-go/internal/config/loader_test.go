@@ -25,6 +25,9 @@ func TestLoadExampleConfig(t *testing.T) {
 	if cfg.Appearance != DefaultAppearanceConfig() {
 		t.Fatalf("appearance = %#v", cfg.Appearance)
 	}
+	if cfg.StructuredData != DefaultStructuredDataConfig() {
+		t.Fatalf("structured data = %#v", cfg.StructuredData)
+	}
 	if len(cfg.Users) != 1 || cfg.Users[0].ID != "alice" {
 		t.Fatalf("users = %#v", cfg.Users)
 	}
@@ -33,6 +36,47 @@ func TestLoadExampleConfig(t *testing.T) {
 	}
 	if cfg.PersonalStorage[0].Path == nil || !filepath.IsAbs(*cfg.PersonalStorage[0].Path) {
 		t.Fatalf("personal root path was not resolved to absolute path: %#v", cfg.PersonalStorage[0].Path)
+	}
+}
+
+func TestStructuredDataConfigurationDefaultsOverridesAndValidation(t *testing.T) {
+	defaults, err := Load(writeConfigFixture(t, "{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.StructuredData != DefaultStructuredDataConfig() {
+		t.Fatalf("default structured data = %#v", defaults.StructuredData)
+	}
+
+	configured, err := Load(writeConfigFixture(t, `structuredData {
+  relational { maxIngestionBytes = 33554432, maxIngestionRows = 12345 }
+  sql { timeoutMilliseconds = 45000, maxResultRows = 12000, maxQueryCharacters = 50000 }
+  worker { maxResponseBytes = 8388608 }
+  iceberg { maxMetadataBytes = 1048576, maxProbeEntries = 5000 }
+  netcdf {
+    maxSourceBytes = 67108864
+    maxSliceCells = 50000
+    maxSliceBytes = 4194304
+    maxProjectionRows = 40000
+    maxPlotCells = 10000
+  }
+  exports { maxRows = 20000, maxBytes = 4194304 }
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if configured.StructuredData.SQL.TimeoutMilliseconds != 45_000 || configured.StructuredData.NetCDF.MaxSliceCells != 50_000 {
+		t.Fatalf("configured structured data = %#v", configured.StructuredData)
+	}
+
+	for _, invalid := range []string{
+		`structuredData { sql { timeoutMilliseconds = 0 } }`,
+		`structuredData { netcdf { maxSliceCells = 10, maxPlotCells = 11 } }`,
+		`structuredData { worker { maxResponseBytes = 1024 }, exports { maxBytes = 2048 } }`,
+	} {
+		if _, err := Load(writeConfigFixture(t, invalid)); err == nil || !strings.Contains(err.Error(), "structuredData") {
+			t.Fatalf("invalid structured data config %q error = %v", invalid, err)
+		}
 	}
 }
 

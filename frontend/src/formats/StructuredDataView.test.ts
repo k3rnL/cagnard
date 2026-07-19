@@ -8,6 +8,9 @@ import {
   defaultFilterOperator,
   filterInputKind,
   filterOperatorsForField,
+  highlightSQLSyntax,
+  insertCurrentViewSQL,
+  SQLCodeEditor,
 } from "./StructuredDataView";
 import type { StructuredField } from "./models";
 
@@ -88,6 +91,31 @@ describe("structured-data query controls", () => {
     expect(markup).toContain("structured-spinner-icon");
     expect(markup).toContain("structured-stop-icon");
     expect(markup).toContain("Applying filters");
+  });
+
+  it("inserts an editable SQL representation of the current view", () => {
+    expect(insertCurrentViewSQL({
+      projection: ["name", "amount"],
+      filters: [{ column: "name", operator: "contains", value: "O'Reilly" }],
+      sorts: [{ column: "amount", direction: "desc" }],
+    }, fields.map((candidate) => candidate.name))).toBe(
+      `SELECT "name", "amount"\nFROM data\nWHERE "name"::VARCHAR ILIKE '%O''Reilly%' ESCAPE '\\'\nORDER BY "amount" DESC`,
+    );
+  });
+
+  it("adds SQL syntax tokens while preserving the native editor value", () => {
+    const sql = "SELECT name, 42 AS answer FROM data WHERE active = true AND name = 'Alice'";
+    const highlighted = highlightSQLSyntax(sql);
+    const markup = renderToStaticMarkup(createElement(SQLCodeEditor, {
+      sql,
+      setSQL: () => undefined,
+    }));
+
+    expect(highlighted).toContain("hljs-keyword");
+    expect(highlighted).toContain("hljs-number");
+    expect(highlighted).toContain("hljs-string");
+    expect(markup).toContain('aria-label="SQL query"');
+    expect(markup).toContain("SELECT name, 42 AS answer FROM data");
   });
 });
 

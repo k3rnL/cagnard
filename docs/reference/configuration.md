@@ -9,6 +9,7 @@ This reference describes the implemented HOCON model. See [Configuration](../ope
 | `server` | HTTP bind host and port |
 | `tasks` | Background task worker limits |
 | `appearance` | Operator palette/mode defaults and user override policy |
+| `structuredData` | Browser analytical processing limits and hard safety policy |
 | `auth` | Authentication mode, session, static provider, future OIDC declarations |
 | `users` | Configured identities and static verifier material |
 | `providers` | Provider implementations and shared connection behavior |
@@ -41,6 +42,30 @@ This reference describes the implemented HOCON model. See [Configuration](../ope
 | `allowUserOverride` | boolean | `true` |
 
 The section is optional. Invalid enum values fail startup. The public `/api/appearance` response exposes only these safe fields.
+
+## `structuredData`
+
+All fields are positive integers. Defaults apply when the section or field is omitted. Values above the hard maximum fail startup.
+
+| Field | Default | Hard maximum |
+| --- | ---: | ---: |
+| `relational.maxIngestionBytes` | 67,108,864 | 536,870,912 |
+| `relational.maxIngestionRows` | 200,000 | 1,000,000 |
+| `sql.timeoutMilliseconds` | 30,000 | 120,000 |
+| `sql.maxResultRows` | 100,000 | 500,000 |
+| `sql.maxQueryCharacters` | 100,000 | 200,000 |
+| `worker.maxResponseBytes` | 16,777,216 | 67,108,864 |
+| `iceberg.maxMetadataBytes` | 2,097,152 | 16,777,216 |
+| `iceberg.maxProbeEntries` | 10,000 | 100,000 |
+| `netcdf.maxSourceBytes` | 134,217,728 | 536,870,912 |
+| `netcdf.maxSliceCells` | 100,000 | 1,000,000 |
+| `netcdf.maxSliceBytes` | 16,777,216 | 67,108,864 |
+| `netcdf.maxProjectionRows` | 100,000 | 1,000,000 |
+| `netcdf.maxPlotCells` | 20,000 | 100,000 |
+| `exports.maxRows` | 100,000 | 500,000 |
+| `exports.maxBytes` | 16,777,216 | 67,108,864 |
+
+`netcdf.maxPlotCells` and `netcdf.maxProjectionRows` cannot exceed `netcdf.maxSliceCells`. `exports.maxBytes` cannot exceed `worker.maxResponseBytes`. The public `/api/structured-data/config` response contains these validated limits and no secrets.
 
 ## `auth`
 

@@ -37,6 +37,10 @@ func TestHealthAndDiscoveryRoutes(t *testing.T) {
 	if body := response.Body.String(); strings.Contains(body, "alice") || strings.Contains(body, "providers") || strings.Contains(body, "signingSecret") {
 		t.Fatalf("appearance response exposed protected configuration: %s", body)
 	}
+	structured := getJSON[StructuredDataConfigResponse](t, server, "/api/structured-data/config")
+	if structured.Relational.MaxIngestionBytes != 64*1024*1024 || structured.SQL.TimeoutMilliseconds != 30_000 || structured.NetCDF.MaxSourceBytes != 128*1024*1024 {
+		t.Fatalf("unexpected structured-data config: %#v", structured)
+	}
 
 	auth := getJSON[AuthProvidersResponse](t, server, "/api/auth/providers")
 	if len(auth.Providers) != 1 || auth.Providers[0].ID != "static" {

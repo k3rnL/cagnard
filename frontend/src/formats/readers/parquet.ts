@@ -1,8 +1,4 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
-import duckdbMvpWasm from "@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url";
-import duckdbMvpWorker from "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url";
-import duckdbEhWasm from "@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url";
-import duckdbEhWorker from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url";
 
 import type {
   StructuredField,
@@ -12,6 +8,8 @@ import type {
   StructuredPageRequest,
   StructuredSort,
   StructuredSourceDefinition,
+  StructuredSQLRequest,
+  StructuredSQLResult,
   StructuredValue,
 } from "../models";
 import {
@@ -22,17 +20,26 @@ import {
   StructuredReaderError,
 } from "./shared";
 import type { StructuredDataSource } from "./types";
-import { LazyRuntime } from "./lazyRuntime";
+import { executeRelationSQL } from "./relationalSource";
+import {
+  acquireDuckDBRuntime,
+  configureSourceConnection,
+  configureUserQueryConnection,
+  type DuckDBConnection,
+  type DuckDBRuntime,
+  invalidateDuckDBRuntime,
+  isFatalDuckDBError,
+  quoteIdentifier,
+  runDuckDBQuery,
+  shutdownDuckDBRuntime,
+  sqlLiteral,
+  tableRows,
+} from "./duckdbRuntime";
 
 const queryTimeoutMilliseconds = 30_000;
 const maximumOffset = 10_000_000;
 const maximumFilters = 8;
 const maximumSorts = 8;
-
-interface DuckDBRuntime {
-  database: duckdb.AsyncDuckDB;
-  worker: Worker;
-}
 
 type ProgressReporter = (
   phase: string,
@@ -40,18 +47,13 @@ type ProgressReporter = (
   total?: number,
 ) => void;
 
-const sharedDuckDBRuntime = new LazyRuntime<
-  DuckDBRuntime,
-  [contentUrl: string, progress: ProgressReporter]
->(createDuckDBRuntime, disposeDuckDBRuntime);
-
 export async function createParquetSource(
   definition: StructuredSourceDefinition,
   signal: AbortSignal,
   progress: (phase: string, loaded?: number, total?: number) => void,
 ): Promise<StructuredDataSource> {
   signal.throwIfAborted();
-  const runtime = await sharedDuckDBRuntime.get(
+  const runtime = await acquireDuckDBRuntime(
     definition.contentUrl,
     progress,
   );
@@ -67,11 +69,13 @@ export async function createParquetSource(
       false,
     );
     connection = await runtime.database.connect();
+    await configureSourceConnection(connection);
     signal.throwIfAborted();
     const source = new ParquetSource(
       runtime,
       connection,
       registeredFile,
+			definition,
     );
     await source.initialize(signal);
     return source;
@@ -79,7 +83,7 @@ export async function createParquetSource(
     await connection?.close().catch(() => undefined);
     await runtime.database.dropFile(registeredFile).catch(() => undefined);
     if (isFatalDuckDBError(caught)) {
-      await sharedDuckDBRuntime.invalidate(runtime).catch(() => undefined);
+      await invalidateDuckDBRuntime(runtime).catch(() => undefined);
     }
     if (caught instanceof StructuredReaderError) throw caught;
     const detail = caught instanceof Error ? caught.message : String(caught);
@@ -102,13 +106,18 @@ class ParquetSource implements StructuredDataSource {
 
   constructor(
     private readonly runtime: DuckDBRuntime,
-    private readonly connection: duckdb.AsyncDuckDBConnection,
+    private readonly connection: DuckDBConnection,
     private readonly registeredFile: string,
+		private readonly definition: StructuredSourceDefinition,
   ) {}
 
   async initialize(signal: AbortSignal): Promise<void> {
+    await this.query(
+      `CREATE OR REPLACE TEMP VIEW data AS SELECT * FROM read_parquet(${sqlLiteral(this.registeredFile)})`,
+      signal,
+    );
     const describe = await this.query(
-      `DESCRIBE SELECT * FROM read_parquet(${sqlLiteral(this.registeredFile)})`,
+      "DESCRIBE SELECT * FROM data",
       signal,
     );
     const describeRows = tableRows(describe);
@@ -169,6 +178,7 @@ class ParquetSource implements StructuredDataSource {
       ),
     );
     const totalRows = parquetRowCount(metadataRows);
+    await configureUserQueryConnection(this.connection, { paths: [this.registeredFile] });
     this.inspectionValue = {
       format: "parquet",
       formatLabel: "Apache Parquet",
@@ -181,6 +191,7 @@ class ParquetSource implements StructuredDataSource {
         exactSort: true,
         pagination: "offset",
         exportCurrentPage: true,
+        sql: true,
       },
       totalRows,
       metadata: [
@@ -221,6 +232,15 @@ class ParquetSource implements StructuredDataSource {
         },
       ].filter((section) => section.values.length > 0),
       warnings: [],
+      relation: {
+        relation: "data",
+        label: "Complete file",
+        description: "The complete Parquet file is queried lazily through DuckDB.",
+        exact: true,
+        bounded: false,
+        rowCount: totalRows,
+        generation: 1,
+      },
     };
   }
 
@@ -280,7 +300,7 @@ class ParquetSource implements StructuredDataSource {
       : "";
     const sql = `SELECT ${
       projection.map(quoteIdentifier).join(", ")
-    } FROM read_parquet(${sqlLiteral(this.registeredFile)})${where}${order} LIMIT ${limit} OFFSET ${offset}`;
+    } FROM data${where}${order} LIMIT ${limit} OFFSET ${offset}`;
     let result;
     try {
       result = await this.query(sql, signal);
@@ -324,53 +344,34 @@ class ParquetSource implements StructuredDataSource {
     await this.runtime.database.dropFile(this.registeredFile).catch(() => undefined);
   }
 
+  relationScope() {
+    return {
+      relation: "data" as const,
+      label: "Complete file",
+      description: "The complete Parquet file is queried lazily through DuckDB.",
+      exact: true,
+      bounded: false,
+      rowCount: this.inspectionValue?.totalRows,
+      generation: 1,
+    };
+  }
+
+  sql(request: StructuredSQLRequest, signal: AbortSignal): Promise<StructuredSQLResult> {
+		return executeRelationSQL(
+			this.runtime,
+			this.connection,
+			request,
+			1,
+			this.definition.limits.sql,
+			signal,
+		);
+  }
+
   private async query(sql: string, signal: AbortSignal) {
-    signal.throwIfAborted();
-    const cancel = () =>
-      void this.connection.cancelSent().catch(() => undefined);
-    signal.addEventListener("abort", cancel, { once: true });
-    let timedOut = false;
-    const timeout = globalThis.setTimeout(() => {
-      timedOut = true;
-      cancel();
-    }, queryTimeoutMilliseconds);
-    try {
-      const result = await this.connection.query(sql);
-      signal.throwIfAborted();
-      if (timedOut) {
-        throw new StructuredReaderError(
-          "query",
-          "The Parquet query exceeded the 30 second browser limit.",
-          {
-            retryable: true,
-          },
-        );
-      }
-      return result;
-    } catch (caught) {
-      if (signal.aborted) {
-        throw signal.reason ?? new DOMException("Aborted", "AbortError");
-      }
-      if (timedOut && !(caught instanceof StructuredReaderError)) {
-        throw new StructuredReaderError(
-          "query",
-          "The Parquet query exceeded the 30 second browser limit.",
-          {
-            detail: caught instanceof Error ? caught.message : String(caught),
-            retryable: true,
-          },
-        );
-      }
-      if (isFatalDuckDBError(caught)) {
-        await sharedDuckDBRuntime.invalidate(this.runtime).catch(() =>
-          undefined
-        );
-      }
-      throw caught;
-    } finally {
-      globalThis.clearTimeout(timeout);
-      signal.removeEventListener("abort", cancel);
-    }
+    return runDuckDBQuery(this.runtime, this.connection, sql, signal, {
+      timeoutMilliseconds: queryTimeoutMilliseconds,
+      timeoutMessage: "The Parquet query exceeded the 30 second browser limit.",
+    });
   }
 
   private async optionalQuery(
@@ -425,67 +426,14 @@ class ParquetSource implements StructuredDataSource {
   }
 }
 
-async function createDuckDBRuntime(
-  contentUrl: string,
-  progress: ProgressReporter,
-): Promise<DuckDBRuntime> {
-  progress("Initializing DuckDB-Wasm");
-  const bundle = await duckdb.selectBundle({
-    mvp: { mainModule: duckdbMvpWasm, mainWorker: duckdbMvpWorker },
-    eh: { mainModule: duckdbEhWasm, mainWorker: duckdbEhWorker },
-  });
-  const worker = new Worker(bundle.mainWorker as string);
-  const database = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-  const runtime = { database, worker };
-  try {
-    await database.instantiate(bundle.mainModule, bundle.pthreadWorker);
-    await database.open({
-      allowUnsignedExtensions: false,
-      maximumThreads: 1,
-      filesystem: {
-        reliableHeadRequests: true,
-        allowFullHTTPReads: false,
-        forceFullHTTPReads: false,
-      },
-      query: {
-        castBigIntToDouble: false,
-        castDecimalToDouble: false,
-        castTimestampToDate: false,
-      },
-    });
-    const bootstrap = await database.connect();
-    try {
-      await disableExternalExtensions(bootstrap);
-      await loadLocalParquetExtension(bootstrap, contentUrl);
-    } finally {
-      await bootstrap.close().catch(() => undefined);
-    }
-    return runtime;
-  } catch (caught) {
-    await disposeDuckDBRuntime(runtime);
-    throw caught;
-  }
-}
-
-async function disposeDuckDBRuntime(runtime: DuckDBRuntime): Promise<void> {
-  await runtime.database.terminate().catch(() => undefined);
-  runtime.worker.terminate();
-}
-
 export function shutdownParquetRuntime(): Promise<void> {
-  return sharedDuckDBRuntime.shutdown();
+  return shutdownDuckDBRuntime();
 }
 
 export function parquetRegistrationName(sourceId: string): string {
   const safe = sourceId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 96) ||
     "source";
   return `cagnard-${safe}.parquet`;
-}
-
-function isFatalDuckDBError(caught: unknown): boolean {
-  const detail = caught instanceof Error ? caught.message : String(caught);
-  return /duckdb.*(?:terminated|closed)|worker.*(?:terminated|stopped|crashed)|database.*(?:terminated|closed)/i
-    .test(detail);
 }
 
 function compactMetadata(
@@ -511,53 +459,6 @@ function escapeLike(value: string): string {
   );
 }
 
-async function disableExternalExtensions(
-  connection: duckdb.AsyncDuckDBConnection,
-): Promise<void> {
-  for (
-    const setting of [
-      "SET autoinstall_known_extensions = false",
-      "SET autoload_known_extensions = false",
-    ]
-  ) {
-    try {
-      await connection.query(setting);
-    } catch {
-      // Older embedded builds may not expose both settings; unsigned extensions remain disabled in database.open.
-    }
-  }
-}
-
-async function loadLocalParquetExtension(
-  connection: duckdb.AsyncDuckDBConnection,
-  contentUrl: string,
-): Promise<void> {
-  const repository = new URL("/duckdb-extensions", contentUrl).href.replace(
-    /\/$/,
-    "",
-  );
-  await connection.query(
-    `SET custom_extension_repository = ${sqlLiteral(repository)}`,
-  );
-  await connection.query("LOAD parquet");
-}
-
-function tableRows(
-  table: { numRows: number; get(index: number): unknown },
-): Array<Record<string, StructuredValue>> {
-  const rows: Array<Record<string, StructuredValue>> = [];
-  for (let index = 0; index < table.numRows; index += 1) {
-    const normalized = normalizeValue(table.get(index));
-    rows.push(
-      normalized && typeof normalized === "object" &&
-        !Array.isArray(normalized) && !("kind" in normalized)
-        ? (normalized as Record<string, StructuredValue>)
-        : { value: normalized },
-    );
-  }
-  return rows;
-}
-
 function parquetRowCount(
   rows: Array<Record<string, StructuredValue>>,
 ): number | undefined {
@@ -569,23 +470,4 @@ function parquetRowCount(
   });
   if (counts.size === 0) return undefined;
   return Array.from(counts.values()).reduce((total, count) => total + count, 0);
-}
-
-function quoteIdentifier(identifier: string): string {
-  return `"${identifier.replaceAll('"', '""')}"`;
-}
-
-function sqlLiteral(value: StructuredFilter["value"]): string {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
-      throw new StructuredReaderError(
-        "malformed",
-        "Filter number must be finite.",
-      );
-    }
-    return String(value);
-  }
-  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
-  return `'${String(value).replaceAll("'", "''")}'`;
 }

@@ -1,12 +1,13 @@
 {
   "name": "@cagnard/frontend",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "fixtures:data": "node scripts/generate-structured-data-fixtures.mjs",
+    "fixtures:netcdf": "python3 scripts/generate-netcdf-fixtures.py",
     "fixtures:benchmark": "node scripts/benchmark-structured-data-fixtures.mjs",
     "typecheck": "tsc -b --pretty false",
     "preview": "vite preview",
@@ -14,6 +15,7 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.32.0",
+    "@earthyscience/netcdf4-wasm": "0.2.4",
     "@refinedev/core": "^4.57.10",
     "@vitejs/plugin-react": "^4.3.4",
     "apache-arrow": "21.1.0",
@@ -22,6 +24,7 @@
     "fflate": "0.8.2",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.468.0",
+    "pgsql-ast-parser": "12.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "snappyjs": "0.7.0",

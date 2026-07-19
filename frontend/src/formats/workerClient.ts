@@ -3,6 +3,12 @@ import type {
   StructuredInspection,
   StructuredPage,
   StructuredPageRequest,
+  StructuredRelationScope,
+  StructuredSQLRequest,
+  StructuredSQLResult,
+  IcebergSnapshot,
+  NetCDFSliceRequest,
+  NetCDFSliceResult,
   StructuredSourceDefinition
 } from "./models";
 import type { StructuredWorkerRequest, StructuredWorkerResponse } from "./workerProtocol";
@@ -82,6 +88,40 @@ export class StructuredDataWorkerClient {
     const response = await this.request({ id: nextId(), type: "query", sourceId, request }, signal);
     if (response.type !== "page") throw unexpected(response);
     return response.page;
+  }
+
+  async relationScope(sourceId: string, signal?: AbortSignal): Promise<StructuredRelationScope> {
+    const response = await this.request({ id: nextId(), type: "relation-scope", sourceId }, signal);
+    if (response.type !== "relation-scope") throw unexpected(response);
+    return response.scope;
+  }
+
+  async sql(sourceId: string, request: StructuredSQLRequest, signal?: AbortSignal): Promise<StructuredSQLResult> {
+    const response = await this.request({ id: nextId(), type: "sql", sourceId, request }, signal);
+    if (response.type !== "sql") throw unexpected(response);
+    return response.result;
+  }
+
+  async icebergSnapshots(sourceId: string, signal?: AbortSignal): Promise<IcebergSnapshot[]> {
+    const response = await this.request({ id: nextId(), type: "iceberg-snapshots", sourceId }, signal);
+    if (response.type !== "iceberg-snapshots") throw unexpected(response);
+    return response.snapshots;
+  }
+
+  async selectIcebergSnapshot(sourceId: string, snapshotId: string | undefined, signal?: AbortSignal): Promise<StructuredInspection> {
+    const response = await this.request({ id: nextId(), type: "iceberg-select-snapshot", sourceId, snapshotId }, signal);
+    if (response.type !== "inspection") throw unexpected(response);
+    return response.inspection;
+  }
+
+  async netcdfSlice(
+    sourceId: string,
+    request: NetCDFSliceRequest,
+    signal?: AbortSignal,
+  ): Promise<NetCDFSliceResult> {
+    const response = await this.request({ id: nextId(), type: "netcdf-slice", sourceId, request }, signal);
+    if (response.type !== "netcdf-slice") throw unexpected(response);
+    return response.result;
   }
 
   closeSource(sourceId: string): Promise<void> {

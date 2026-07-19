@@ -4,12 +4,14 @@ import type {
   AuthProvidersResponse,
   ContentSearchResponse,
   EntryListResponse,
+  IcebergProbeResponse,
   LoginResponse,
   NavigationResponse,
   OperationResponse,
   PreviewResponse,
   SessionResponse,
   StorageEntry,
+	StructuredDataConfigResponse,
   DeleteTaskRequest,
   DownloadTaskRequest,
   ResolveTaskRequest,
@@ -116,6 +118,7 @@ function putStorageContent(tunnel: string, rootId: string, path: string, body: B
 
 export const cagnardApi = {
   appearance: () => fetchJson<AppearanceResponse>("/api/appearance"),
+	structuredDataConfig: () => fetchJson<StructuredDataConfigResponse>("/api/structured-data/config"),
   authProviders: () => fetchJson<AuthProvidersResponse>("/api/auth/providers"),
   login: (providerId: string, username: string, password: string) =>
     fetchJson<LoginResponse>("/api/auth/login", {
@@ -135,6 +138,11 @@ export const cagnardApi = {
     ),
   stat: (tunnel: string, rootId: string, path: string) =>
     fetchJson<StorageEntry>(`/api/storage/stat?${storageParams(tunnel, rootId, path)}`),
+  icebergProbe: (tunnel: string, rootId: string, path: string, signal?: AbortSignal) =>
+    fetchJson<IcebergProbeResponse>(
+      `/api/storage/iceberg/probe?${storageParams(tunnel, rootId, path)}`,
+      { signal },
+    ),
   preview: (tunnel: string, rootId: string, path: string, offset = 0) =>
     fetchJson<PreviewResponse>(
       `/api/storage/preview?${storageParams(tunnel, rootId, path, offset > 0 ? { offset: String(offset) } : undefined)}`

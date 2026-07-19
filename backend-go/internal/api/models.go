@@ -18,6 +18,48 @@ type AppearanceResponse struct {
 	AllowUserOverride bool   `json:"allowUserOverride"`
 }
 
+type StructuredDataConfigResponse struct {
+	Relational StructuredRelationalConfigResponse `json:"relational"`
+	SQL        StructuredSQLConfigResponse        `json:"sql"`
+	Worker     StructuredWorkerConfigResponse     `json:"worker"`
+	Iceberg    StructuredIcebergConfigResponse    `json:"iceberg"`
+	NetCDF     StructuredNetCDFConfigResponse     `json:"netcdf"`
+	Exports    StructuredExportConfigResponse     `json:"exports"`
+}
+
+type StructuredRelationalConfigResponse struct {
+	MaxIngestionBytes int64 `json:"maxIngestionBytes"`
+	MaxIngestionRows  int64 `json:"maxIngestionRows"`
+}
+
+type StructuredSQLConfigResponse struct {
+	TimeoutMilliseconds int64 `json:"timeoutMilliseconds"`
+	MaxResultRows       int64 `json:"maxResultRows"`
+	MaxQueryCharacters  int64 `json:"maxQueryCharacters"`
+}
+
+type StructuredWorkerConfigResponse struct {
+	MaxResponseBytes int64 `json:"maxResponseBytes"`
+}
+
+type StructuredIcebergConfigResponse struct {
+	MaxMetadataBytes int64 `json:"maxMetadataBytes"`
+	MaxProbeEntries  int64 `json:"maxProbeEntries"`
+}
+
+type StructuredNetCDFConfigResponse struct {
+	MaxSourceBytes    int64 `json:"maxSourceBytes"`
+	MaxSliceCells     int64 `json:"maxSliceCells"`
+	MaxSliceBytes     int64 `json:"maxSliceBytes"`
+	MaxProjectionRows int64 `json:"maxProjectionRows"`
+	MaxPlotCells      int64 `json:"maxPlotCells"`
+}
+
+type StructuredExportConfigResponse struct {
+	MaxRows  int64 `json:"maxRows"`
+	MaxBytes int64 `json:"maxBytes"`
+}
+
 type UserProfile struct {
 	ID          string            `json:"id"`
 	DisplayName string            `json:"displayName"`
@@ -142,6 +184,18 @@ type EntryListAccuracy struct {
 	Search string `json:"search"`
 	Sort   string `json:"sort"`
 	Total  string `json:"total"`
+}
+
+type IcebergProbeResponse struct {
+	Status            string  `json:"status"`
+	Message           string  `json:"message"`
+	TablePath         string  `json:"tablePath"`
+	MetadataPath      *string `json:"metadataPath,omitempty"`
+	SourceURL         *string `json:"sourceUrl,omitempty"`
+	FormatVersion     *int    `json:"formatVersion,omitempty"`
+	TableUUID         *string `json:"tableUuid,omitempty"`
+	CurrentSnapshotID *string `json:"currentSnapshotId,omitempty"`
+	SnapshotCount     int     `json:"snapshotCount"`
 }
 
 type OperationResponse struct {

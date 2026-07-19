@@ -45,6 +45,7 @@ func decode(root hocon.Object) (*CagnardConfig, error) {
 	appearance := objectAt(root, "appearance")
 	auth := objectAt(root, "auth")
 	tasks := objectAt(root, "tasks")
+	structuredData := objectAt(root, "structuredData")
 
 	return &CagnardConfig{
 		Server: ServerConfig{
@@ -56,7 +57,8 @@ func decode(root hocon.Object) (*CagnardConfig, error) {
 			DefaultMode:       AppearanceMode(stringOrDefault(appearance, "defaultMode", string(AppearanceModeSystem))),
 			AllowUserOverride: boolOrDefault(appearance, "allowUserOverride", true),
 		},
-		Tasks: decodeTaskConfig(tasks),
+		Tasks:          decodeTaskConfig(tasks),
+		StructuredData: decodeStructuredDataConfig(structuredData),
 		Auth: AuthConfig{
 			Mode:                   optionalString(auth, "mode"),
 			ConfiguredUsersEnabled: boolOrDefault(auth, "configuredUsersEnabled", false),
@@ -71,6 +73,45 @@ func decode(root hocon.Object) (*CagnardConfig, error) {
 		PersonalStorage: decodeStorageRoots(arrayAt(root, "personalStorage")),
 		GlobalStorage:   decodeStorageRoots(arrayAt(root, "globalStorage")),
 	}, nil
+}
+
+func decodeStructuredDataConfig(root hocon.Object) StructuredDataConfig {
+	defaults := DefaultStructuredDataConfig()
+	relational := objectAt(root, "relational")
+	sql := objectAt(root, "sql")
+	worker := objectAt(root, "worker")
+	iceberg := objectAt(root, "iceberg")
+	netcdf := objectAt(root, "netcdf")
+	exports := objectAt(root, "exports")
+	return StructuredDataConfig{
+		Relational: StructuredRelationalConfig{
+			MaxIngestionBytes: int64OrDefault(relational, "maxIngestionBytes", defaults.Relational.MaxIngestionBytes),
+			MaxIngestionRows:  int64OrDefault(relational, "maxIngestionRows", defaults.Relational.MaxIngestionRows),
+		},
+		SQL: StructuredSQLConfig{
+			TimeoutMilliseconds: int64OrDefault(sql, "timeoutMilliseconds", defaults.SQL.TimeoutMilliseconds),
+			MaxResultRows:       int64OrDefault(sql, "maxResultRows", defaults.SQL.MaxResultRows),
+			MaxQueryCharacters:  int64OrDefault(sql, "maxQueryCharacters", defaults.SQL.MaxQueryCharacters),
+		},
+		Worker: StructuredWorkerConfig{
+			MaxResponseBytes: int64OrDefault(worker, "maxResponseBytes", defaults.Worker.MaxResponseBytes),
+		},
+		Iceberg: StructuredIcebergConfig{
+			MaxMetadataBytes: int64OrDefault(iceberg, "maxMetadataBytes", defaults.Iceberg.MaxMetadataBytes),
+			MaxProbeEntries:  int64OrDefault(iceberg, "maxProbeEntries", defaults.Iceberg.MaxProbeEntries),
+		},
+		NetCDF: StructuredNetCDFConfig{
+			MaxSourceBytes:    int64OrDefault(netcdf, "maxSourceBytes", defaults.NetCDF.MaxSourceBytes),
+			MaxSliceCells:     int64OrDefault(netcdf, "maxSliceCells", defaults.NetCDF.MaxSliceCells),
+			MaxSliceBytes:     int64OrDefault(netcdf, "maxSliceBytes", defaults.NetCDF.MaxSliceBytes),
+			MaxProjectionRows: int64OrDefault(netcdf, "maxProjectionRows", defaults.NetCDF.MaxProjectionRows),
+			MaxPlotCells:      int64OrDefault(netcdf, "maxPlotCells", defaults.NetCDF.MaxPlotCells),
+		},
+		Exports: StructuredExportConfig{
+			MaxRows:  int64OrDefault(exports, "maxRows", defaults.Exports.MaxRows),
+			MaxBytes: int64OrDefault(exports, "maxBytes", defaults.Exports.MaxBytes),
+		},
+	}
 }
 
 func decodeTaskConfig(tasks hocon.Object) TaskConfig {
@@ -246,6 +287,7 @@ func validate(path string, cfg *CagnardConfig) error {
 	if cfg.Tasks.MaxConcurrentTransfers <= 0 {
 		errs = append(errs, "tasks.maxConcurrentTransfers must be a positive integer when configured")
 	}
+	errs = append(errs, structuredDataErrors(cfg.StructuredData)...)
 	if !validModes[authMode] {
 		errs = append(errs, "auth.mode must be one of development, external, static")
 	}
@@ -268,6 +310,40 @@ func validate(path string, cfg *CagnardConfig) error {
 		return fmt.Errorf("invalid config %s: %s", filepath.Clean(path), strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+func structuredDataErrors(cfg StructuredDataConfig) []string {
+	var errs []string
+	check := func(name string, value int64, maximum int64) {
+		if value <= 0 || value > maximum {
+			errs = append(errs, fmt.Sprintf("structuredData.%s must be between 1 and %d", name, maximum))
+		}
+	}
+	check("relational.maxIngestionBytes", cfg.Relational.MaxIngestionBytes, 512*1024*1024)
+	check("relational.maxIngestionRows", cfg.Relational.MaxIngestionRows, 1_000_000)
+	check("sql.timeoutMilliseconds", cfg.SQL.TimeoutMilliseconds, 120_000)
+	check("sql.maxResultRows", cfg.SQL.MaxResultRows, 500_000)
+	check("sql.maxQueryCharacters", cfg.SQL.MaxQueryCharacters, 200_000)
+	check("worker.maxResponseBytes", cfg.Worker.MaxResponseBytes, 64*1024*1024)
+	check("iceberg.maxMetadataBytes", cfg.Iceberg.MaxMetadataBytes, 16*1024*1024)
+	check("iceberg.maxProbeEntries", cfg.Iceberg.MaxProbeEntries, 100_000)
+	check("netcdf.maxSourceBytes", cfg.NetCDF.MaxSourceBytes, 512*1024*1024)
+	check("netcdf.maxSliceCells", cfg.NetCDF.MaxSliceCells, 1_000_000)
+	check("netcdf.maxSliceBytes", cfg.NetCDF.MaxSliceBytes, 64*1024*1024)
+	check("netcdf.maxProjectionRows", cfg.NetCDF.MaxProjectionRows, 1_000_000)
+	check("netcdf.maxPlotCells", cfg.NetCDF.MaxPlotCells, 100_000)
+	check("exports.maxRows", cfg.Exports.MaxRows, 500_000)
+	check("exports.maxBytes", cfg.Exports.MaxBytes, 64*1024*1024)
+	if cfg.NetCDF.MaxPlotCells > cfg.NetCDF.MaxSliceCells {
+		errs = append(errs, "structuredData.netcdf.maxPlotCells cannot exceed maxSliceCells")
+	}
+	if cfg.NetCDF.MaxProjectionRows > cfg.NetCDF.MaxSliceCells {
+		errs = append(errs, "structuredData.netcdf.maxProjectionRows cannot exceed maxSliceCells")
+	}
+	if cfg.Exports.MaxBytes > cfg.Worker.MaxResponseBytes {
+		errs = append(errs, "structuredData.exports.maxBytes cannot exceed worker.maxResponseBytes")
+	}
+	return errs
 }
 
 func providerErrors(cfg *CagnardConfig) []string {
@@ -409,6 +485,13 @@ func optionalInt64(obj hocon.Object, key string) *int64 {
 func intOrDefault(obj hocon.Object, key string, fallback int) int {
 	if value := optionalInt64(obj, key); value != nil {
 		return int(*value)
+	}
+	return fallback
+}
+
+func int64OrDefault(obj hocon.Object, key string, fallback int64) int64 {
+	if value := optionalInt64(obj, key); value != nil {
+		return *value
 	}
 	return fallback
 }

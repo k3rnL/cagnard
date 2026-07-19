@@ -132,6 +132,20 @@ export const firstPartyOpeners: FileOpener[] = [
     requiredCapabilities: ["download", "range-read"]
   }),
   opener({
+    id: "netcdf",
+    label: "NetCDF dataset",
+    priority: 9,
+    view: "structured-data",
+    mode: "viewer",
+    editMode: "none",
+    readStrategy: "metadata",
+    saveStrategy: "export-only",
+    runtime: structuredDataRuntime,
+    mimeTypes: ["application/x-netcdf", "application/netcdf", "application/x-netcdf4"],
+    extensions: [".nc", ".nc4", ".cdf"],
+    requiredCapabilities: ["download"]
+  }),
+  opener({
     id: "markdown",
     label: "Markdown",
     priority: 10,

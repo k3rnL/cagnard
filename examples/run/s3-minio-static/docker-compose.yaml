@@ -33,9 +33,13 @@ services:
         mc mb --ignore-existing "local/$$CAGNARD_S3_BUCKET"
         mc mirror --overwrite /seed "local/$$CAGNARD_S3_BUCKET/documents"
         mc mirror --overwrite /structured-data "local/$$CAGNARD_S3_BUCKET/documents/structured-data"
+        mc mirror --overwrite /iceberg "local/$$CAGNARD_S3_BUCKET/documents/iceberg"
+        mc mirror --overwrite /netcdf "local/$$CAGNARD_S3_BUCKET/documents/netcdf"
     volumes:
       - ./seed:/seed:ro
       - ../../storage/global/structured-data:/structured-data:ro
+      - ../../storage/global/iceberg:/iceberg:ro
+      - ../../storage/global/netcdf:/netcdf:ro
 
   backend:
     image: ghcr.io/k3rnl/cagnard-backend:${CAGNARD_VERSION:-v0.6.2}

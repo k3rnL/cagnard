@@ -46,6 +46,7 @@ class NDJSONSource implements StructuredDataSource {
         exactSort: false,
         pagination: "cursor",
         exportCurrentPage: true,
+        sql: false,
       },
       metadata: [
         {

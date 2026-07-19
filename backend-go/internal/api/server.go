@@ -19,22 +19,24 @@ const defaultEntryPageSize = 100
 const maxEntryPageSize = 500
 
 type Server struct {
-	cfg      *config.CagnardConfig
-	mux      *http.ServeMux
-	resolver *auth.UserResolver
-	access   *auth.AccessService
-	registry *storage.Registry
-	tasks    *taskManager
+	cfg            *config.CagnardConfig
+	mux            *http.ServeMux
+	resolver       *auth.UserResolver
+	access         *auth.AccessService
+	registry       *storage.Registry
+	tasks          *taskManager
+	structuredData config.StructuredDataConfig
 }
 
 func NewServer(cfg *config.CagnardConfig) *Server {
 	s := &Server{
-		cfg:      cfg,
-		mux:      http.NewServeMux(),
-		resolver: auth.NewUserResolver(cfg),
-		access:   auth.NewAccessService(cfg),
-		registry: storage.NewRegistry(cfg),
-		tasks:    newTaskManager(),
+		cfg:            cfg,
+		mux:            http.NewServeMux(),
+		resolver:       auth.NewUserResolver(cfg),
+		access:         auth.NewAccessService(cfg),
+		registry:       storage.NewRegistry(cfg),
+		tasks:          newTaskManager(),
+		structuredData: cfg.EffectiveStructuredData(),
 	}
 	s.routes()
 	return s
@@ -47,6 +49,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/health", s.health)
 	s.mux.HandleFunc("GET /api/appearance", s.appearance)
+	s.mux.HandleFunc("GET /api/structured-data/config", s.structuredDataConfig)
 	s.mux.HandleFunc("GET /api/session", s.session)
 	s.mux.HandleFunc("GET /api/auth/providers", s.authProviders)
 	s.mux.HandleFunc("POST /api/auth/login", s.login)
@@ -59,6 +62,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/storage/content", s.uploadContent)
 	s.mux.HandleFunc("GET /api/storage/preview", s.previewContent)
 	s.mux.HandleFunc("GET /api/storage/content/search", s.contentSearch)
+	s.mux.HandleFunc("GET /api/storage/iceberg/probe", s.icebergProbe)
+	s.mux.HandleFunc("GET /api/storage/iceberg/content/{tunnel}/{rootId}/{table}/{relative...}", s.icebergContent)
+	s.mux.HandleFunc("HEAD /api/storage/iceberg/content/{tunnel}/{rootId}/{table}/{relative...}", s.icebergContent)
 	s.mux.HandleFunc("GET /api/storage/watch", s.watchStorage)
 	s.mux.HandleFunc("GET /api/storage/archive/entries", s.archiveEntries)
 	s.mux.HandleFunc("GET /api/storage/archive/entry", s.archiveEntryContent)
@@ -86,6 +92,37 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/tasks/{taskId}/items", s.taskItems)
 	s.mux.HandleFunc("POST /api/tasks/{taskId}/cancel", s.cancelTask)
 	s.mux.HandleFunc("POST /api/tasks/{taskId}/resolve", s.resolveTask)
+}
+
+func (s *Server) structuredDataConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := s.structuredData
+	writeJSON(w, http.StatusOK, StructuredDataConfigResponse{
+		Relational: StructuredRelationalConfigResponse{
+			MaxIngestionBytes: cfg.Relational.MaxIngestionBytes,
+			MaxIngestionRows:  cfg.Relational.MaxIngestionRows,
+		},
+		SQL: StructuredSQLConfigResponse{
+			TimeoutMilliseconds: cfg.SQL.TimeoutMilliseconds,
+			MaxResultRows:       cfg.SQL.MaxResultRows,
+			MaxQueryCharacters:  cfg.SQL.MaxQueryCharacters,
+		},
+		Worker: StructuredWorkerConfigResponse{MaxResponseBytes: cfg.Worker.MaxResponseBytes},
+		Iceberg: StructuredIcebergConfigResponse{
+			MaxMetadataBytes: cfg.Iceberg.MaxMetadataBytes,
+			MaxProbeEntries:  cfg.Iceberg.MaxProbeEntries,
+		},
+		NetCDF: StructuredNetCDFConfigResponse{
+			MaxSourceBytes:    cfg.NetCDF.MaxSourceBytes,
+			MaxSliceCells:     cfg.NetCDF.MaxSliceCells,
+			MaxSliceBytes:     cfg.NetCDF.MaxSliceBytes,
+			MaxProjectionRows: cfg.NetCDF.MaxProjectionRows,
+			MaxPlotCells:      cfg.NetCDF.MaxPlotCells,
+		},
+		Exports: StructuredExportConfigResponse{
+			MaxRows:  cfg.Exports.MaxRows,
+			MaxBytes: cfg.Exports.MaxBytes,
+		},
+	})
 }
 
 func (s *Server) appearance(w http.ResponseWriter, r *http.Request) {

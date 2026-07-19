@@ -197,6 +197,7 @@ class ArrowStreamSource implements StructuredDataSource {
         exactSort: false,
         pagination: "cursor",
         exportCurrentPage: true,
+        sql: false,
       },
       metadata: [],
       warnings: [
@@ -360,6 +361,7 @@ const exactInMemoryCapabilities = {
   exactSort: true,
   pagination: "offset" as const,
   exportCurrentPage: true,
+  sql: false,
 };
 
 function toStructuredField(field: Field): StructuredField {

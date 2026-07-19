@@ -1,6 +1,6 @@
 # Configuration
 
-Cagnard is configured by one HOCON document. The backend does not require a database: users, authentication policy, provider accounts, roots, access rules, appearance defaults, and task concurrency are reconstructed from configuration at startup.
+Cagnard is configured by one HOCON document. The backend does not require a database: users, authentication policy, provider accounts, roots, access rules, appearance defaults, task concurrency, and structured-data safety limits are reconstructed from configuration at startup.
 
 Start from [`config/cagnard.example.conf`](../../config/cagnard.example.conf) for filesystem storage or [`config/cagnard.s3.example.conf`](../../config/cagnard.s3.example.conf) for S3 settings. The complete field list is in the [configuration reference](../reference/configuration.md).
 
@@ -74,6 +74,29 @@ tasks {
 ```
 
 The value must be positive. Increase it only after measuring provider throttling, network bandwidth, and backend memory during multipart uploads and recursive operations. The legacy `maxConcurrentTransfers` key is read only as a fallback when `maxConcurrentItems` is absent.
+
+## Structured Data Limits
+
+The optional `structuredData` section controls browser-side analytical work. Values are validated at backend startup and returned through a public limits endpoint; the browser cannot raise them.
+
+```hocon
+structuredData {
+  relational { maxIngestionBytes = 67108864, maxIngestionRows = 200000 }
+  sql { timeoutMilliseconds = 30000, maxResultRows = 100000, maxQueryCharacters = 100000 }
+  worker { maxResponseBytes = 16777216 }
+  iceberg { maxMetadataBytes = 2097152, maxProbeEntries = 10000 }
+  netcdf {
+    maxSourceBytes = 134217728
+    maxSliceCells = 100000
+    maxSliceBytes = 16777216
+    maxProjectionRows = 100000
+    maxPlotCells = 20000
+  }
+  exports { maxRows = 100000, maxBytes = 16777216 }
+}
+```
+
+These are the defaults. Lower them for memory-constrained clients or untrusted large-file workloads. Raise them only after testing representative browsers: DuckDB, Arrow ingestion, NetCDF buffers, result pages, and exports consume client memory. Backend hard maxima prevent unsafe HOCON values; cross-field validation keeps plot/projection cells within the slice bound and exports within the worker-message bound.
 
 ## Secret Placement
 

@@ -3,7 +3,9 @@ export type StructuredFormatId =
   | "avro"
   | "arrow-ipc"
   | "ndjson"
-  | "delimited-text";
+  | "delimited-text"
+  | "iceberg"
+  | "netcdf";
 
 export type StructuredPrimitive = null | boolean | number | string;
 export type StructuredValue =
@@ -28,6 +30,19 @@ export interface StructuredCapabilities {
   exactSort: boolean;
   pagination: "offset" | "cursor";
   exportCurrentPage: boolean;
+  sql: boolean;
+}
+
+export interface StructuredRelationScope {
+  relation: "data";
+  label: string;
+  description: string;
+  exact: boolean;
+  bounded: boolean;
+  rowCount?: number;
+  maximumRows?: number;
+  maximumBytes?: number;
+  generation: number;
 }
 
 export interface StructuredMetadataSection {
@@ -44,6 +59,8 @@ export interface StructuredInspection {
   totalRows?: number;
   metadata: StructuredMetadataSection[];
   warnings: string[];
+  relation?: StructuredRelationScope;
+  netcdf?: NetCDFDataset;
 }
 
 export interface StructuredPageIssue {
@@ -91,6 +108,136 @@ export interface StructuredPageRequest {
   sorts?: StructuredSort[];
 }
 
+export interface StructuredSQLRequest {
+  sql: string;
+  cursor?: string;
+  limit: number;
+  generation: number;
+}
+
+export interface StructuredSQLResult {
+  page: StructuredPage;
+  elapsedMilliseconds: number;
+  generation: number;
+}
+
+export interface IcebergSnapshot {
+  sequenceNumber?: string;
+  snapshotId: string;
+  parentSnapshotId?: string;
+  committedAt?: string;
+  operation?: string;
+  manifestList?: string;
+  summary: Record<string, string>;
+  current: boolean;
+}
+
+export interface NetCDFDimension {
+  name: string;
+  path: string;
+  groupPath: string;
+  size: number;
+  unlimited: boolean;
+  coordinateVariablePath?: string;
+  units?: string;
+}
+
+export type NetCDFVariableRole =
+  | "coordinate"
+  | "latitude"
+  | "longitude"
+  | "time"
+  | "vertical"
+  | "data";
+
+export interface NetCDFVariable {
+  name: string;
+  path: string;
+  groupPath: string;
+  physicalType: string;
+  dimensions: string[];
+  dimensionPaths: string[];
+  shape: number[];
+  size: number;
+  byteSize?: number;
+  chunked: boolean;
+  chunks?: number[];
+  compression?: string;
+  attributes: Record<string, StructuredValue>;
+  units?: string;
+  standardName?: string;
+  longName?: string;
+  calendar?: string;
+  role: NetCDFVariableRole;
+}
+
+export interface NetCDFGroup {
+  name: string;
+  path: string;
+  parentPath?: string;
+  dimensions: string[];
+  variables: string[];
+  attributes: Record<string, StructuredValue>;
+}
+
+export interface NetCDFDataset {
+  variant: string;
+  groups: NetCDFGroup[];
+  dimensions: NetCDFDimension[];
+  variables: NetCDFVariable[];
+  sourceBytes: number;
+  sourceByteLimit: number;
+  sliceCellLimit: number;
+  sliceByteLimit: number;
+  projectionRowLimit: number;
+  plotCellLimit: number;
+  accessMode: "bounded-buffer" | "range";
+}
+
+export interface NetCDFDimensionSelection {
+  dimensionPath: string;
+  start: number;
+  count: number;
+}
+
+export interface NetCDFSliceRequest {
+  variablePaths: string[];
+  selections: NetCDFDimensionSelection[];
+  xDimensionPath?: string;
+  yDimensionPath?: string;
+  decoded: boolean;
+}
+
+export interface NetCDFSlicePlot {
+  kind: "scalar" | "line" | "heatmap" | "table";
+  width: number;
+  height: number;
+  values: StructuredPrimitive[];
+  xValues?: StructuredPrimitive[];
+  yValues?: StructuredPrimitive[];
+  xLabel?: string;
+  yLabel?: string;
+  valueLabel: string;
+  units?: string;
+}
+
+export interface NetCDFSliceProjection {
+  variablePaths: string[];
+  dimensionPaths: string[];
+  selections: NetCDFDimensionSelection[];
+  xDimensionPath?: string;
+  yDimensionPath?: string;
+  decoded: boolean;
+  rowCount: number;
+  plot: NetCDFSlicePlot;
+}
+
+export interface NetCDFSliceResult {
+  inspection: StructuredInspection;
+  page: StructuredPage;
+  projection: NetCDFSliceProjection;
+}
+
 export type StructuredErrorCode =
   | "aborted"
   | "authorization"
@@ -117,8 +264,28 @@ export interface StructuredSourceDefinition {
   contentUrl: string;
   size?: number;
   mimeType?: string;
+	limits: StructuredDataLimits;
   options?: {
     delimiter?: "," | "\t" | ";" | "|";
     header?: boolean;
   };
+}
+
+export interface StructuredDataLimits {
+  relational: { maxIngestionBytes: number; maxIngestionRows: number };
+  sql: {
+    timeoutMilliseconds: number;
+    maxResultRows: number;
+    maxQueryCharacters: number;
+  };
+  worker: { maxResponseBytes: number };
+  iceberg: { maxMetadataBytes: number; maxProbeEntries: number };
+  netcdf: {
+    maxSourceBytes: number;
+    maxSliceCells: number;
+    maxSliceBytes: number;
+    maxProjectionRows: number;
+    maxPlotCells: number;
+  };
+  exports: { maxRows: number; maxBytes: number };
 }

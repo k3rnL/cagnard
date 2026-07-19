@@ -9,6 +9,25 @@ export interface AppearanceResponse {
   allowUserOverride: boolean;
 }
 
+export interface StructuredDataConfigResponse {
+  relational: { maxIngestionBytes: number; maxIngestionRows: number };
+  sql: {
+    timeoutMilliseconds: number;
+    maxResultRows: number;
+    maxQueryCharacters: number;
+  };
+  worker: { maxResponseBytes: number };
+  iceberg: { maxMetadataBytes: number; maxProbeEntries: number };
+  netcdf: {
+    maxSourceBytes: number;
+    maxSliceCells: number;
+    maxSliceBytes: number;
+    maxProjectionRows: number;
+    maxPlotCells: number;
+  };
+  exports: { maxRows: number; maxBytes: number };
+}
+
 export interface UserProfile {
   id: string;
   displayName: string;
@@ -127,6 +146,18 @@ export interface EntryListAccuracy {
   search: string;
   sort: string;
   total: string;
+}
+
+export interface IcebergProbeResponse {
+  status: "not-detected" | "candidate" | "supported" | "unsupported";
+  message: string;
+  tablePath: string;
+  metadataPath?: string;
+  sourceUrl?: string;
+  formatVersion?: number;
+  tableUuid?: string;
+  currentSnapshotId?: string;
+  snapshotCount: number;
 }
 
 export interface OperationResponse {

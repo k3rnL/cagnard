@@ -12,6 +12,7 @@ import {
   Clipboard,
   ClipboardPaste,
   CopyPlus,
+  Database,
   Download,
   Eye,
   File,
@@ -59,7 +60,7 @@ import type { EntrySortField } from "../api/useCagnardData";
 import { taskOperationLabel } from "../api/useCagnardData";
 import { currentDirectoryDownloadUnavailableReason } from "../api/browserActions";
 import { useFileWatch } from "../api/useFileWatch";
-import type { ArchiveEntry, EntryMetadata, StorageEntry, TaskResponse, TaskItem } from "../api/types";
+import type { ArchiveEntry, EntryMetadata, IcebergProbeResponse, StorageEntry, TaskResponse, TaskItem } from "../api/types";
 import { cagnardApi } from "../api/client";
 import { classifyEntry, highlightLanguageOf } from "../openers/fileTypeCatalog";
 import { loadFirstPartyOpenerRuntime, openerSupportsRaw, resolveFileOpener } from "../openers/fileOpeners";
@@ -91,6 +92,8 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [uploadDragActive, setUploadDragActive] = useState(false);
+  const [openedIceberg, setOpenedIceberg] = useState<{ entry: StorageEntry; probe: IcebergProbeResponse }>();
+  const [icebergProbeVersion, setIcebergProbeVersion] = useState(0);
   const selectedEntry = state.selectedEntry;
   const pageOpenedFile = state.openedFile?.placement === "page" ? state.openedFile : undefined;
   const inlineOpenedFile = state.openedFile?.placement === "inline" ? state.openedFile : undefined;
@@ -102,6 +105,19 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
   const allVisibleSelected = state.entries.length > 0 && visibleSelectedCount === state.entries.length;
   const partiallyVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
   const rootBreadcrumbLabel = state.selectedRoot?.label ?? "Root";
+  const currentDirectoryEntry = useMemo<StorageEntry | undefined>(() => {
+    if (!state.selectedRoot) return undefined;
+    const parts = state.currentPath.split("/").filter(Boolean);
+    return {
+      id: `current-directory:${state.selectedRoot.id}:${state.currentPath}`,
+      name: parts.at(-1) ?? state.selectedRoot.label,
+      path: state.currentPath,
+      kind: "directory",
+      metadata: { unavailable: [] },
+      capabilities: [],
+      providerSpecific: {},
+    };
+  }, [state.currentPath, state.selectedRoot]);
   const currentDirectoryDownloadReason =
     currentDirectoryDownloadUnavailableReason(state.selectedRoot);
   const readablePath = useMemo(
@@ -126,6 +142,7 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
 
   useEffect(() => {
     setMetadataOpen(false);
+    setOpenedIceberg(undefined);
   }, [pageOpenedFile?.entry.id, state.currentPath, state.selectedRoot?.id]);
 
   useEffect(() => {
@@ -163,10 +180,25 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
           </p>
         </div>
         <div className="toolbar-actions">
+          {!pageOpenedFile && !openedIceberg && currentDirectoryEntry && state.selectedRoot
+            ? (
+              <IcebergFolderAction
+                key={`${currentDirectoryEntry.id}:${icebergProbeVersion}`}
+                entry={currentDirectoryEntry}
+                root={state.selectedRoot}
+                version={icebergProbeVersion}
+                onOpen={(probe) => setOpenedIceberg({ entry: currentDirectoryEntry, probe })}
+              />
+            )
+            : null}
           <button
             aria-label={pageOpenedFile ? "Reload opened file" : "Refresh current folder"}
             className="icon-button toolbar-refresh"
-            onClick={() => void state.refresh()}
+            onClick={() => {
+              icebergProbeCache.clear();
+              setIcebergProbeVersion((version) => version + 1);
+              void state.refresh();
+            }}
             title={pageOpenedFile ? "Reload opened file" : "Refresh current folder"}
             type="button"
           >
@@ -266,7 +298,7 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
         </button>
       </section>
 
-      {!pageOpenedFile ? (
+      {!pageOpenedFile && !openedIceberg ? (
         <BrowserControls
           state={state}
           metadataOpen={metadataOpen}
@@ -274,7 +306,13 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
         />
       ) : null}
 
-      {pageOpenedFile ? (
+      {openedIceberg ? (
+        <IcebergTableSurface
+          entry={openedIceberg.entry}
+          probe={openedIceberg.probe}
+          onClose={() => setOpenedIceberg(undefined)}
+        />
+      ) : pageOpenedFile ? (
         <FileOpenerSurface
           key={`${pageOpenedFile.entry.id}:${pageOpenedFile.reloadToken ?? 0}`}
           state={state}
@@ -1496,6 +1534,92 @@ function MetadataView({ entry }: { entry: StorageEntry }) {
       <MetadataRow label="Retention" value={metadata.retention} metadata={metadata} field="retention" />
       <MetadataRow label="Encryption" value={metadata.encryption} metadata={metadata} field="encryption" />
     </dl>
+  );
+}
+
+const icebergProbeCache = new Map<string, IcebergProbeResponse>();
+
+function IcebergFolderAction({
+  entry,
+  root,
+  version,
+  onOpen,
+}: {
+  entry: StorageEntry;
+  root: NonNullable<CagnardDataState["selectedRoot"]>;
+  version: number;
+  onOpen: (probe: IcebergProbeResponse) => void;
+}) {
+  const [probe, setProbe] = useState<IcebergProbeResponse>();
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setProbe(undefined);
+    setFailed(false);
+    const key = `${root.tunnel}:${root.id}:${entry.path}`;
+    const cached = icebergProbeCache.get(key);
+    if (cached) {
+      setProbe(cached);
+      return () => controller.abort();
+    }
+    cagnardApi.icebergProbe(root.tunnel, root.id, entry.path, controller.signal).then((result) => {
+      icebergProbeCache.set(key, result);
+      if (!controller.signal.aborted) setProbe(result);
+    }).catch(() => {
+      if (!controller.signal.aborted) setFailed(true);
+    });
+    return () => controller.abort();
+  }, [entry.path, root.id, root.tunnel, version]);
+
+  if (failed || !probe || probe.status === "not-detected") return null;
+  const available = Boolean(probe?.sourceUrl) && (probe?.status === "supported" || probe?.status === "candidate");
+  return (
+    <button
+      aria-label={available ? "Open as Iceberg table" : probe?.message ?? "Checking for an Iceberg table"}
+      className="action-button iceberg-open-action"
+      disabled={!available}
+      onClick={() => probe && onOpen(probe)}
+      title={probe?.message ?? "Checking for an Iceberg table"}
+      type="button"
+    >
+      <Database size={17} />
+      <span>{probe.status === "unsupported" ? "Iceberg unavailable" : "Open as Iceberg table"}</span>
+    </button>
+  );
+}
+
+function IcebergTableSurface({
+  entry,
+  probe,
+  onClose,
+}: {
+  entry: StorageEntry;
+  probe: IcebergProbeResponse;
+  onClose: () => void;
+}) {
+  return (
+    <section className="file-opener page-file-opener" aria-label={`${entry.name} Iceberg table`}>
+      <header className="file-opener-header">
+        <div className="file-opener-title">
+          <Database size={20} />
+          <div>
+            <h2>{entry.name}</h2>
+            <p>Apache Iceberg table · format v{probe.formatVersion ?? "?"}</p>
+          </div>
+        </div>
+        <div className="file-opener-actions">
+          <button className="icon-button" onClick={onClose} title="Close table" type="button">
+            <X size={17} />
+          </button>
+        </div>
+      </header>
+      <div className="file-opener-body">
+        <Suspense fallback={<div className="structured-loading"><LoaderCircle className="spin" size={20} /> Loading Iceberg table</div>}>
+          <StructuredDataView entry={entry} format="iceberg" contentUrl={probe.sourceUrl as string} />
+        </Suspense>
+      </div>
+    </section>
   );
 }
 

@@ -134,6 +134,7 @@ function parseContainer(
       exactSort: false,
       pagination: "cursor",
       exportCurrentPage: true,
+      sql: false,
     },
     totalRows,
     metadata: [

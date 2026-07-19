@@ -20,6 +20,7 @@ Cagnard is a self-hosted, provider-neutral storage browser. Start with a runnabl
 
 - [Browse, copy, move, and manage files](guides/browsing-and-transfers.md)
 - [Open files, search content, and use viewers](guides/file-viewers.md)
+- [Explore relational data, Iceberg, and NetCDF](guides/structured-data.md)
 - [Configure users and personal/global storage](guides/users-and-storage-access.md)
 - [Connect S3-compatible storage and MinIO](guides/s3-and-minio.md)
 - [Choose and configure appearance](guides/appearance.md)

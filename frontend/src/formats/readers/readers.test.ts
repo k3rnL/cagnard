@@ -8,6 +8,7 @@ import { createDelimitedSource } from "./delimited";
 import { InMemoryStructuredSource } from "./inMemory";
 import { createNDJSONSource } from "./ndjson";
 import { fetchBoundedFile } from "./rangeFetch";
+import { defaultStructuredDataLimits } from "../config";
 
 const fixtureRoot = new URL(
   "../../../../examples/storage/global/structured-data/",
@@ -32,6 +33,7 @@ describe("structured format readers", () => {
         exactSort: true,
         pagination: "offset",
         exportCurrentPage: true,
+        sql: false,
       },
       metadata: [],
       warnings: [],
@@ -68,6 +70,7 @@ describe("structured format readers", () => {
         exactSort: true,
         pagination: "offset",
         exportCurrentPage: true,
+        sql: false,
       },
       metadata: [],
       warnings: [],
@@ -518,6 +521,7 @@ function definition(
     name,
     contentUrl: "https://example.test/content",
     size,
+		limits: defaultStructuredDataLimits,
   } as const;
 }
 
