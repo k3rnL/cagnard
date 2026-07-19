@@ -11,7 +11,7 @@ docker compose up -d
 
 Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
-The read-only generated corpus is mounted alongside the writable demo files:
+The **Global** root mounts the canonical corpus from `examples/storage/global` read-only; the **Home** root stays writable:
 
 - **Global > Structured data** contains equivalent Parquet, Avro OCF, Arrow IPC/Feather, NDJSON, CSV, and TSV sources.
 - Navigate into **Global > Iceberg > lineitem**, then use the first toolbar action, **Open as Iceberg table**; normal folder navigation remains unchanged.

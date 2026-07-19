@@ -112,7 +112,7 @@ export async function createNetCDFSource(
   let dataset: NetCDF4 | undefined;
   try {
     dataset = await NetCDF4.fromMemory(bytes, "r", {
-      wasmPath: new URL("/netcdf4-wasm.wasm", definition.contentUrl).href,
+      wasmPath: new URL(`${import.meta.env.BASE_URL}netcdf4-wasm.wasm`, definition.contentUrl).href,
     }, `/tmp/${safeFileName(definition.name)}`);
     signal.throwIfAborted();
     progress("Reading NetCDF hierarchy", bytes.byteLength, bytes.byteLength);

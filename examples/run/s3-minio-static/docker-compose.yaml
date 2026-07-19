@@ -31,15 +31,9 @@ services:
         set -eu
         mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
         mc mb --ignore-existing "local/$$CAGNARD_S3_BUCKET"
-        mc mirror --overwrite /seed "local/$$CAGNARD_S3_BUCKET/documents"
-        mc mirror --overwrite /structured-data "local/$$CAGNARD_S3_BUCKET/documents/structured-data"
-        mc mirror --overwrite /iceberg "local/$$CAGNARD_S3_BUCKET/documents/iceberg"
-        mc mirror --overwrite /netcdf "local/$$CAGNARD_S3_BUCKET/documents/netcdf"
+        mc mirror --overwrite /global "local/$$CAGNARD_S3_BUCKET/documents"
     volumes:
-      - ./seed:/seed:ro
-      - ../../storage/global/structured-data:/structured-data:ro
-      - ../../storage/global/iceberg:/iceberg:ro
-      - ../../storage/global/netcdf:/netcdf:ro
+      - ../../storage/global:/global:ro
 
   backend:
     image: ghcr.io/k3rnl/cagnard-backend:${CAGNARD_VERSION:-v0.6.2}

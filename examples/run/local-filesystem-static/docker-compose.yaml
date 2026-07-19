@@ -8,9 +8,7 @@ services:
     volumes:
       - ./cagnard.conf:/etc/cagnard/cagnard.conf:ro
       - ./data:/data
-      - ../../storage/global/structured-data:/data/global/structured-data:ro
-      - ../../storage/global/iceberg:/data/global/iceberg:ro
-      - ../../storage/global/netcdf:/data/global/netcdf:ro
+      - ../../storage/global:/global:ro
 
   frontend:
     image: ghcr.io/k3rnl/cagnard-frontend:${CAGNARD_VERSION:-v0.6.2}

@@ -21,6 +21,11 @@ func NewRegistry(cfg *config.CagnardConfig) *Registry {
 			if err == nil {
 				providers[provider.ID] = s3Provider
 			}
+		case "http":
+			httpProvider, err := NewHTTPStorageProviderFromConfig(provider)
+			if err == nil {
+				providers[provider.ID] = httpProvider
+			}
 		}
 	}
 	return &Registry{providers: providers}
@@ -48,6 +53,8 @@ func providerType(root ResolvedStorageRoot) string {
 		return "filesystem"
 	case ObjectStoreRootTarget:
 		return "s3"
+	case HTTPRootTarget:
+		return "http"
 	default:
 		return ""
 	}

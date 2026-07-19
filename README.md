@@ -11,6 +11,8 @@
 
 Cagnard is a self-hosted storage browser that gives Unix filesystems and S3-compatible object storage one modern, capability-aware interface. Browse, open, search, upload, download, rename, delete, and stream files between providers without exposing storage credentials to the browser.
 
+**[Try the live demo](https://k3rnl.github.io/cagnard/)** — the complete application in your browser, no install: the Go backend runs as WebAssembly inside a service worker and serves a read-only corpus straight from GitHub Pages. Sign in with `alice` / `cagnard`.
+
 ## Why Cagnard
 
 - **One browser across providers.** Storage roots share a normalized contract while keeping provider-specific metadata and degraded-operation notices visible.
@@ -25,6 +27,10 @@ Cagnard is a self-hosted storage browser that gives Unix filesystems and S3-comp
 </p>
 
 ## Quick Start
+
+### Browser Demo
+
+No installation: open [k3rnl.github.io/cagnard](https://k3rnl.github.io/cagnard/) and sign in with `alice` / `cagnard`. The demo is read-only and publishes automatically from each release tag.
 
 ### Docker Compose
 

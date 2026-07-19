@@ -7,7 +7,7 @@ export function BrandMark({ className = "" }: BrandMarkProps) {
 
   return (
     <span aria-hidden="true" className={classes}>
-      <img alt="" src="/brand/cagnard-app-icon.png" />
+      <img alt="" src={`${import.meta.env.BASE_URL}brand/cagnard-app-icon.png`} />
     </span>
   );
 }

@@ -85,6 +85,9 @@ jobs:
       - name: Build frontend
         run: pnpm --filter @cagnard/frontend build
 
+      - name: Validate WebAssembly demo backend
+        run: pnpm demo:check
+
       - name: Build backend image
         run: docker build -f Containerfile.backend -t cagnard-backend:ci .
 

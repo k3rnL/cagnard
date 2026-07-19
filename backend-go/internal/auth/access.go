@@ -96,6 +96,8 @@ func rootTarget(providerType string, root config.StorageRootConfig, user UserPro
 			return nil, false
 		}
 		return storage.ObjectStoreRootTarget{Bucket: bucket, Prefix: normalizePrefix(root.Settings["prefix"])}, true
+	case "http":
+		return storage.HTTPRootTarget{Prefix: normalizePrefix(root.Settings["prefix"])}, true
 	default:
 		return nil, false
 	}

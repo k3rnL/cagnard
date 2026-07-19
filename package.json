@@ -11,7 +11,8 @@
     "examples:helm:check": "bash scripts/validate-helm-examples.sh",
     "examples:check": "pnpm examples:compose:check && pnpm examples:helm:check",
     "docs:check": "node scripts/validate-docs.mjs",
-    "check": "pnpm backend:test && pnpm frontend:test && pnpm frontend:check && pnpm frontend:build && pnpm examples:check && pnpm docs:check"
+    "demo:check": "node scripts/check-demo.mjs",
+    "check": "pnpm backend:test && pnpm frontend:test && pnpm frontend:check && pnpm frontend:build && pnpm examples:check && pnpm demo:check && pnpm docs:check"
   },
   "packageManager": "pnpm@11.7.0"
 }

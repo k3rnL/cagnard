@@ -1,3 +1,5 @@
+//go:build !(js && wasm)
+
 package storage
 
 import (
@@ -1068,13 +1070,6 @@ func listedObjectContains(objects []S3ListedObject, key string) bool {
 		}
 	}
 	return false
-}
-
-func int64Value(value *int64) int64 {
-	if value == nil {
-		return 0
-	}
-	return *value
 }
 
 func timePtrString(value *time.Time) *string {

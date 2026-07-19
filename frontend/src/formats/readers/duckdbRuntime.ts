@@ -182,7 +182,9 @@ async function createRuntime(
   });
   const worker = new Worker(bundle.mainWorker as string);
   const database = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-  const extensionRepository = new URL("/duckdb-extensions", contentUrl).href
+  // BASE_URL keeps the bundled extension repository reachable when the app
+  // is served under a subpath (e.g. the GitHub Pages demo).
+  const extensionRepository = new URL(`${import.meta.env.BASE_URL}duckdb-extensions`, contentUrl).href
     .replace(/\/$/, "");
   const runtime = { database, worker, extensionRepository };
   try {

@@ -13,7 +13,7 @@ Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
 
 MinIO console: `http://127.0.0.1:9001`, using `cagnard` / `cagnard-secret`. The initializer creates `cagnard-combined` and seeds `documents/` and `shared/`.
 
-The filesystem and MinIO global roots both include the same generated corpus:
+The filesystem and MinIO global roots both mirror the canonical corpus from `examples/storage/global` (the filesystem root read-only, the S3 copy writable):
 
 - **Structured data** for Parquet, Avro OCF, Arrow IPC/Feather, NDJSON, CSV, and TSV query parity.
 - **Iceberg > lineitem** for explicit table opening, snapshots, filters, ordered sorts, and SQL.

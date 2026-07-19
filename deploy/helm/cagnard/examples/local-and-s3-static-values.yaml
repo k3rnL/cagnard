@@ -87,6 +87,14 @@ backend:
             authMode = local-process
           },
           {
+            id = local-readonly
+            providerId = local
+            displayName = "Local read-only account"
+            enabled = true
+            readOnly = true
+            authMode = local-process
+          },
+          {
             id = s3-main-account
             providerId = s3-main
             displayName = "MinIO demo account"
@@ -128,8 +136,8 @@ backend:
             id = shared
             label = "Global"
             providerId = local
-            accountId = local-admin
-            path = "/data/cagnard/global"
+            accountId = local-readonly
+            path = "/opt/cagnard/examples/storage/global"
             allowedRoles = [user, admin]
           },
           {
@@ -148,13 +156,9 @@ backend:
   extraVolumes:
     - name: example-home
       emptyDir: {}
-    - name: example-global
-      emptyDir: {}
   extraVolumeMounts:
     - name: example-home
       mountPath: /data/cagnard/home/alice
-    - name: example-global
-      mountPath: /data/cagnard/global
 
 frontend:
   image:

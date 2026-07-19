@@ -1,0 +1,92 @@
+name: Deploy Pages demo
+
+# Publishes the static demo to GitHub Pages on every release tag: the
+# frontend bundle unchanged, the backend compiled to WebAssembly answering
+# /api from a service worker, and examples/storage/global as the read-only
+# corpus behind the http storage provider.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build demo bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend-go/go.mod
+          cache-dependency-path: backend-go/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build WebAssembly backend
+        working-directory: backend-go
+        env:
+          GOOS: js
+          GOARCH: wasm
+        run: go build -trimpath -ldflags="-s -w" -o ../dist-wasm/cagnard.wasm ./cmd/cagnard-wasm
+
+      - name: Typecheck frontend
+        run: pnpm --filter @cagnard/frontend exec tsc -b
+
+      - name: Build frontend with Pages base path
+        run: pnpm --filter @cagnard/frontend exec vite build --base "/${{ github.event.repository.name }}/"
+
+      - name: Assemble demo bundle
+        run: |
+          node scripts/assemble-demo.mjs \
+            frontend/dist \
+            dist-wasm/cagnard.wasm \
+            "$(go env GOROOT)/lib/wasm/wasm_exec.js" \
+            examples/storage/global \
+            dist-demo
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-demo
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

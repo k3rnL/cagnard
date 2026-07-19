@@ -75,6 +75,12 @@ type ObjectStoreRootTarget struct {
 
 func (ObjectStoreRootTarget) rootTarget() {}
 
+type HTTPRootTarget struct {
+	Prefix string
+}
+
+func (HTTPRootTarget) rootTarget() {}
+
 type ResolvedStorageRoot struct {
 	ID             string
 	Label          string
@@ -161,4 +167,11 @@ type StorageProvider interface {
 	StreamWrite(root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error)
 	StreamWriteContext(ctx context.Context, root ResolvedStorageRoot, path string, input io.Reader, info FileContentInfo, overwrite bool, onBytes func(int64)) (StorageEntry, error)
 	DeleteRecursive(ctx context.Context, root ResolvedStorageRoot, path string, onItem func(DeleteItemEvent)) (DeleteSummary, error)
+}
+
+func int64Value(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }

@@ -32,15 +32,10 @@ services:
         mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
         mc mb --ignore-existing "local/$$CAGNARD_S3_BUCKET"
         mc mirror --overwrite /seed/documents "local/$$CAGNARD_S3_BUCKET/documents"
-        mc mirror --overwrite /seed/shared "local/$$CAGNARD_S3_BUCKET/shared"
-        mc mirror --overwrite /structured-data "local/$$CAGNARD_S3_BUCKET/shared/structured-data"
-        mc mirror --overwrite /iceberg "local/$$CAGNARD_S3_BUCKET/shared/iceberg"
-        mc mirror --overwrite /netcdf "local/$$CAGNARD_S3_BUCKET/shared/netcdf"
+        mc mirror --overwrite /global "local/$$CAGNARD_S3_BUCKET/shared"
     volumes:
       - ./seed:/seed:ro
-      - ../../storage/global/structured-data:/structured-data:ro
-      - ../../storage/global/iceberg:/iceberg:ro
-      - ../../storage/global/netcdf:/netcdf:ro
+      - ../../storage/global:/global:ro
 
   backend:
     image: ghcr.io/k3rnl/cagnard-backend:${CAGNARD_VERSION:-v0.6.2}
@@ -51,9 +46,7 @@ services:
     volumes:
       - ./cagnard.conf:/etc/cagnard/cagnard.conf:ro
       - ./data:/data
-      - ../../storage/global/structured-data:/data/global/structured-data:ro
-      - ../../storage/global/iceberg:/data/global/iceberg:ro
-      - ../../storage/global/netcdf:/data/global/netcdf:ro
+      - ../../storage/global:/global:ro
     depends_on:
       minio-init:
         condition: service_completed_successfully

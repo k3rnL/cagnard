@@ -15,6 +15,18 @@
       "cwd": "/Users/erwandaniel/Documents/cagnard/frontend",
       "port": 5188,
       "autoPort": false
+    },
+    {
+      "name": "pages-demo",
+      "runtimeExecutable": "/Users/erwandaniel/.nvm/versions/node/v20.15.1/bin/node",
+      "runtimeArgs": [
+        "/private/tmp/claude-501/-Users-erwandaniel-Documents-cagnard/d0d933aa-048b-4e63-8f97-7caee451d988/scratchpad/serve-demo.cjs",
+        "/private/tmp/claude-501/-Users-erwandaniel-Documents-cagnard/d0d933aa-048b-4e63-8f97-7caee451d988/scratchpad/pages-root",
+        "8787"
+      ],
+      "cwd": ".",
+      "port": 8787,
+      "autoPort": false
     }
   ]
 }
