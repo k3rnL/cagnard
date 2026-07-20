@@ -122,7 +122,8 @@ func (s *Server) structuredDataConfig(w http.ResponseWriter, r *http.Request) {
 			MaxRows:  cfg.Exports.MaxRows,
 			MaxBytes: cfg.Exports.MaxBytes,
 		},
-		DirectContentPrefixes: s.directContentPrefixes(),
+		DirectContentPrefixes:  s.directContentPrefixes(),
+		DirectContentFullReads: cfg.DirectContentFullReads,
 	})
 }
 

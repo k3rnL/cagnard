@@ -28,6 +28,10 @@ type StructuredDataConfigResponse struct {
 	// DirectContentPrefixes lists public URL prefixes that structured-data
 	// readers may fetch directly instead of through /api/storage/content.
 	DirectContentPrefixes []string `json:"directContentPrefixes,omitempty"`
+	// DirectContentFullReads asks browser query engines to read direct
+	// content whole; origins like GitHub Pages compress responses and reject
+	// ranged HEAD requests, which breaks size probing.
+	DirectContentFullReads bool `json:"directContentFullReads,omitempty"`
 }
 
 type StructuredRelationalConfigResponse struct {

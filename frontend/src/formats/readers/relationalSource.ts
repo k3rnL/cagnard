@@ -23,6 +23,7 @@ import type {
 } from "../models";
 import {
   acquireDuckDBRuntime,
+  setDuckDBFullHTTPReads,
   configureSourceConnection,
   configureUserQueryConnection,
   type DuckDBConnection,
@@ -79,6 +80,7 @@ export async function addBoundedRelation(
     }
   } while (cursor);
 
+  setDuckDBFullHTTPReads(definition.limits.directContentFullReads === true);
   const runtime = await acquireDuckDBRuntime(definition.contentUrl, progress);
   const connection = await runtime.database.connect();
   await configureSourceConnection(connection);

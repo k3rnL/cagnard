@@ -291,4 +291,7 @@ export interface StructuredDataLimits {
   // Public URL prefixes readers may fetch directly instead of through the
   // backend content API; advertised by the backend per provider.
   directContentPrefixes?: string[];
+  // Query engines must read direct content whole when the public origin
+  // compresses responses or rejects ranged HEAD requests.
+  directContentFullReads?: boolean;
 }

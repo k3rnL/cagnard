@@ -73,6 +73,10 @@ type StructuredDataConfig struct {
 	Iceberg    StructuredIcebergConfig
 	NetCDF     StructuredNetCDFConfig
 	Exports    StructuredExportConfig
+	// DirectContentFullReads makes browser query engines read direct-content
+	// files whole instead of probing sizes and ranges; required when the
+	// public origin compresses responses or rejects ranged HEAD requests.
+	DirectContentFullReads bool
 }
 
 type StructuredRelationalConfig struct {

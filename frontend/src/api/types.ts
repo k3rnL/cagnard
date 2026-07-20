@@ -27,6 +27,7 @@ export interface StructuredDataConfigResponse {
   };
   exports: { maxRows: number; maxBytes: number };
   directContentPrefixes?: string[];
+  directContentFullReads?: boolean;
 }
 
 export interface UserProfile {

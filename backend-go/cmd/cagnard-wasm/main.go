@@ -165,6 +165,9 @@ func demoConfig() *config.CagnardConfig {
 	sharedLabel := "Global"
 	return &config.CagnardConfig{
 		Server: config.ServerConfig{Host: "wasm", Port: 0},
+		// GitHub Pages compresses responses and rejects ranged HEAD requests,
+		// so browser query engines must read the corpus files whole.
+		StructuredData: config.StructuredDataConfig{DirectContentFullReads: true},
 		Auth: config.AuthConfig{
 			Mode:                   &mode,
 			ConfiguredUsersEnabled: true,

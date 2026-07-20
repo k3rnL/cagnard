@@ -10,6 +10,7 @@ import type {
 } from "../models";
 import {
   acquireDuckDBRuntime,
+  setDuckDBFullHTTPReads,
   configureSourceConnection,
   configureUserQueryConnection,
   type DuckDBConnection,
@@ -68,6 +69,7 @@ export async function createIcebergSource(
     throw new StructuredReaderError("unsupported-format", "Only Iceberg format versions 1 and 2 are supported.");
   }
 
+  setDuckDBFullHTTPReads(definition.limits.directContentFullReads === true);
   const runtime = await acquireDuckDBRuntime(definition.contentUrl, progress);
   const connection = await runtime.database.connect();
   try {

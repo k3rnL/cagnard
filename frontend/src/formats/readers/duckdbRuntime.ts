@@ -23,6 +23,14 @@ export type DuckDBProgressReporter = (
   total?: number,
 ) => void;
 
+// Backend-global read mode, latched from the structured-data config by the
+// readers before the shared runtime is created.
+let fullHTTPReads = false;
+
+export function setDuckDBFullHTTPReads(value: boolean): void {
+  fullHTTPReads = value;
+}
+
 const sharedRuntime = new LazyRuntime<
   DuckDBRuntime,
   [contentUrl: string, progress: DuckDBProgressReporter]
@@ -192,13 +200,20 @@ async function createRuntime(
     await database.open({
       allowUnsignedExtensions: false,
       maximumThreads: 1,
-      filesystem: {
-        // HEAD responses lie about size behind compressing CDNs (they report
-        // the gzip length); range probes return the true total instead.
-        reliableHeadRequests: false,
-        allowFullHTTPReads: false,
-        forceFullHTTPReads: false,
-      },
+      filesystem: fullHTTPReads
+        ? {
+          // Origins like GitHub Pages compress responses (HEAD reports the
+          // gzip length) and answer ranged HEAD with 200, so no size probe
+          // is trustworthy; reading files whole sidesteps sizing entirely.
+          reliableHeadRequests: false,
+          allowFullHTTPReads: true,
+          forceFullHTTPReads: true,
+        }
+        : {
+          reliableHeadRequests: true,
+          allowFullHTTPReads: false,
+          forceFullHTTPReads: false,
+        },
       query: {
         castBigIntToDouble: false,
         castDecimalToDouble: false,

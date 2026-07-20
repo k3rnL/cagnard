@@ -161,6 +161,10 @@ async function exercise() {
       directPrefixes.some((prefix) => prefix.startsWith(globalThis.__cagnardDemoDataURL)),
     `prefixes: ${JSON.stringify(directPrefixes)}`
   );
+  check(
+    "structured-data config requires full reads for the compressing origin",
+    json(structuredConfig).directContentFullReads === true
+  );
 
   const probe = await authed(
     "GET",

@@ -111,6 +111,7 @@ func decodeStructuredDataConfig(root hocon.Object) StructuredDataConfig {
 			MaxRows:  int64OrDefault(exports, "maxRows", defaults.Exports.MaxRows),
 			MaxBytes: int64OrDefault(exports, "maxBytes", defaults.Exports.MaxBytes),
 		},
+		DirectContentFullReads: boolOrDefault(root, "directContentFullReads", defaults.DirectContentFullReads),
 	}
 }
 
