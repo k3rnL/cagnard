@@ -10,6 +10,7 @@ import type {
 } from "../models";
 import {
   acquireDuckDBRuntime,
+  invalidateDuckDBRuntime,
   setDuckDBFullHTTPReads,
   configureSourceConnection,
   configureUserQueryConnection,
@@ -92,6 +93,7 @@ export async function createIcebergSource(
     return source;
   } catch (caught) {
     await connection.close().catch(() => undefined);
+    await invalidateDuckDBRuntime(runtime).catch(() => undefined);
     if (caught instanceof StructuredReaderError) throw caught;
     throw new StructuredReaderError("unsupported-format", "This Iceberg table could not be opened by the pinned browser runtime.", {
       detail: caught instanceof Error ? caught.message : String(caught),
@@ -216,6 +218,9 @@ class IcebergSource implements StructuredDataSource {
 
   async close(): Promise<void> {
     await this.connection.close().catch(() => undefined);
+    // The workspace lockdown is database-global and irreversible; dispose
+    // the shared runtime so the next source starts unlocked.
+    await invalidateDuckDBRuntime(this.runtime).catch(() => undefined);
   }
 
   private async bindSnapshot(snapshotId: string | undefined, signal: AbortSignal): Promise<void> {

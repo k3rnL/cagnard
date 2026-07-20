@@ -28,7 +28,6 @@ import {
   type DuckDBConnection,
   type DuckDBRuntime,
   invalidateDuckDBRuntime,
-  isFatalDuckDBError,
   quoteIdentifier,
   runDuckDBQuery,
   shutdownDuckDBRuntime,
@@ -82,9 +81,9 @@ export async function createParquetSource(
   } catch (caught) {
     await connection?.close().catch(() => undefined);
     await runtime.database.dropFile(registeredFile).catch(() => undefined);
-    if (isFatalDuckDBError(caught)) {
-      await invalidateDuckDBRuntime(runtime).catch(() => undefined);
-    }
+    // A failed create may have already locked the database configuration;
+    // never leak it to the next source.
+    await invalidateDuckDBRuntime(runtime).catch(() => undefined);
     if (caught instanceof StructuredReaderError) throw caught;
     const detail = caught instanceof Error ? caught.message : String(caught);
     const code = /range|http file|head request/i.test(detail)
@@ -342,6 +341,10 @@ class ParquetSource implements StructuredDataSource {
   async close(): Promise<void> {
     await this.connection.close().catch(() => undefined);
     await this.runtime.database.dropFile(this.registeredFile).catch(() => undefined);
+    // The workspace lockdown (enable_external_access, allowed_paths) is
+    // database-global and irreversible, so the next source needs a fresh
+    // database instance.
+    await invalidateDuckDBRuntime(this.runtime).catch(() => undefined);
   }
 
   relationScope() {

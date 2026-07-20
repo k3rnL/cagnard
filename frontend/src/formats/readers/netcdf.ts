@@ -23,6 +23,7 @@ import type {
 } from "../models";
 import {
   acquireDuckDBRuntime,
+  invalidateDuckDBRuntime,
   configureSourceConnection,
 	configureUserQueryConnection,
   type DuckDBConnection,
@@ -335,6 +336,11 @@ class NetCDFStructuredSource implements StructuredDataSource {
     } catch (caught) {
       if (this.relationConnection !== connection) {
         await connection.close().catch(() => undefined);
+        // A failed slice may have locked the database before the runtime
+        // was adopted; never leak the locked instance to the next source.
+        if (this.relationRuntime !== runtime) {
+          await invalidateDuckDBRuntime(runtime).catch(() => undefined);
+        }
       }
       throw caught;
     }
@@ -344,6 +350,11 @@ class NetCDFStructuredSource implements StructuredDataSource {
     if (this.closed) return;
     this.closed = true;
     await this.relationConnection?.close().catch(() => undefined);
+    // The slice workspace lockdown is database-global and irreversible;
+    // dispose the shared runtime so the next source starts unlocked.
+    if (this.relationRuntime) {
+      await invalidateDuckDBRuntime(this.relationRuntime).catch(() => undefined);
+    }
     await this.dataset.close().catch(() => undefined);
     await this.catalogSource.close();
   }
