@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { StructuredSourceFactory, StructuredDataSource } from "./readers/types";
+import type { StructuredSourceDefinition } from "./models";
 import { normalizeReaderError, StructuredReaderError } from "./readers/shared";
 import type { StructuredWorkerRequest, StructuredWorkerResponse } from "./workerProtocol";
 import { structuredWorkerResponseFits } from "./workerProtocol";
@@ -33,7 +34,7 @@ async function handle(request: Exclude<StructuredWorkerRequest, { type: "cancel"
   if (sourceId) operationSources.set(request.id, sourceId);
   try {
     if (request.type === "initialize") {
-      validateSource(request.source.contentUrl);
+      validateSource(request.source);
       const previous = sources.get(request.source.sourceId);
       if (previous) await previous.close();
       let source: StructuredDataSource | undefined;
@@ -146,13 +147,29 @@ async function handle(request: Exclude<StructuredWorkerRequest, { type: "cancel"
   }
 }
 
-function validateSource(contentUrl: string): void {
+function validateSource(source: StructuredSourceDefinition): void {
   let url: URL;
   try {
-    url = new URL(contentUrl, workerScope.location.origin);
+    url = new URL(source.contentUrl, workerScope.location.origin);
   } catch {
     throw new StructuredReaderError("authorization", "The structured-data content URL is invalid.");
   }
+  // Backend-advertised public prefixes are read directly: worker requests
+  // (including DuckDB's synchronous reads) bypass service workers in some
+  // browsers, so proxying them through /api is not universally possible.
+  const directPrefixes = source.limits.directContentPrefixes ?? [];
+  const direct = directPrefixes.some((prefix) => {
+    try {
+      const parsed = new URL(prefix);
+      return (
+        (parsed.protocol === "https:" || parsed.protocol === "http:") &&
+        url.href.startsWith(parsed.href)
+      );
+    } catch {
+      return false;
+    }
+  });
+  if (direct) return;
   if (
     url.origin !== workerScope.location.origin ||
     (url.pathname !== "/api/storage/content" && !url.pathname.startsWith("/api/storage/iceberg/content/"))

@@ -297,6 +297,24 @@ func (p *HTTPStorageProvider) Watch(root ResolvedStorageRoot, relative string, c
 	return nil, errors.New("watch is not supported on static HTTP origins")
 }
 
+// DirectContentBase exposes the provider's public origin so capable clients
+// can read content without proxying through the backend. Worker-based
+// readers rely on this: service workers cannot intercept their synchronous
+// requests in every browser.
+func (p *HTTPStorageProvider) DirectContentBase() string {
+	return p.baseURL
+}
+
+// PublicContentURL translates a root-relative path into the provider's
+// public URL for direct client reads.
+func (p *HTTPStorageProvider) PublicContentURL(root ResolvedStorageRoot, relative string) (string, bool) {
+	target, err := p.resolve(root, relative)
+	if err != nil || target == "" {
+		return "", false
+	}
+	return p.contentURL(target), true
+}
+
 func (p *HTTPStorageProvider) ensureManifest() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()

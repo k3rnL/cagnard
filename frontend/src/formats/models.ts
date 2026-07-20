@@ -288,4 +288,7 @@ export interface StructuredDataLimits {
     maxPlotCells: number;
   };
   exports: { maxRows: number; maxBytes: number };
+  // Public URL prefixes readers may fetch directly instead of through the
+  // backend content API; advertised by the backend per provider.
+  directContentPrefixes?: string[];
 }

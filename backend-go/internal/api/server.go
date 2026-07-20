@@ -122,7 +122,22 @@ func (s *Server) structuredDataConfig(w http.ResponseWriter, r *http.Request) {
 			MaxRows:  cfg.Exports.MaxRows,
 			MaxBytes: cfg.Exports.MaxBytes,
 		},
+		DirectContentPrefixes: s.directContentPrefixes(),
 	})
+}
+
+func (s *Server) directContentPrefixes() []string {
+	prefixes := make([]string, 0)
+	for _, providerCfg := range s.cfg.Providers {
+		provider, err := s.registry.Provider(providerCfg.ID)
+		if err != nil {
+			continue
+		}
+		if direct, ok := provider.(interface{ DirectContentBase() string }); ok {
+			prefixes = append(prefixes, strings.TrimRight(direct.DirectContentBase(), "/")+"/")
+		}
+	}
+	return prefixes
 }
 
 func (s *Server) appearance(w http.ResponseWriter, r *http.Request) {

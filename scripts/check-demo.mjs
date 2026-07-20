@@ -12,7 +12,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -41,7 +41,16 @@ run(process.execPath, [path.join(scriptDir, "generate-demo-manifest.mjs"), corpu
 });
 
 const goroot = run("go", ["env", "GOROOT"]).trim();
-createRequire(import.meta.url)(path.join(goroot, "lib", "wasm", "wasm_exec.js"));
+// Go 1.24 moved wasm_exec.js from misc/wasm to lib/wasm; support both.
+const wasmExecPath = [
+  path.join(goroot, "lib", "wasm", "wasm_exec.js"),
+  path.join(goroot, "misc", "wasm", "wasm_exec.js"),
+].find((candidate) => existsSync(candidate));
+if (!wasmExecPath) {
+  console.error(`wasm_exec.js not found under ${goroot} (lib/wasm or misc/wasm).`);
+  process.exit(1);
+}
+createRequire(import.meta.url)(wasmExecPath);
 
 const server = createServer((request, response) => {
   const relative = decodeURIComponent(
@@ -142,6 +151,26 @@ async function exercise() {
     "iceberg facade serves table metadata through the http provider",
     iceberg.status === 200 && json(iceberg)["format-version"] === 2,
     `status ${iceberg.status}`
+  );
+
+  const structuredConfig = await authed("GET", "/api/structured-data/config");
+  const directPrefixes = json(structuredConfig).directContentPrefixes ?? [];
+  check(
+    "structured-data config advertises the direct content prefix",
+    structuredConfig.status === 200 &&
+      directPrefixes.some((prefix) => prefix.startsWith(globalThis.__cagnardDemoDataURL)),
+    `prefixes: ${JSON.stringify(directPrefixes)}`
+  );
+
+  const probe = await authed(
+    "GET",
+    "/api/storage/iceberg/probe?tunnel=global&rootId=shared&path=iceberg%2Flineitem"
+  );
+  const sourceUrl = json(probe).sourceUrl ?? "";
+  check(
+    "iceberg probe returns a direct public source URL",
+    probe.status === 200 && sourceUrl.startsWith(globalThis.__cagnardDemoDataURL),
+    `sourceUrl: ${sourceUrl}`
   );
 
   const forbidden = await cagnard.handle({

@@ -1809,7 +1809,7 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
               <StructuredDataView
                 entry={entry}
                 format={match.opener.id as StructuredFormatId}
-                contentUrl={cagnardApi.contentUrl(
+                contentUrl={entry.providerSpecific["http.url"] ?? cagnardApi.contentUrl(
                   state.selectedRoot.tunnel,
                   state.selectedRoot.id,
                   entry.path,

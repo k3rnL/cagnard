@@ -26,6 +26,7 @@ export interface StructuredDataConfigResponse {
     maxPlotCells: number;
   };
   exports: { maxRows: number; maxBytes: number };
+  directContentPrefixes?: string[];
 }
 
 export interface UserProfile {

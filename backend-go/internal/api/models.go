@@ -25,6 +25,9 @@ type StructuredDataConfigResponse struct {
 	Iceberg    StructuredIcebergConfigResponse    `json:"iceberg"`
 	NetCDF     StructuredNetCDFConfigResponse     `json:"netcdf"`
 	Exports    StructuredExportConfigResponse     `json:"exports"`
+	// DirectContentPrefixes lists public URL prefixes that structured-data
+	// readers may fetch directly instead of through /api/storage/content.
+	DirectContentPrefixes []string `json:"directContentPrefixes,omitempty"`
 }
 
 type StructuredRelationalConfigResponse struct {

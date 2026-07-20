@@ -171,6 +171,15 @@ func (s *Server) icebergProbe(w http.ResponseWriter, r *http.Request) {
 		token,
 		strings.Join(escapePathSegments(relativeMetadata), "/"),
 	)
+	// Providers with public content serve the table directly; worker-based
+	// readers cannot rely on the backend facade in every browser.
+	if direct, ok := provider.(interface {
+		PublicContentURL(storage.ResolvedStorageRoot, string) (string, bool)
+	}); ok {
+		if directURL, ok := direct.PublicContentURL(root, selected.path); ok {
+			sourceURL = directURL
+		}
+	}
 	metadataPath := selected.path
 	var tableUUID *string
 	if metadata.TableUUID != "" {
