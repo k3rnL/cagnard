@@ -21,6 +21,13 @@ export class StructuredDataClientError extends Error {
   }
 }
 
+// True when the worker no longer holds the source, which happens when a
+// sign-out or session reset shuts the runtime down underneath an open file.
+// Callers recover by re-opening the source rather than surfacing the error.
+export function isLostSessionError(caught: unknown): boolean {
+  return caught instanceof StructuredDataClientError && caught.shape.code === "session-lost";
+}
+
 interface PendingRequest {
   resolve: (response: StructuredWorkerResponse) => void;
   reject: (reason: unknown) => void;
@@ -125,7 +132,7 @@ export class StructuredDataWorkerClient {
   }
 
   closeSource(sourceId: string): Promise<void> {
-    if (this.terminated || this.closedSources.has(sourceId)) {
+    if (this.terminated || this.shutdownPromise || this.closedSources.has(sourceId)) {
       return Promise.resolve();
     }
     const current = this.closingSources.get(sourceId);
@@ -174,6 +181,12 @@ export class StructuredDataWorkerClient {
     progress?: PendingRequest["progress"]
   ): Promise<StructuredWorkerResponse> {
     if (this.terminated) return Promise.reject(new DOMException("Worker terminated", "AbortError"));
+    // A shutdown closes every source while the worker keeps answering, so
+    // requests sent after it starts would fail as lost sessions instead of
+    // as the cancellation they are.
+    if (this.shutdownPromise && request.type !== "shutdown") {
+      return Promise.reject(new DOMException("Worker shutting down", "AbortError"));
+    }
     if (signal?.aborted) return Promise.reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
     return new Promise((resolve, reject) => {
       const abort = () => {

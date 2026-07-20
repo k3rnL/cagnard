@@ -94,7 +94,12 @@ export function shutdownStructuredDataRuntime(): Promise<void> {
 }
 
 if (typeof window !== "undefined") {
-  window.addEventListener("pagehide", () => sharedRuntime.terminate());
+  window.addEventListener("pagehide", (event) => {
+    // A persisted pagehide is a back/forward cache entry: the page keeps its
+    // state and can be restored, so the runtime has to survive with it.
+    // Safari uses that cache aggressively.
+    if (!event.persisted) sharedRuntime.terminate();
+  });
 }
 
 function nextSourceId(): string {

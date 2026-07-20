@@ -51,6 +51,7 @@ import type {
 import NetCDFWorkspace from "./NetCDFWorkspace";
 import { defaultStructuredDataLimits, loadStructuredDataLimits } from "./config";
 import {
+  isLostSessionError,
   StructuredDataClientError,
   StructuredDataWorkerClient,
 } from "./workerClient";
@@ -143,6 +144,19 @@ export default function StructuredDataView(
   const clientRef = useRef<StructuredDataWorkerClient>();
   const sourceIdRef = useRef("");
   const operationRef = useRef<AbortController>();
+  // Guards the single automatic re-open allowed after a lost session, so a
+  // persistently unavailable runtime still surfaces its error.
+  const lostSessionRetryRef = useRef(0);
+
+  // A sign-out or session reset shuts the shared runtime down underneath an
+  // open file. Re-opening the source restores the view instead of stranding
+  // it on an error the reader cannot act on.
+  const recoverLostSession = useCallback((caught: unknown): boolean => {
+    if (!isLostSessionError(caught) || lostSessionRetryRef.current >= 1) return false;
+    lostSessionRetryRef.current += 1;
+    setAttempt((value) => value + 1);
+    return true;
+  }, []);
   const sqlOperationRef = useRef<AbortController>();
   const nextFilterDraftIdRef = useRef(0);
   const nextSortDraftIdRef = useRef(0);
@@ -200,6 +214,7 @@ export default function StructuredDataView(
         return true;
       } catch (caught) {
         if (controller.signal.aborted) return false;
+        if (recoverLostSession(caught)) return false;
         setError(errorShape(caught));
         return false;
       } finally {
@@ -209,7 +224,7 @@ export default function StructuredDataView(
         }
       }
     },
-    [pageSize],
+    [pageSize, recoverLostSession],
   );
 
   useEffect(() => {
@@ -304,9 +319,13 @@ export default function StructuredDataView(
         setPage(nextPage);
         setActiveCursor(undefined);
         setVisibleColumns(new Set(nextPage.columns));
+        // A complete open earns back the automatic recovery attempt.
+        lostSessionRetryRef.current = 0;
       })
       .catch((caught) => {
-        if (active && !controller.signal.aborted) setError(errorShape(caught));
+        if (!active || controller.signal.aborted) return;
+        if (recoverLostSession(caught)) return;
+        setError(errorShape(caught));
       })
       .finally(() => {
         if (active && !controller.signal.aborted) setLoading(false);

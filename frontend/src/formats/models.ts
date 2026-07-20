@@ -247,6 +247,7 @@ export type StructuredErrorCode =
   | "network"
   | "query"
   | "range-unavailable"
+  | "session-lost"
   | "unsupported-codec"
   | "unsupported-format";
 

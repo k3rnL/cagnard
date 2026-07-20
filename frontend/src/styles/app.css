@@ -1830,6 +1830,12 @@ summary:focus-visible {
   animation: transfer-spin 900ms linear infinite;
 }
 
+/* Loading indicators mark themselves with .spin; without this rule the
+   structured-data and Suspense fallbacks render a motionless icon. */
+.spin {
+  animation: transfer-spin 900ms linear infinite;
+}
+
 .entry-name {
   display: flex;
   align-items: center;

@@ -204,7 +204,10 @@ async function loadFactory(format: string): Promise<StructuredSourceFactory> {
 
 function requireSource(sourceId: string): StructuredDataSource {
   const source = sources.get(sourceId);
-  if (!source) throw new StructuredReaderError("internal", "The data-source session is no longer available.", { retryable: true });
+  // A shutdown (sign-out, session reset) empties this map while the worker
+  // keeps running, so callers must be able to tell a lost session apart from
+  // a genuine internal fault and re-open the source.
+  if (!source) throw new StructuredReaderError("session-lost", "The data-source session is no longer available.", { retryable: true });
   return source;
 }
 
