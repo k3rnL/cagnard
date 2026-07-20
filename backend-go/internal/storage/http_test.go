@@ -2,7 +2,9 @@ package storage
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -365,5 +367,56 @@ func TestHTTPProviderManifestRetryAfterFailure(t *testing.T) {
 	}
 	if _, err := provider.List(root, ""); err != nil {
 		t.Fatalf("second call should succeed after recovery: %v", err)
+	}
+}
+
+func TestHTTPProviderRangeReadCompressedRepresentation(t *testing.T) {
+	content := httpFixtureFiles["logs/server.log"]
+	manifest, err := json.Marshal(httpFixtureManifest())
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	if _, err := gz.Write([]byte(content)); err != nil {
+		t.Fatalf("compress fixture: %v", err)
+	}
+	_ = gz.Close()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "manifest.json") {
+			_, _ = w.Write(manifest)
+			return
+		}
+		if r.Header.Get("Range") != "" {
+			// Mimic a CDN that ranges over the gzip representation.
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes 0-%d/%d", compressed.Len()-1, compressed.Len()))
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(compressed.Bytes())
+			return
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		_, _ = w.Write(compressed.Bytes())
+	}))
+	defer server.Close()
+	provider, err := NewHTTPStorageProviderFromConfig(config.ProviderConfig{
+		ID:       "cdn",
+		Settings: map[string]string{"baseUrl": server.URL, "manifestUrl": server.URL + "/manifest.json"},
+	})
+	if err != nil {
+		t.Fatalf("provider construction failed: %v", err)
+	}
+	root := ResolvedStorageRoot{ID: "r", Label: "R", Tunnel: "global", Target: HTTPRootTarget{}}
+	reader, _, err := provider.RangeRead(root, "logs/server.log", 5, 3)
+	if err != nil {
+		t.Fatalf("RangeRead failed: %v", err)
+	}
+	chunk, err := io.ReadAll(reader)
+	_ = reader.Close()
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if string(chunk) != content[5:8] {
+		t.Fatalf("compressed-representation fallback returned %q, want %q", chunk, content[5:8])
 	}
 }

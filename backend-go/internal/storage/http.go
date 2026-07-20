@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -218,16 +219,46 @@ func (p *HTTPStorageProvider) RangeRead(root ResolvedStorageRoot, relative strin
 	if err != nil {
 		return nil, FileContentInfo{}, err
 	}
-	if response.StatusCode == http.StatusPartialContent {
+	if response.StatusCode == http.StatusPartialContent && rangeOverExpectedEntity(response, size) {
 		return &limitedReadCloser{reader: io.LimitReader(response.Body, length), closer: response.Body}, info, nil
 	}
-	// The origin ignored the range request; discard the prefix locally so
-	// non-range static servers stay usable.
+	if response.StatusCode == http.StatusPartialContent {
+		// CDNs that compress on the fly may range over the compressed
+		// representation (a Content-Range total unlike the file size, or a
+		// Content-Encoding marker). Those bytes are useless as a slice;
+		// re-fetch whole so the transport decodes, and slice locally.
+		_ = response.Body.Close()
+		response, err = p.get(p.contentURL(target), "")
+		if err != nil {
+			return nil, FileContentInfo{}, err
+		}
+	}
+	// Full-body response: discard the prefix locally so non-range origins
+	// stay usable.
 	if _, err := io.CopyN(io.Discard, response.Body, offset); err != nil {
 		_ = response.Body.Close()
 		return nil, FileContentInfo{}, err
 	}
 	return &limitedReadCloser{reader: io.LimitReader(response.Body, length), closer: response.Body}, info, nil
+}
+
+// rangeOverExpectedEntity reports whether a 206 response slices the raw file
+// rather than some other representation of it (e.g. a compressed entity).
+func rangeOverExpectedEntity(response *http.Response, expectedSize int64) bool {
+	if response.Header.Get("Content-Encoding") != "" {
+		return false
+	}
+	contentRange := response.Header.Get("Content-Range")
+	slash := strings.LastIndex(contentRange, "/")
+	if slash < 0 {
+		return true
+	}
+	total, err := strconv.ParseInt(strings.TrimSpace(contentRange[slash+1:]), 10, 64)
+	if err != nil {
+		// An unparsable or "*" total says nothing about the representation.
+		return true
+	}
+	return total == expectedSize
 }
 
 func (p *HTTPStorageProvider) StreamRead(root ResolvedStorageRoot, relative string, output io.Writer, onBytes func(int64)) (FileContentInfo, error) {
