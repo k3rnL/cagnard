@@ -54,7 +54,7 @@ curl -fsSLo cagnard-demo-values.yaml \
   https://raw.githubusercontent.com/k3rnL/cagnard/v0.6.2/deploy/helm/cagnard/examples/local-filesystem-static-values.yaml
 
 helm install cagnard oci://ghcr.io/k3rnl/charts/cagnard \
-  --version 0.11.1 \
+  --version 0.11.2 \
   -f cagnard-demo-values.yaml
 
 kubectl port-forward service/cagnard-frontend 5173:80
