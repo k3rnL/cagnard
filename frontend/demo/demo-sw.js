@@ -40,7 +40,9 @@ function startBackend() {
         globalThis.__onCagnardReady = resolve;
       });
       const go = new Go();
-      const response = await fetch(new URL("cagnard.wasm", scope).href);
+      // Revalidate on every boot: a plain fetch may serve a stale cached
+      // wasm for the whole max-age window after a deploy.
+      const response = await fetch(new URL("cagnard.wasm", scope).href, { cache: "no-cache" });
       if (!response.ok) {
         throw new Error(`cagnard.wasm fetch failed with ${response.status}`);
       }
