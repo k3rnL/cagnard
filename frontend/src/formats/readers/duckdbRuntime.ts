@@ -193,7 +193,9 @@ async function createRuntime(
       allowUnsignedExtensions: false,
       maximumThreads: 1,
       filesystem: {
-        reliableHeadRequests: true,
+        // HEAD responses lie about size behind compressing CDNs (they report
+        // the gzip length); range probes return the true total instead.
+        reliableHeadRequests: false,
         allowFullHTTPReads: false,
         forceFullHTTPReads: false,
       },
