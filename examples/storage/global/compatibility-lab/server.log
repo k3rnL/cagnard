@@ -1,0 +1,4 @@
+2026-07-04T09:00:00Z INFO  io.cagnard.backend.Main Cagnard backend listening on 0.0.0.0:8080
+2026-07-04T09:01:12Z INFO  io.cagnard.storage.FilesystemProvider Listed /home/alice/compatibility-lab
+2026-07-04T09:02:33Z WARN  io.cagnard.openers.Registry No opener found for unknown.payload
+2026-07-04T09:03:04Z INFO  io.cagnard.openers.JsonOpener Saved payload.json

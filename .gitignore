@@ -26,6 +26,10 @@ tmp/
 data/
 !examples/run/**/data/
 !examples/run/**/data/**
+# The demo corpus ships log and data-directory fixtures as content.
+!examples/storage/global/**/data/
+!examples/storage/global/**/data/**
+!examples/storage/global/**/*.log
 
 # Local sample/user documents
 examples/storage/**/*.pdf
