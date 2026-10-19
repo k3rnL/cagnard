@@ -1,6 +1,10 @@
 # Task API Reference
 
-All routes require the same authenticated session as storage browsing. Tasks are owner-scoped: a foreign or expired ID returns `404` without revealing its existence.
+All routes require the same [authenticated session](identity-and-sessions.md) as storage browsing. Tasks are scoped to the canonical principal, including its login provider. A missing or expired session returns `401`; a foreign, removed, or no-longer-retained task returns `404`.
+
+Every `POST` and `PUT`, including cancellation and upload item bodies, also requires `Origin: <auth.publicUrl>` and `X-Cagnard-Request: 1`. Bearer tokens are not supported. Storage grants are checked for the requested operation; see the [action matrix](authorization.md#effective-permissions-and-operation-composition).
+
+For the user workflow, see [browsing and file operations](../guides/browsing-and-transfers.md); for ownership, deadlines, and partial effects, see [task architecture](../architecture/tasks.md).
 
 ## Common Routes
 
@@ -64,7 +68,18 @@ After conflicts are resolved, stream each pending item with `PUT /api/tasks/{tas
 
 ## Conflict Decisions
 
-The resolve body is `{ "conflictPolicy": "skip" | "keep-both" | "replace" }`. `fail` is the creation-time policy that blocks; it is not a resolution. Cancel the task to abandon the decision.
+The resolve body is `{ "conflictPolicy": "skip" | "keep-both" | "replace" }`. `fail` is the creation-time policy that blocks; it is not a resolution. Cancel the task to abandon the decision. Resolution requires current authentication and grants. A blocked transfer with prior storage effects returns `409` with `partial_task_requires_new_request`; submit a new request for the remaining work instead. Terminal tasks cannot be restarted.
+
+## Errors and lifetime
+
+| Status | Meaning |
+| --- | --- |
+| `401` | Authentication is missing, invalid, or expired; sign in again. |
+| `403` | The origin/header check failed, or a required action was not granted. |
+| `404` | Root/task is unavailable to this principal, or retained task state is gone. |
+| `409` | The current task state does not allow this operation, such as reusing a completed download. |
+
+An accepted task can later end in `error`, `partial`, or `canceled`; an HTTP success on creation does not mean the storage operation completed. Inspect task status and item results. Restarting the backend loses task state, and authentication expiry cancels its execution context without undoing completed effects.
 
 ## Compatibility Routes
 

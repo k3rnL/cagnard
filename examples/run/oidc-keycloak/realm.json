@@ -1,0 +1,37 @@
+{
+  "realm": "cagnard",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "groups": [{ "name": "engineering" }],
+  "clients": [{
+    "clientId": "cagnard",
+    "name": "Cagnard local exercise",
+    "enabled": true,
+    "protocol": "openid-connect",
+    "publicClient": false,
+    "secret": "local-oidc-secret-only",
+    "standardFlowEnabled": true,
+    "directAccessGrantsEnabled": false,
+    "redirectUris": ["http://localhost:5173/api/auth/providers/company/callback"],
+    "webOrigins": ["http://localhost:5173"],
+    "attributes": { "pkce.code.challenge.method": "S256" },
+    "protocolMappers": [{
+      "name": "application-groups",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-group-membership-mapper",
+      "consentRequired": false,
+      "config": {
+        "claim.name": "groups",
+        "full.path": "true",
+        "id.token.claim": "true",
+        "access.token.claim": "false",
+        "userinfo.token.claim": "false"
+      }
+    }]
+  }],
+  "users": [
+    {"username":"sso-alice","enabled":true,"firstName":"Alice","lastName":"SSO","email":"sso-alice@example.test","emailVerified":true,"groups":["/engineering"],"credentials":[{"type":"password","value":"cagnard-sso","temporary":false}]},
+    {"username":"unassigned","enabled":true,"firstName":"Unassigned","lastName":"User","email":"unassigned@example.test","emailVerified":true,"credentials":[{"type":"password","value":"cagnard-sso","temporary":false}]}
+  ]
+}

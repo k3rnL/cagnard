@@ -18,7 +18,7 @@ func Load(path string) (*CagnardConfig, error) {
 
 	parsed, err := hocon.ParseResource(normalized)
 	if err != nil {
-		return nil, fmt.Errorf("invalid config %s: %w", normalized, err)
+		return nil, fmt.Errorf("invalid config %s: HOCON parsing or substitution failed; verify syntax and required environment values", normalized)
 	}
 
 	root, ok := parsed.GetRoot().(hocon.Object)
@@ -43,7 +43,10 @@ func Load(path string) (*CagnardConfig, error) {
 func decode(root hocon.Object) (*CagnardConfig, error) {
 	server := objectAt(root, "server")
 	appearance := objectAt(root, "appearance")
-	auth := objectAt(root, "auth")
+	auth, policy, err := decodeAuthConfiguration(root)
+	if err != nil {
+		return nil, err
+	}
 	tasks := objectAt(root, "tasks")
 	structuredData := objectAt(root, "structuredData")
 
@@ -57,17 +60,10 @@ func decode(root hocon.Object) (*CagnardConfig, error) {
 			DefaultMode:       AppearanceMode(stringOrDefault(appearance, "defaultMode", string(AppearanceModeSystem))),
 			AllowUserOverride: boolOrDefault(appearance, "allowUserOverride", true),
 		},
-		Tasks:          decodeTaskConfig(tasks),
-		StructuredData: decodeStructuredDataConfig(structuredData),
-		Auth: AuthConfig{
-			Mode:                   optionalString(auth, "mode"),
-			ConfiguredUsersEnabled: boolOrDefault(auth, "configuredUsersEnabled", false),
-			DefaultUser:            optionalString(auth, "defaultUser"),
-			Session:                decodeSession(objectAt(auth, "session")),
-			StaticProvider:         decodeStaticProvider(objectAt(auth, "staticProvider")),
-			OIDCProviders:          decodeOIDCProviders(arrayAt(auth, "oidcProviders")),
-		},
-		Users:           decodeUsers(arrayAt(root, "users")),
+		Tasks:           decodeTaskConfig(tasks),
+		StructuredData:  decodeStructuredDataConfig(structuredData),
+		Auth:            auth,
+		Authorization:   policy,
 		Providers:       decodeProviders(arrayAt(root, "providers")),
 		Accounts:        decodeAccounts(arrayAt(root, "accounts")),
 		PersonalStorage: decodeStorageRoots(arrayAt(root, "personalStorage")),
@@ -124,68 +120,6 @@ func decodeTaskConfig(tasks hocon.Object) TaskConfig {
 	return TaskConfig{MaxConcurrentTransfers: transfers, MaxConcurrentItems: items}
 }
 
-func decodeSession(obj hocon.Object) *SessionConfig {
-	if obj == nil {
-		return nil
-	}
-	return &SessionConfig{
-		SigningSecret: optionalString(obj, "signingSecret"),
-		TTLSeconds:    optionalInt64(obj, "ttlSeconds"),
-		CookieName:    optionalString(obj, "cookieName"),
-		SecureCookies: optionalBool(obj, "secureCookies"),
-	}
-}
-
-func decodeStaticProvider(obj hocon.Object) *StaticProviderConfig {
-	if obj == nil {
-		return nil
-	}
-	return &StaticProviderConfig{
-		ID:      optionalString(obj, "id"),
-		Label:   optionalString(obj, "label"),
-		Enabled: optionalBool(obj, "enabled"),
-	}
-}
-
-func decodeOIDCProviders(values hocon.Array) []OIDCProviderConfig {
-	out := make([]OIDCProviderConfig, 0, len(values))
-	for _, value := range values {
-		obj, ok := value.(hocon.Object)
-		if !ok {
-			continue
-		}
-		out = append(out, OIDCProviderConfig{
-			ID:          stringOrDefault(obj, "id", ""),
-			Issuer:      stringOrDefault(obj, "issuer", ""),
-			Audience:    stringOrDefault(obj, "audience", ""),
-			GroupsClaim: stringOrDefault(obj, "groupsClaim", ""),
-		})
-	}
-	return out
-}
-
-func decodeUsers(values hocon.Array) []ConfiguredUser {
-	out := make([]ConfiguredUser, 0, len(values))
-	for _, value := range values {
-		obj, ok := value.(hocon.Object)
-		if !ok {
-			continue
-		}
-		user := ConfiguredUser{
-			ID:          stringOrDefault(obj, "id", ""),
-			DisplayName: stringOrDefault(obj, "displayName", ""),
-			Roles:       stringSlice(obj, "roles"),
-			Groups:      stringSlice(obj, "groups"),
-			Claims:      stringMap(objectAt(obj, "claims")),
-		}
-		if credential := objectAt(obj, "credential"); credential != nil {
-			user.Credential = &StaticUserCredentialConfig{Verifier: stringOrDefault(credential, "verifier", "")}
-		}
-		out = append(out, user)
-	}
-	return out
-}
-
 func decodeProviders(values hocon.Array) []ProviderConfig {
 	out := make([]ProviderConfig, 0, len(values))
 	for _, value := range values {
@@ -232,15 +166,12 @@ func decodeStorageRoots(values hocon.Array) []StorageRootConfig {
 			continue
 		}
 		out = append(out, StorageRootConfig{
-			ID:            stringOrDefault(obj, "id", ""),
-			Label:         optionalString(obj, "label"),
-			ProviderID:    stringOrDefault(obj, "providerId", ""),
-			AccountID:     stringOrDefault(obj, "accountId", ""),
-			Path:          optionalString(obj, "path"),
-			Settings:      stringMap(objectAt(obj, "settings")),
-			AllowedUsers:  stringSlice(obj, "allowedUsers"),
-			AllowedRoles:  stringSlice(obj, "allowedRoles"),
-			AllowedGroups: stringSlice(obj, "allowedGroups"),
+			ID:         stringOrDefault(obj, "id", ""),
+			Label:      optionalString(obj, "label"),
+			ProviderID: stringOrDefault(obj, "providerId", ""),
+			AccountID:  stringOrDefault(obj, "accountId", ""),
+			Path:       optionalString(obj, "path"),
+			Settings:   stringMap(objectAt(obj, "settings")),
 		})
 	}
 	return out
@@ -270,8 +201,6 @@ func resolveRelativePaths(configPath string, cfg *CagnardConfig) {
 }
 
 func validate(path string, cfg *CagnardConfig) error {
-	authMode := cfg.AuthMode()
-	validModes := map[string]bool{"static": true, "development": true, "external": true}
 	var errs []string
 	appearance := cfg.EffectiveAppearance()
 	validPalettes := map[AppearancePalette]bool{AppearancePaletteClassic: true, AppearancePaletteSolar: true}
@@ -289,23 +218,7 @@ func validate(path string, cfg *CagnardConfig) error {
 		errs = append(errs, "tasks.maxConcurrentTransfers must be a positive integer when configured")
 	}
 	errs = append(errs, structuredDataErrors(cfg.StructuredData)...)
-	if !validModes[authMode] {
-		errs = append(errs, "auth.mode must be one of development, external, static")
-	}
-	if authMode == "static" && !cfg.Auth.ConfiguredUsersEnabled {
-		errs = append(errs, "auth.configuredUsersEnabled must be true when auth.mode = static")
-	}
-	if authMode == "static" && (cfg.Auth.Session == nil || cfg.Auth.Session.SigningSecret == nil || strings.TrimSpace(*cfg.Auth.Session.SigningSecret) == "") {
-		errs = append(errs, "auth.session.signingSecret is required when auth.mode = static")
-	}
-	if authMode == "static" {
-		for _, user := range cfg.Users {
-			if user.Credential == nil || strings.TrimSpace(user.Credential.Verifier) == "" {
-				errs = append(errs, "all configured users require users[].credential.verifier when auth.mode = static")
-				break
-			}
-		}
-	}
+	errs = append(errs, authConfigurationErrors(cfg)...)
 	errs = append(errs, providerErrors(cfg)...)
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid config %s: %s", filepath.Clean(path), strings.Join(errs, "; "))

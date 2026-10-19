@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/k3rnl/cagnard/backend-go/internal/auth"
+	auth "github.com/k3rnl/cagnard/backend-go/internal/authn"
 	"github.com/k3rnl/cagnard/backend-go/internal/storage"
 )
 
@@ -47,11 +47,11 @@ func (s *Server) startUploadTaskRequest(identity auth.RequestIdentity, request U
 	if apiErr != nil {
 		return TaskResponse{}, apiErr
 	}
-	root, provider, apiErr := s.taskLocationProvider(identity, destination, true)
+	root, provider, apiErr := s.taskLocationProvider(identity, destination, "storage.write")
 	if apiErr != nil {
 		return TaskResponse{}, apiErr
 	}
-	if _, rootErr := s.rootForIdentity(identity, initiatedFrom.Tunnel, initiatedFrom.RootID, false); rootErr != nil {
+	if _, rootErr := s.rootForIdentity(identity, initiatedFrom.Tunnel, initiatedFrom.RootID); rootErr != nil {
 		return TaskResponse{}, rootErr
 	}
 	policy := normalizeConflictPolicy(request.ConflictPolicy)
@@ -148,7 +148,7 @@ func (s *Server) startUploadTaskRequest(identity auth.RequestIdentity, request U
 		ConflictPolicy: policy, Tasks: tasks,
 	}
 	job.Progress = aggregateTaskProgress(job.Tasks)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := identity.DeadlineContext(context.Background())
 	s.tasks.mu.Lock()
 	s.pruneTransferJobsLocked(resolved.Profile.ID, time.Now())
 	s.tasks.jobs[jobID] = indexStoredTask(storedTransferJob{
@@ -234,7 +234,7 @@ func (s *Server) uploadTaskItem(w http.ResponseWriter, r *http.Request) {
 
 	requestCtx, cancel := mergeRequestContext(ctx, r.Context())
 	defer cancel()
-	root, provider, apiErr := s.taskLocationProvider(identity, request.Destination, true)
+	root, provider, apiErr := s.taskLocationProvider(identity, request.Destination, "storage.write")
 	if apiErr != nil {
 		s.failUploadItem(jobID, itemID, "Upload destination is unavailable", fmt.Errorf("%s", apiErr.Error.Message), false)
 		writeAPIError(w, apiErr.Status, apiErr.Error)
@@ -395,8 +395,8 @@ func finalizeUploadJob(job *TaskResponse) {
 	}
 }
 
-func (s *Server) taskLocationProvider(identity auth.RequestIdentity, location TaskLocation, writable bool) (storage.ResolvedStorageRoot, storage.StorageProvider, *transferAPIError) {
-	return s.taskSourceProvider(identity, TaskSourceRequest{Tunnel: location.Tunnel, RootID: location.RootID, Path: location.Path}, writable)
+func (s *Server) taskLocationProvider(identity auth.RequestIdentity, location TaskLocation, actions ...string) (storage.ResolvedStorageRoot, storage.StorageProvider, *transferAPIError) {
+	return s.taskSourceProvider(identity, TaskSourceRequest{Tunnel: location.Tunnel, RootID: location.RootID, Path: location.Path}, actions...)
 }
 
 func (s *Server) resolveUploadTaskRequest(identity auth.RequestIdentity, jobID string, resolve ResolveTransferJobRequest) (TaskResponse, *transferAPIError) {
@@ -420,7 +420,7 @@ func (s *Server) resolveUploadTaskRequest(identity auth.RequestIdentity, jobID s
 	}
 	request := *stored.uploadRequest
 	s.tasks.mu.RUnlock()
-	root, provider, apiErr := s.taskLocationProvider(identity, request.Destination, true)
+	root, provider, apiErr := s.taskLocationProvider(identity, request.Destination, "storage.write")
 	if apiErr != nil {
 		return TaskResponse{}, apiErr
 	}
@@ -454,6 +454,10 @@ func (s *Server) resolveUploadTaskRequest(identity auth.RequestIdentity, jobID s
 		stored.job.Tasks[index] = task
 	}
 	request.ConflictPolicy = policy
+	if stored.cancel != nil {
+		stored.cancel()
+	}
+	stored.ctx, stored.cancel = identity.DeadlineContext(context.Background())
 	stored.uploadRequest = &request
 	stored.job.ConflictPolicy = policy
 	stored.job.Status, stored.job.Message = "pending", "Waiting for browser upload"

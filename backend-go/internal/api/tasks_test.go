@@ -53,6 +53,7 @@ func TestGenericTaskRoutesShareTransferRecordsAndIsolateOwners(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/tasks/"+job.ID, nil)
 	request.Header.Set("X-Cagnard-User", "bob")
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("foreign task status = %d body = %s", response.Code, response.Body.String())
@@ -160,6 +161,7 @@ func TestTaskDownloadsStreamFilesAndMixedZIPs(t *testing.T) {
 	foreignRequest := httptest.NewRequest(http.MethodGet, fileTask.Download.URL, nil)
 	foreignRequest.Header.Set("X-Cagnard-User", "bob")
 	foreignResponse := httptest.NewRecorder()
+	prepareTestRequest(server, foreignRequest)
 	server.Handler().ServeHTTP(foreignResponse, foreignRequest)
 	if foreignResponse.Code != http.StatusNotFound {
 		t.Fatalf("foreign download status = %d body = %s", foreignResponse.Code, foreignResponse.Body.String())
@@ -362,6 +364,7 @@ func TestTaskUploadStreamsManifestItemsAndResolvesConflicts(t *testing.T) {
 	foreignRequest := httptest.NewRequest(http.MethodPut, "/api/tasks/"+job.ID+"/uploads/"+job.Tasks[1].ID, strings.NewReader("content"))
 	foreignRequest.Header.Set("X-Cagnard-User", "bob")
 	foreignResponse := httptest.NewRecorder()
+	prepareTestRequest(server, foreignRequest)
 	server.Handler().ServeHTTP(foreignResponse, foreignRequest)
 	if foreignResponse.Code != http.StatusNotFound {
 		t.Fatalf("foreign upload item status = %d body = %s", foreignResponse.Code, foreignResponse.Body.String())
@@ -474,6 +477,7 @@ func TestDownloadDisconnectMarksTaskError(t *testing.T) {
 	task := postJSON[TaskResponse](t, server, "/api/tasks/downloads", "", `{"sources":[{"tunnel":"personal","rootId":"home","path":"disconnect.bin"}]}`)
 	request := httptest.NewRequest(http.MethodGet, task.Download.URL, nil)
 	response := &failingTaskResponseWriter{header: http.Header{}, remaining: 1024}
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	final := getJSON[TaskResponse](t, server, "/api/tasks/"+task.ID)
 	if final.Status != "error" {
@@ -499,8 +503,8 @@ func TestTaskCancelAndRetentionLifecycle(t *testing.T) {
 	stored.job.UpdatedAt = time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339Nano)
 	server.tasks.jobs[job.ID] = stored
 	server.tasks.mu.Unlock()
-	server.pruneTransferJobs("alice")
-	if _, ok := server.transferJobForOwner(job.ID, "alice"); ok {
+	server.pruneTransferJobs(stored.ownerID)
+	if _, ok := server.transferJobForOwner(job.ID, stored.ownerID); ok {
 		t.Fatal("expired terminal task was not pruned")
 	}
 }
@@ -536,6 +540,7 @@ func doTaskContentRequest(t *testing.T, server *Server, url string, rangeHeader 
 		request.Header.Set("Range", rangeHeader)
 	}
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	return response
 }
@@ -545,6 +550,7 @@ func putUploadItem(t *testing.T, server *Server, taskID string, itemID string, b
 	request := httptest.NewRequest(http.MethodPut, "/api/tasks/"+taskID+"/uploads/"+itemID, bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/octet-stream")
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != expectedStatus {
 		t.Fatalf("upload item status = %d body = %s", response.Code, response.Body.String())
@@ -561,6 +567,7 @@ func postRawJSON(t *testing.T, server *Server, path string, body string) *httpte
 	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	return response
 }

@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ghcr.io/k3rnl/cagnard-backend:${CAGNARD_VERSION:-v0.6.2}
+    image: ghcr.io/k3rnl/cagnard-backend:${CAGNARD_VERSION:-v0.12.0}
     environment:
       CAGNARD_CONFIG: /etc/cagnard/cagnard.conf
     ports:
@@ -11,7 +11,7 @@ services:
       - ../../storage/global:/global:ro
 
   frontend:
-    image: ghcr.io/k3rnl/cagnard-frontend:${CAGNARD_VERSION:-v0.6.2}
+    image: ghcr.io/k3rnl/cagnard-frontend:${CAGNARD_VERSION:-v0.12.0}
     environment:
       CAGNARD_API_UPSTREAM: http://backend:8080
     ports:

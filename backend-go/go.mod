@@ -1,6 +1,6 @@
 module github.com/k3rnl/cagnard/backend-go
 
-go 1.23.0
+go 1.25.0
 
 require github.com/gurkankaymak/hocon v1.2.23
 
@@ -10,7 +10,12 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.70
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.77.1
 	github.com/aws/smithy-go v1.22.4
+	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/fsnotify/fsnotify v1.10.1
+	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/gorilla/securecookie v1.1.2
 	golang.org/x/crypto v0.37.0
+	golang.org/x/oauth2 v0.36.0
 )
 
 require (
@@ -27,6 +32,5 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.25.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.30.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.34.0 // indirect
-	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	golang.org/x/sys v0.32.0 // indirect
 )

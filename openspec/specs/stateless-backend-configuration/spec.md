@@ -29,45 +29,41 @@ Cagnard SHALL avoid storing required user, session, provider, or access-control 
 - **THEN** each replica SHALL authorize and route requests consistently without sharing application database state
 
 ### Requirement: External identity provider authentication
-Cagnard SHALL support external authentication providers, including OIDC-compatible providers such as Keycloak, as the preferred user authentication mechanism.
+Cagnard SHALL support configured OIDC providers through a validated browser authorization-code flow and common application sessions without requiring a local user database.
 
 #### Scenario: Authenticate through OIDC
-- **WHEN** a request presents a valid token from a configured OIDC provider
-- **THEN** Cagnard SHALL authenticate the user from validated token claims
+- **WHEN** a browser completes a valid transaction with an enabled OIDC provider
+- **THEN** Cagnard SHALL derive identity from verified provider data and issue an application session
 
 #### Scenario: Reject invalid token
-- **WHEN** a request presents an expired, invalid, or untrusted token
-- **THEN** Cagnard SHALL reject the request without creating local user state
+- **WHEN** external token verification or transaction validation fails
+- **THEN** Cagnard SHALL reject authentication without returning a partial principal or creating local user state
 
 ### Requirement: Simple configured users
-Cagnard SHALL support simple user declarations in configuration for deployments that do not require an external identity provider, and SHALL support authenticating those users through explicit static login when static login mode is enabled.
+Cagnard SHALL support provider-scoped static user declarations with verifier material, enabled state, declared application-group membership, and optional storage keys for deployments needing local login.
 
 #### Scenario: Use configured user declaration
-- **WHEN** the configuration declares a simple user with roles or access rules
-- **THEN** Cagnard SHALL authorize that user according to the configured declaration
+- **WHEN** a static user's declared group is bound to a role on a storage root
+- **THEN** Cagnard SHALL grant only that role's actions on that scope
 
 #### Scenario: Authenticate configured user
-- **WHEN** static login mode is enabled and a configured user presents valid configured credentials
-- **THEN** Cagnard SHALL authenticate the user without creating backend-local persistent user state
+- **WHEN** an enabled static user presents valid credentials to its enabled provider
+- **THEN** Cagnard SHALL authenticate without creating application database state
 
-#### Scenario: Disable configured users
-- **WHEN** configured users are not enabled
-- **THEN** Cagnard SHALL not accept simple configured-user authentication
-
-#### Scenario: Avoid implicit fallback in login mode
-- **WHEN** static login mode is enabled and a request has no valid session
-- **THEN** Cagnard SHALL reject the request instead of silently resolving `auth.defaultUser`
+#### Scenario: Static login requires credentials
+- **WHEN** a protected request lacks a valid session
+- **THEN** configured static users SHALL NOT enable default-user fallback
 
 ### Requirement: Configuration-defined authorization
-Cagnard SHALL derive user roles, groups, storage access rules, and storage operation permissions from configuration and externally supplied identity claims.
+Cagnard SHALL derive application memberships, role action sets, and scoped grants from declared configuration and explicitly mapped validated external evidence. Invalid references SHALL fail startup, and changes SHALL apply after configuration restart without a database migration.
 
 #### Scenario: Map OIDC group to role
-- **WHEN** a validated token contains a group claim mapped by configuration
-- **THEN** Cagnard SHALL grant the configured role and storage access for that group
+- **WHEN** a validated external group maps to a declared application group with a scoped role binding
+- **THEN** Cagnard SHALL grant that role's actions only on the bound resources
 
 #### Scenario: Change authorization by configuration
-- **WHEN** an administrator changes the configuration and the backend reloads or restarts
-- **THEN** Cagnard SHALL apply the new authorization rules without database migration
+- **WHEN** an administrator changes a role, mapping, or binding and restarts the backend
+- **THEN** subsequent permission checks SHALL use the changed configuration, subject to documented external-evidence freshness
 
 ### Requirement: No required local audit database
 Cagnard SHALL not require a local audit database for core operation and SHALL allow audit events to be emitted to logs, files, or external sinks configured by the administrator.
@@ -155,34 +151,38 @@ Cagnard SHALL let Helm deployments choose how backend HOCON configuration is pro
 - **THEN** the chart SHALL mount that external source instead of rendering sensitive configuration into a ConfigMap
 
 ### Requirement: Authentication mode configuration
-Cagnard SHALL let administrators choose the configured authentication mode without requiring application database state.
+Cagnard SHALL use an explicit versioned provider registry permitting multiple static/OIDC providers, with development identity configured separately and mutually exclusively. Missing authentication configuration SHALL fail startup. Unsupported provider types SHALL fail startup rather than accepting placeholder identity data.
 
 #### Scenario: Enable static login mode
-- **WHEN** the backend starts with static login mode enabled
-- **THEN** Cagnard SHALL require explicit login for protected browser API requests and SHALL authenticate configured users through the static auth provider
+- **WHEN** configuration enables a static provider
+- **THEN** the backend SHALL offer explicit static login and require valid authentication for protected browser routes
 
 #### Scenario: Enable development identity mode
-- **WHEN** the backend starts with development identity mode enabled
-- **THEN** Cagnard MAY accept explicit development identity headers or configured default-user fallback for local development and tests
+- **WHEN** development identity is explicitly enabled without production providers
+- **THEN** the backend SHALL accept only its explicit configured development identities and SHALL NOT decode unverified bearer tokens
 
-#### Scenario: Reserve external identity mode
-- **WHEN** the backend starts with external identity mode configured for a future OIDC or SSO provider
-- **THEN** Cagnard SHALL fail startup or mark the provider unavailable until the external provider implementation is present, without silently falling back to static login
+#### Scenario: Configure unsupported provider type
+- **WHEN** an authentication provider has an unsupported type
+- **THEN** startup SHALL fail with an unsupported-provider diagnostic without fallback
+
+#### Scenario: Enable multiple providers
+- **WHEN** implemented static and OIDC providers are enabled together
+- **THEN** both SHALL feed the same principal, session, and authorization contracts
 
 ### Requirement: Stateless session signing configuration
-Cagnard SHALL require stateless session signing settings when login mode issues browser sessions.
+Cagnard SHALL require externalized cryptographic key material for authenticated-encryption session cookies and SHALL validate key shape, session lifetime, cookie options, and public-origin configuration at startup.
 
 #### Scenario: Resolve session signing secret
-- **WHEN** static login mode is enabled
-- **THEN** Cagnard SHALL resolve the session signing secret from configuration, environment substitution, mounted secret reference, or another externalized secret source
+- **WHEN** browser sessions are enabled
+- **THEN** Cagnard SHALL resolve the session protection key from configured secret material without persisting it to an application database
 
 #### Scenario: Reject missing signing secret
-- **WHEN** login mode requires signed sessions and no usable signing secret is configured
-- **THEN** Cagnard SHALL fail startup with an explicit configuration diagnostic
+- **WHEN** the protection key is missing or invalid
+- **THEN** startup SHALL fail with a safe diagnostic
 
 #### Scenario: Configure session lifetime
-- **WHEN** session lifetime settings are configured
-- **THEN** Cagnard SHALL apply them when issuing stateless sessions
+- **WHEN** a positive session lifetime is configured
+- **THEN** it SHALL bound the absolute application session lifetime without silent renewal
 
 ### Requirement: Stateless appearance configuration
 Cagnard SHALL support optional application appearance defaults through HOCON configuration without requiring persistent backend state.
@@ -214,3 +214,17 @@ Cagnard SHALL expose only non-sensitive appearance configuration through an unau
 - **WHEN** stateless backend replicas restart with the same HOCON configuration
 - **THEN** each replica SHALL return the same appearance discovery response without shared application state
 
+### Requirement: Explicit legacy auth migration
+Cagnard SHALL reject mixed legacy and version-two authentication/authorization fields and provide migration documentation preserving intended access and personal storage locations. Deployment examples SHALL explicitly select supported authentication behavior.
+
+#### Scenario: Preserve old OR grants
+- **WHEN** old allowedUsers, allowedRoles, and allowedGroups rules are migrated
+- **THEN** the migration guidance SHALL express each matching alternative as a scoped grant without turning old role labels into implicit action roles
+
+#### Scenario: Preserve previously unrestricted root deliberately
+- **WHEN** a root formerly had no selectors
+- **THEN** migration guidance SHALL require an explicit authenticated binding to preserve that access
+
+#### Scenario: Base deployment configuration
+- **WHEN** the maintained base Helm or Compose example starts
+- **THEN** it SHALL use explicitly configured authentication rather than an omitted-mode default-user fallback

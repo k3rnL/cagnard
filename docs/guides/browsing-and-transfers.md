@@ -1,6 +1,6 @@
 # Browsing And File Operations
 
-Cagnard presents filesystem directories and S3 prefixes through one browser. The active root identifies its personal/global tunnel, provider, account, and capability set.
+Cagnard presents filesystem directories and S3 prefixes through one browser. The active root identifies its personal/global area, provider, account, and available actions. An action needs both an authorization grant and storage support; a read-only account can disable it even when a role grants it. See [users and storage access](users-and-storage-access.md).
 
 ## Browse And Select
 
@@ -19,7 +19,24 @@ The URL records the tunnel, root, real directory path, and opened file. Native B
 2. Browse to any writable destination, including another provider.
 3. Choose **Paste** or **Move here**.
 
-The pasteboard is shared by current same-origin tabs and clears on a full browser restart. Accepted entries leave it immediately. Move copies each item first and removes its source only after destination success.
+The pasteboard is shared by current same-origin tabs for the same canonical user, and clears on logout or a full browser restart. Accepted entries leave it immediately. Move copies each item first and removes its source only after destination success.
+
+### What a move does
+
+A move requires source read/delete and destination write permission, with [additional actions for directories](../reference/authorization.md#effective-permissions-and-operation-composition). It first copies to the destination. Cagnard removes the source only after that copy succeeds.
+
+```mermaid
+flowchart TD
+  Start["Check permissions"] --> Copy["Copy to destination"]
+  Copy --> Success{"Copy succeeded?"}
+  Success -->|No| Keep["Keep source<br/>report error or partial copy"]
+  Success -->|Yes| Delete["Delete source"]
+  Delete --> Removed{"Delete succeeded?"}
+  Removed -->|Yes| Done["Move complete"]
+  Removed -->|No| Partial["Both copies may remain<br/>report partial result"]
+```
+
+Cancellation or session expiry can interrupt this flow. Check the task’s item results before retrying; completed writes and deletions are not rolled back.
 
 ## Delete In The Background
 
@@ -45,13 +62,19 @@ Keep the tab open while an upload runs. The browser owns source file handles, so
 
 ## Conflicts
 
-When a destination already contains a name, the original task becomes blocked. Choose **Keep both**, **Replace**, **Skip**, or cancel. One decision applies to the batch, including nested conflicts discovered later. Keep both allocates an available destination name; replace is never implicit.
+When a destination already contains a name, the original task becomes blocked. Choose **Keep both**, **Replace**, **Skip**, or cancel. One decision applies to the batch, including nested conflicts discovered later. Keep both allocates an available destination name; replace is never implicit. Rename itself rejects an existing target; use an explicit transfer when replacement is intended.
 
 ## Task Queue
 
 The task button appears when work exists. Its icon shows active, successful, or problem state. Open it to see operation, status, location, aggregate bytes/items, delivery progress, time, and cancel/resolve controls. Expand a task to load server-paginated affected items without transferring the complete tree.
 
 Polling starts at 50 ms for immediate feedback, backs off to 300 ms, 1 second, then 2 seconds, and uses a slow idle poll to notice work from another tab. Completed, partial, error, and canceled tasks remain for one hour or until cleared.
+
+## Sign-in expiry and recovery
+
+Active work is bounded by the session that authorized it. On expiry, sign in again and inspect what completed. You can resolve an eligible blocked conflict with the new session and current permissions. A transfer that already changed storage requires a new request for its remaining items; interrupted downloads need a new task. Completed upload items are retained when resolving a blocked upload.
+
+Signing out clears private browser state and stops browser-fed uploads, but it does not revoke already accepted backend work. That work remains bounded by its original deadline. See [task continuation](../architecture/tasks.md#authentication-and-continuation).
 
 ## Limits
 

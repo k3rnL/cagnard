@@ -34,47 +34,36 @@ No installation: open [k3rnl.github.io/cagnard](https://k3rnl.github.io/cagnard/
 
 ### Docker Compose
 
-Run the released filesystem demo; Go and Node.js are not required:
+Run the v0.12.0 filesystem demo with Docker and Compose:
 
 ```bash
-git clone https://github.com/k3rnL/cagnard.git
+git clone --branch v0.12.0 --depth 1 https://github.com/k3rnL/cagnard.git
 cd cagnard/examples/run/local-filesystem-static
 cp .env.example .env
 docker compose up -d
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173) and sign in with `alice` / `cagnard`. The [Docker guide](docs/getting-started/docker.md) also covers the MinIO and combined-provider examples, version selection, source builds, and cleanup.
+Open [http://localhost:5173](http://localhost:5173) and sign in with `alice` / `cagnard`. The [Docker guide](docs/getting-started/docker.md) also covers the MinIO and combined-provider examples, version selection, source builds, and cleanup.
 
-The default path pulls from GHCR. If registry policy returns `401`, the package owner must make the release packages public or grant your account read access; the Docker guide includes an immediate source-build fallback.
+v0.12.0 introduces authentication schema v2. Upgrade the backend, frontend, and configuration together; legacy auth configuration must be migrated. See the [auth model map](docs/README.md#authentication-model-map), [full configuration](config/cagnard.oidc.example.conf), and [migration guide](docs/guides/migrating-auth.md).
 
 ### Helm
 
-```bash
-curl -fsSLo cagnard-demo-values.yaml \
-  https://raw.githubusercontent.com/k3rnL/cagnard/v0.6.2/deploy/helm/cagnard/examples/local-filesystem-static-values.yaml
-
-helm install cagnard oci://ghcr.io/k3rnl/charts/cagnard \
-  --version 0.11.4 \
-  -f cagnard-demo-values.yaml
-
-kubectl port-forward service/cagnard-frontend 5173:80
-```
-
-The [Helm guide](docs/getting-started/helm.md) explains production adaptation, secret-backed configuration, ingress, upgrades, and cleanup.
+Use the [Helm quick start](docs/getting-started/helm.md) to install the v0.12.0 chart and open the demo through a port-forward. For a published release, keep the chart, both images, configuration, and starter values on that same release.
 
 ## Supported Today
 
 | Area | Implemented |
 | --- | --- |
 | Storage providers | Unix filesystem, AWS S3 and compatible endpoints including MinIO |
-| Authentication | Static configured users and explicit local development mode |
-| Storage access | Multiple accounts, personal/global roots, user/role/group rules, read-only accounts |
+| Authentication | Static login and OIDC SSO, with shared encrypted sessions; explicit local development mode |
+| Storage access | Declared groups and action roles, root-scoped bindings, read-only accounts, default deny |
 | Browser | Provider pagination, backend search/sort, metadata, multi-select, upload/download, rename/delete |
 | Transfers | Cross-provider files and directories, streams, conflict policies, task queue, progress and cancellation |
 | File experiences | Text/source editing, Markdown, JSON/YAML, read-only Parquet/Avro/Arrow/NDJSON/CSV/TSV inspection, logs, diffs, media, PDF, archives |
 | Deployment | Release images, Docker Compose examples, OCI Helm chart, GitHub release automation |
 
-OIDC declarations reserve the future SSO contract, but end-to-end OIDC login is not yet production-ready. Active background tasks are currently process-local and are lost when the backend restarts. These limits are documented rather than hidden.
+OIDC uses authorization code flow with PKCE and backend token validation. Follow the [OIDC guide](docs/guides/oidc.md) to configure your IdP and group claims. Sessions have an absolute lifetime, and logout is local to Cagnard; see [session behavior](docs/reference/identity-and-sessions.md). Active tasks are process-local and disappear when the backend restarts.
 
 ## Configuration And Extension
 
@@ -87,6 +76,8 @@ Storage implementations advertise supported, degraded, and unsupported capabilit
 - [Documentation portal](docs/README.md)
 - [Docker quick start](docs/getting-started/docker.md)
 - [Helm quick start](docs/getting-started/helm.md)
+- [Users, groups, roles, and storage access](docs/guides/users-and-storage-access.md)
+- [Configure OIDC SSO](docs/guides/oidc.md)
 - [Browsing and transfers](docs/guides/browsing-and-transfers.md)
 - [S3-compatible storage and MinIO](docs/guides/s3-and-minio.md)
 - [Deployment and security](docs/operations/deployment.md)

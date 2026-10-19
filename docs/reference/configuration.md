@@ -10,19 +10,19 @@ This reference describes the implemented HOCON model. See [Configuration](../ope
 | `tasks` | Background task worker limits |
 | `appearance` | Operator palette/mode defaults and user override policy |
 | `structuredData` | Browser analytical processing limits and hard safety policy |
-| `auth` | Authentication mode, session, static provider, future OIDC declarations |
-| `users` | Configured identities and static verifier material |
+| `auth` | Versioned provider registry and shared protected sessions |
+| `authorization` | Declared groups, action roles, and scoped bindings |
 | `providers` | Provider implementations and shared connection behavior |
 | `accounts` | Credentials and read/write policy for one provider |
 | `personalStorage` | User-facing personal roots |
-| `globalStorage` | Shared roots filtered by authorization selectors |
+| `globalStorage` | Shared roots granted through authorization bindings |
 
 ## `server`
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `host` | string | Bind address, for example `0.0.0.0` |
-| `port` | integer | HTTP port, normally `8080` |
+| `host` | string | Defaults to `127.0.0.1`; use `0.0.0.0` inside a container. Explicit development identities require loopback. |
+| `port` | integer | Defaults to `8080` |
 
 ## `tasks`
 
@@ -65,29 +65,19 @@ All fields are positive integers. Defaults apply when the section or field is om
 | `exports.maxRows` | 100,000 | 500,000 |
 | `exports.maxBytes` | 16,777,216 | 67,108,864 |
 
-`netcdf.maxPlotCells` and `netcdf.maxProjectionRows` cannot exceed `netcdf.maxSliceCells`. `exports.maxBytes` cannot exceed `worker.maxResponseBytes`. The public `/api/structured-data/config` response contains these validated limits and no secrets.
+`netcdf.maxPlotCells` and `netcdf.maxProjectionRows` cannot exceed `netcdf.maxSliceCells`. `exports.maxBytes` cannot exceed `worker.maxResponseBytes`. The authenticated `/api/structured-data/config` response contains these validated limits and no secrets. See [structured-data limits](../architecture/structured-data-limits.md) for their effect on viewers.
 
 ## `auth`
 
-| Field | Notes |
-| --- | --- |
-| `mode` | `static`, explicit local `development`, or reserved `external` |
-| `configuredUsersEnabled` | Must be `true` for static mode |
-| `defaultUser` | Development-mode fallback identity; avoid in production |
-| `session.signingSecret` | Required in static mode; inject a high-entropy secret |
-| `session.ttlSeconds` | Signed cookie lifetime; defaults to eight hours |
-| `session.cookieName` | Defaults to `CAGNARD_SESSION` |
-| `session.secureCookies` | Adds `Secure`; enable behind HTTPS |
-| `staticProvider.id` | Stable login-provider identifier |
-| `staticProvider.label` | User-facing provider label |
-| `staticProvider.enabled` | Enables static login discovery |
-| `oidcProviders[]` | Reserved declarations: `id`, `issuer`, `audience`, `groupsClaim` |
+`version = 2`, an explicit browser `publicUrl`, protected `session`, and enabled `providers[]` are required. Static and OIDC providers can coexist. Explicit local development is mutually exclusive with them. See the complete [authentication provider reference](authentication.md) and [identity/session model](identity-and-sessions.md).
+
+## `authorization`
+
+`groups[]` declares audiences, `roles[]` declares explicit storage action sets, and `bindings[]` assigns roles to subjects on named tunnel/root pairs. No binding means no access. There are no built-in admin roles or per-user global roles. See [authorization models and the action matrix](authorization.md).
 
 ## `users[]`
 
-Each user requires a unique `id` and may declare `displayName`, `roles`, `groups`, string `claims`, and `credential.verifier`. Static mode requires verifier material for every configured user.
-
-The maintained verifier format is visible in the example config. Never put a plaintext password in `verifier`.
+The former top-level array was removed. Static users now belong to `auth.providers[].users`; development users belong to `auth.development.users`. See [static user fields](authentication.md#static-provider-and-user-models) and the [migration guide](../guides/migrating-auth.md).
 
 ## `providers[]`
 
@@ -106,7 +96,7 @@ Filesystem roots use their `path`; account credentials are the backend process i
 | Setting | Notes |
 | --- | --- |
 | `region` | Required |
-| `endpoint` | Optional AWS-compatible endpoint; scheme inferred from `sslEnabled` when omitted |
+| `endpoint` | Optional AWS-compatible endpoint; when its scheme is omitted, the scheme is inferred from `sslEnabled` |
 | `pathStyleAccess` | Use path-style bucket routing; alias `pathStyle` accepted |
 | `sslEnabled` | Defaults to `true` |
 | `trustAllCertificates` | Local testing only; alias `insecureTrustAllCertificates` accepted |
@@ -118,11 +108,11 @@ Filesystem roots use their `path`; account credentials are the backend process i
 
 Common fields are `id`, `providerId`, `displayName`, `enabled`, `readOnly`, `authMode`, and string-valued `settings`.
 
-Filesystem accounts use `authMode = local-process`. S3 account `credentialMode` supports:
+Filesystem accounts use `authMode = local-process`. Put S3 credentials in `accounts[].settings`; `settings.credentialMode` selects the mode, with `authMode` as a fallback:
 
 - `static`: `accessKeyId`, `secretAccessKey`, optional `sessionToken`;
 - `default-chain`: AWS SDK default credential chain;
-- `profile`: required `profile` (alias `profileName`).
+- `profile`: required `settings.profile`.
 
 Disabled accounts do not produce usable roots. Read-only accounts expose browsing but reject mutation.
 
@@ -136,12 +126,9 @@ Disabled accounts do not produce usable roots. Read-only accounts expose browsin
 | `label` | Optional readable name; S3 falls back to bucket |
 | `providerId` | Existing provider ID |
 | `accountId` | Existing enabled account for that provider |
-| `path` | Filesystem base; `{user.id}` is expanded for personal roots |
+| `path` | Filesystem base; only `{principal.storageKey}` is interpolated |
 | `settings` | S3 uses required `bucket` and optional `prefix` |
-| `allowedUsers` | Exact configured user IDs |
-| `allowedRoles` | Any matching role grants visibility |
-| `allowedGroups` | Any matching group grants visibility |
 
-When no authorization selector is declared, the root is visible to every authenticated user. Otherwise the selectors use OR semantics: an allowed user ID, any allowed role, or any allowed group grants visibility. Keep root IDs stable because browser URLs and pasteboard references use them.
+Access is granted only by [authorization bindings](authorization.md#binding-model). Root IDs remain stable within their tunnel. Account enablement/read-only status and provider support limit effective actions. See the complete [storage provider, account, root, key, and resolved access models](storage-access.md).
 
 File openers are maintained frontend code rather than runtime configuration. The removed top-level `uiPlugins` key is rejected with a migration diagnostic; see [Migrating from `uiPlugins`](../guides/migrating-ui-plugins.md).

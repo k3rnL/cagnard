@@ -113,6 +113,7 @@ function root(
     accountId: "alice",
     providerFamily: "unix",
     readOnly: false,
+    actions: ["storage.list", "storage.read", "storage.write", "storage.mkdir", "storage.rename", "storage.delete"],
     capabilities,
   };
 }

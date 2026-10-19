@@ -4,27 +4,21 @@ Cagnard centralizes access to multiple storage systems. Its security boundary in
 
 ## Authentication
 
-Static authentication validates configured password verifier material and issues an HMAC-signed, HTTP-only, SameSite=Lax cookie. The backend re-resolves the configured user on every request; there is no server-side session database.
+Static login and validated backend OIDC flows issue encrypted, authenticated, HttpOnly, SameSite=Lax application cookies. See [provider setup](../reference/authentication.md) and [session lifetimes, invalidation, and local logout](../reference/identity-and-sessions.md).
 
-For an internet-facing deployment:
+For an internet-facing deployment, set the exact HTTPS `auth.publicUrl`, inject a random 32-byte base64 `auth.session.key`, keep Secure cookies enabled, remove demo credentials/development identities, and protect static verifiers and client secrets. Origin plus application-header checks cover browser mutations; there is no bearer-token API mode or permissive CORS fallback.
 
-- use a high-entropy `auth.session.signingSecret` supplied through secret infrastructure;
-- set `auth.session.secureCookies = true` and serve only through HTTPS;
-- use an appropriate session TTL and rotate the signing secret when compromise is suspected;
-- remove development mode and all demo credentials;
-- keep static password verifiers out of public configuration.
-
-OIDC provider declarations reserve the future external identity contract. End-to-end OIDC/SSO login is not yet a supported production authentication mode.
+OIDC groups are bounded ID-token snapshots. IdP membership removal is not immediate session revocation. Local logout does not sign out at the IdP or revoke a copied cookie. Session-key rotation invalidates all local sessions; disabling users/providers or changing local grants takes effect after the coordinated configuration restart.
 
 ## Authorization
 
-Root access is evaluated from the current principal and `allowedUsers`, `allowedRoles`, and `allowedGroups`. Personal and global roots are separate namespaces. Account `readOnly = true` is enforced before mutation reaches the provider.
+Declared [groups, roles, and bindings](../reference/authorization.md) grant explicit actions on tunnel/root pairs, with default deny. There is no implicit admin or unrestricted root. Read-only accounts remove mutation actions. Direct, transfer, task, archive, preview, range, watch, search, and Iceberg paths use the shared access layer.
 
 Provider credentials authorize the backend, not the end user. Scope each account to the smallest bucket, prefix, filesystem path, and API policy that its roots require. Cagnard authorization must complement, not replace, provider-side least privilege.
 
 ## Filesystem Isolation
 
-Filesystem roots are normalized and operations are constrained below the configured base path. Still, deploy the backend under a dedicated OS identity and mount only intended paths. Do not give the container a host root mount, Docker socket, or unrelated secret directories.
+Filesystem roots are normalized; traversal and symlinks in the root and descendants are rejected. Storage keys are safe, separate identity-derived segments. Administrators must control root parents and mounts; path validation alone cannot prevent a hostile local process racing filesystem changes. Still, deploy the backend under a dedicated OS identity and mount only intended paths. Do not give the container a host root mount, Docker socket, or unrelated secret directories.
 
 ## S3 Credentials And TLS
 
@@ -42,7 +36,7 @@ NetCDF-C Wasm currently requires a full buffer, so the backend-published source 
 
 The packaged frontend Content Security Policy permits local scripts, Wasm, workers, media, and same-origin API access; it does not permit arbitrary remote data connections. The main application does not allow JavaScript evaluation. The dedicated structured-data worker receives a narrower response policy that permits `unsafe-eval` because the pinned Apache Arrow validity builder uses generated predicates; that exception is confined to the isolated worker and must be revalidated when Arrow changes. The shared runtime is terminated on logout and page teardown. Cagnard does not load arbitrary third-party executable frontend bundles from configuration. Treat any future executable UI or provider plugin as trusted code requiring review and isolation.
 
-The pasteboard stores entry references only in browser memory and synchronizes them between active same-origin tabs. It does not persist across a complete browser restart. Paths copied to the system clipboard leave the application security boundary.
+The pasteboard stores entry references only in browser memory and synchronizes them between active same-origin tabs for the same canonical principal. It does not persist across a complete browser restart. Paths copied to the system clipboard leave the application security boundary.
 
 ## Logs And Errors
 
@@ -51,7 +45,7 @@ User responses should contain actionable but non-sensitive messages. Administrat
 ## Incident Actions
 
 1. Revoke or rotate affected provider credentials.
-2. Rotate the Cagnard session signing secret to invalidate sessions.
+2. Remove affected local grants or disable the relevant user/provider, then restart with that configuration. Rotate the Cagnard session protection key on every replica when all sessions must be invalidated. IdP group removal alone does not revoke existing snapshots.
 3. Inspect provider audit logs and Cagnard backend logs.
 4. Restore or version-recover provider data when supported.
 5. Correct root authorization or account scope before restoring service.

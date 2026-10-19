@@ -23,8 +23,8 @@ Do not recreate a flat page for every engineering spec. Update the smallest set 
 
 When adding a provider or authentication method:
 
-1. Add a release-first Docker Compose example or relevant provider combination.
-2. Add matching pure Helm values.
+1. Add a reproducible example for the provider or relevant combination. Use source builds for unreleased configuration; never pair a new schema with an older image.
+2. Add matching Helm values when the example is intended to run in Kubernetes. An IdP-only local exercise can link to the shared Cagnard deployment instructions.
 3. Document demo credentials, ports, cleanup, and production caveats.
 4. Update configuration and capability references.
 5. Add scoped tests and validation coverage.
@@ -42,6 +42,16 @@ pnpm docs:check
 ```
 
 Then inspect rendered Markdown because link validation cannot catch unclear structure, stale prose, unreadable screenshots, or unsupported badges.
+
+## Diagrams and reading paths
+
+Use a Mermaid flowchart for relationships or decisions, a sequence diagram for messages between systems, and a state diagram for lifecycle. Put each beside the explanation it supports. Keep labels short, include enough text to understand the page when diagrams are not rendered, and avoid colors as the only source of meaning. A table is usually clearer for fields, defaults, or a permission matrix.
+
+Before adding another diagram, check the [diagram index](../README.md#diagrams) for an existing one to link. Render new diagrams, inspect their labels at a normal reading width, and review their arrows against the implementation. Label simplified diagrams as simplified rather than implying they exhaust every state.
+
+A useful guide explains the goal, prerequisites, commands, expected result, and what to check when it fails. References define exact fields and link back to a practical guide. Keep each rule in one primary location and link to it from related pages. Preserve headings used by existing links, or update those links in the same change.
+
+For current-checkout setup, check commands against local scripts, chart templates, and configuration defaults. For a published release, keep all versioned artifacts on the same release. Do not present a successful process health check as proof that storage or SSO is reachable.
 
 ## Compatibility Pages
 

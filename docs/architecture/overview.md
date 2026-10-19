@@ -4,7 +4,7 @@ Cagnard is a browser application over an abstract storage contract. The React fr
 
 ```mermaid
 flowchart LR
-  Browser["React browser and file openers"] -->|"HTTP /api"| Backend["Stateless Go API"]
+  Browser["React browser and file openers"] -->|"HTTP /api"| Backend["Go HTTP API"]
   Backend --> Auth["Identity and root authorization"]
   Backend --> Tasks["In-memory background tasks"]
   Backend --> Registry["Storage provider registry"]
@@ -12,11 +12,11 @@ flowchart LR
   Registry --> S3["S3-compatible storage"]
 ```
 
-## Stateless Runtime
+## Configuration and runtime state
 
-On startup, the backend parses one configuration into typed providers, accounts, users, roots, and appearance defaults. Requests authenticate a signed cookie or explicit development identity, resolve the current user against configuration, then filter roots by user, role, and group.
+On startup, the backend parses one configuration into typed providers, accounts, users, roots, and appearance defaults. Requests authenticate protected session evidence or an explicit local development identity, resolve a provider-qualified principal, and apply declared action bindings and storage ceilings. See the [authentication architecture](authentication.md) and its linked model references.
 
-There is no application database. This makes deployment and backup simple, but active copy, move, delete, download, and upload tasks are an explicit exception: they are process-local and disappear on restart.
+There is no application database. Configuration and provider data need their own backups. Active copy, move, delete, download, and upload tasks live in process memory and disappear on restart; see [task durability and replica limits](tasks.md#configuration-and-durability).
 
 ## Root Identity
 
@@ -31,6 +31,8 @@ The browser URL stores readable navigation paths while API requests preserve roo
 
 ## Capability Negotiation
 
+Authorization decides which actions this user may perform on a root; capabilities describe whether the storage implementation supports them. Both matter.
+
 Providers expose supported, degraded, or unsupported capabilities. Roots and entries return that state to the frontend, which uses it to enable actions and select compatible file openers. This allows provider-specific strength without turning the entire UI into an S3 or filesystem UI.
 
 See [Storage providers](storage-plugins.md) and the [capability reference](../reference/provider-capabilities.md).
@@ -38,6 +40,18 @@ See [Storage providers](storage-plugins.md) and the [capability reference](../re
 ## Data Paths
 
 Small direct operations can use bounded buffers. Downloads, uploads, range-based viewers, and cross-provider transfers use stream or range interfaces when available. Recursive copy, move, and delete report child entries through the common task queue; streamed downloads and browser-fed uploads use the same lifecycle and cancellation model.
+
+## Browser demo
+
+The [public browser demo](https://k3rnl.github.io/cagnard/) runs the Go API as WebAssembly in a service worker. Its HTTP storage provider reads a public static corpus; it has no private filesystem or S3 account. The demo login demonstrates the UI and does not make the published files private.
+
+```mermaid
+flowchart LR
+  UI["Browser UI"] --> API["Go API in service worker"]
+  API --> Corpus["Public static sample files"]
+```
+
+This is a separate deployment mode from the server architecture above. See [Docker](../getting-started/docker.md) or [Helm](../getting-started/helm.md) for private storage.
 
 ## Extension Boundaries
 

@@ -1,7 +1,7 @@
 backend:
   image:
     repository: ghcr.io/k3rnl/cagnard-backend
-    tag: v0.6.2
+    tag: v0.12.0
     pullPolicy: IfNotPresent
   config:
     inline:
@@ -22,36 +22,43 @@ backend:
           allowUserOverride = true
         }
 
+        # Authentication v2. See docs/reference/authentication.md and authorization.md.
+        # Demo credentials and key are public: replace them before exposing this server.
         auth {
-          mode = static
-          configuredUsersEnabled = true
-          defaultUser = null
+          version = 2
+          publicUrl = "http://localhost:5173"
+          allowInsecureLoopback = true
           session {
-            signingSecret = "local-and-s3-static-demo-session-secret-change-me"
-            ttlSeconds = 28800
-            cookieName = CAGNARD_SESSION
+            key = "Y2FnbmFyZC10ZXN0LWtleS0zMi1ieXRlcy0wMDAwMDA="
+            ttlSeconds = 3600
             secureCookies = false
           }
-          staticProvider {
+          providers = [{
             id = static
+            type = static
             label = "Cagnard account"
             enabled = true
-          }
-          oidcProviders = []
+            users = [{
+              id = alice
+              displayName = "Alice Example"
+              enabled = true
+              storageKey = alice
+              groups = [engineering]
+              # Demo password: cagnard. Preserve this verifier when migrating existing users.
+              credential.verifier = "pbkdf2-sha256:120000:Y2FnbmFyZC1kZW1vLXN0YXRpYy11c2VyLXNhbHQ:fUdgpOu_Z3MHhgdWzUku12tWnSH5s9BhfjJVv1fiIms"
+            }]
+          }]
         }
 
-        users = [
-          {
-            id = alice
-            displayName = "Alice Example"
-            roles = [user, admin]
-            groups = [engineering]
-            claims { email = "alice@example.test" }
-            credential {
-              verifier = "pbkdf2-sha256:120000:Y2FnbmFyZC1kZW1vLXN0YXRpYy11c2VyLXNhbHQ:fUdgpOu_Z3MHhgdWzUku12tWnSH5s9BhfjJVv1fiIms"
-            }
-          }
-        ]
+        authorization {
+          groups = [{ id = engineering, label = Engineering }]
+          roles = [{ id = manager, actions = [storage.list, storage.read, storage.write, storage.mkdir, storage.rename, storage.delete] }]
+          bindings = [{
+            subjects = [{ group = engineering }]
+            roles = [manager]
+            roots = [{ tunnel = personal, rootId = home }, { tunnel = personal, rootId = s3-documents }, { tunnel = global, rootId = shared }, { tunnel = global, rootId = s3-shared }]
+          }]
+        }
 
         providers = [
           {
@@ -115,8 +122,7 @@ backend:
             label = "Home"
             providerId = local
             accountId = local-admin
-            path = "/data/cagnard/home/{user.id}"
-            allowedUsers = [alice]
+            path = "/data/cagnard/home/{principal.storageKey}"
           },
           {
             id = s3-documents
@@ -127,7 +133,6 @@ backend:
               bucket = "cagnard-combined"
               prefix = "documents"
             }
-            allowedUsers = [alice]
           }
         ]
 
@@ -138,7 +143,6 @@ backend:
             providerId = local
             accountId = local-readonly
             path = "/opt/cagnard/examples/storage/global"
-            allowedRoles = [user, admin]
           },
           {
             id = s3-shared
@@ -149,7 +153,6 @@ backend:
               bucket = "cagnard-combined"
               prefix = "shared"
             }
-            allowedRoles = [user, admin]
           }
         ]
 
@@ -163,7 +166,7 @@ backend:
 frontend:
   image:
     repository: ghcr.io/k3rnl/cagnard-frontend
-    tag: v0.6.2
+    tag: v0.12.0
     pullPolicy: IfNotPresent
 
 ingress:

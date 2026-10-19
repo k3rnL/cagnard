@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) archiveEntries(w http.ResponseWriter, r *http.Request) {
-	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), false)
+	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), "storage.read")
 	if !ok {
 		return
 	}
@@ -26,7 +26,7 @@ func (s *Server) archiveEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) archiveEntryContent(w http.ResponseWriter, r *http.Request) {
-	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), false)
+	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), "storage.read")
 	if !ok {
 		return
 	}

@@ -32,7 +32,7 @@ func run(args []string) error {
 	address := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	server := &http.Server{
 		Addr:              address,
-		Handler:           withCORS(api.NewServer(cfg).Handler()),
+		Handler:           api.NewServer(cfg).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -70,17 +70,4 @@ func selectedConfigPath(args []string) string {
 		return filepath.Join("config", "cagnard.example.conf")
 	}
 	return filepath.Join("..", "config", "cagnard.example.conf")
-}
-
-func withCORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Cagnard-User")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }

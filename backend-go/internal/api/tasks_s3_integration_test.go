@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/k3rnl/cagnard/backend-go/internal/testconfig"
 	"io"
 	"net/http"
 	"os"
@@ -15,7 +16,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/k3rnl/cagnard/backend-go/internal/auth"
+
 	appconfig "github.com/k3rnl/cagnard/backend-go/internal/config"
 	"github.com/k3rnl/cagnard/backend-go/internal/storage"
 )
@@ -54,13 +55,10 @@ func TestS3MinIORootDownloadIntegration(t *testing.T) {
 		_, _ = client.DeleteBucket(context.Background(), &s3.DeleteBucketInput{Bucket: &bucket})
 	}()
 
-	mode := "development"
-	defaultUser := "alice"
 	label := "S3 Documents"
 	cfg := &appconfig.CagnardConfig{
 		Server: appconfig.ServerConfig{Host: "127.0.0.1", Port: 0},
-		Auth:   appconfig.AuthConfig{Mode: &mode, ConfiguredUsersEnabled: true, DefaultUser: &defaultUser},
-		Users:  []appconfig.ConfiguredUser{{ID: "alice", DisplayName: "Alice", Roles: []string{"user"}, Claims: map[string]string{}}},
+		Auth:   testconfig.Development(),
 		Providers: []appconfig.ProviderConfig{{
 			ID: "minio", Type: "s3", Family: "s3", DisplayName: "MinIO",
 			Settings: map[string]string{"region": region, "endpoint": endpoint, "pathStyleAccess": "true", "sslEnabled": "false", "requestChecksumCalculation": "when_required"},
@@ -71,11 +69,12 @@ func TestS3MinIORootDownloadIntegration(t *testing.T) {
 		}},
 		PersonalStorage: []appconfig.StorageRootConfig{{
 			ID: "s3-documents", Label: &label, ProviderID: "minio", AccountID: "minio-account",
-			Settings: map[string]string{"bucket": bucket, "prefix": "documents"}, AllowedUsers: []string{"alice"},
+			Settings: map[string]string{"bucket": bucket, "prefix": "documents"},
 		}},
 	}
+	testconfig.GrantAll(cfg)
 	server := NewServer(cfg)
-	root, rootErr := server.rootForIdentity(auth.RequestIdentity{}, "personal", "s3-documents", true)
+	root, rootErr := server.rootForIdentity(testIdentity(t, server), "personal", "s3-documents", "storage.write")
 	if rootErr != nil {
 		t.Fatal(rootErr.Error)
 	}

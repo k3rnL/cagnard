@@ -2,11 +2,11 @@
 
 Cagnard is configured by one HOCON document. The backend does not require a database: users, authentication policy, provider accounts, roots, access rules, appearance defaults, task concurrency, and structured-data safety limits are reconstructed from configuration at startup.
 
-Start from [`config/cagnard.example.conf`](../../config/cagnard.example.conf) for filesystem storage or [`config/cagnard.s3.example.conf`](../../config/cagnard.s3.example.conf) for S3 settings. The complete field list is in the [configuration reference](../reference/configuration.md).
+Start from [`config/cagnard.example.conf`](../../config/cagnard.example.conf) for filesystem storage or [`config/cagnard.s3.example.conf`](../../config/cagnard.s3.example.conf) for an S3 fragment to merge into a complete configuration. For static login, OIDC, filesystem homes, and S3 together, use [the full v2 example](../../config/cagnard.oidc.example.conf). The complete field list is in the [configuration reference](../reference/configuration.md).
 
 ## Select The File
 
-The backend reads `config/cagnard.example.conf` relative to the process working directory unless `CAGNARD_CONFIG` is set:
+Selection order is `CAGNARD_CONFIG`, then the first command-line argument, then `config/cagnard.example.conf` in the working directory (or `../config/cagnard.example.conf` when running from `backend-go`). In a deployment, use an explicit path:
 
 ```bash
 CAGNARD_CONFIG=/etc/cagnard/cagnard.conf cagnard-backend
@@ -19,7 +19,7 @@ The container image uses `/etc/cagnard/cagnard.conf`. The Helm chart can create 
 HOCON supports comments, includes, and environment substitutions. Keep structural policy in a reviewed file and inject secret values at runtime:
 
 ```hocon
-auth.session.signingSecret = ${CAGNARD_SESSION_SECRET}
+auth.session.key = ${CAGNARD_SESSION_KEY}
 
 accounts = [
   {
@@ -45,21 +45,21 @@ accounts = [
 Cagnard validates references and supported enum values during startup. A malformed or inconsistent configuration exits with contextual diagnostics instead of silently omitting roots. Validate with the same binary or image you plan to deploy:
 
 ```bash
-CAGNARD_CONFIG="$PWD/config/cagnard.example.conf" \
-  go run ./backend-go/cmd/cagnard-backend
+cd backend-go
+go run ./cmd/cagnard-backend ../config/cagnard.example.conf
 ```
 
 A successful process serves `GET /api/health`. Stop it after confirming startup, or use the repository validation scripts during development.
 
 ## Change Management
 
-Configuration is read at process start; hot reload is not supported. Roll the backend after changing provider, account, root, authorization, or appearance configuration. File openers are compiled into the frontend and have no runtime configuration section. Because browser sessions are stateless signed cookies, rotating the signing secret invalidates existing sessions.
+Configuration is read at process start; hot reload is not supported. Roll the backend after changing provider, account, root, authorization, or appearance configuration. File openers are compiled into the frontend and have no runtime configuration section. Because browser sessions are stateless encrypted cookies, rotating the protection key invalidates existing sessions.
 
 Treat these changes as a deployment:
 
 1. Validate HOCON and provider connectivity in a non-production environment.
 2. Confirm every account points to an existing provider and every root points to an enabled account.
-3. Review personal/global access selectors and read-only flags.
+3. Review personal/global authorization bindings and read-only flags.
 4. Roll the backend, then verify `/api/health`, login, navigation, and one read operation.
 5. Test a write and transfer only on designated non-production content.
 
@@ -77,7 +77,7 @@ The value must be positive. Increase it only after measuring provider throttling
 
 ## Structured Data Limits
 
-The optional `structuredData` section controls browser-side analytical work. Values are validated at backend startup and returned through a public limits endpoint; the browser cannot raise them.
+The optional `structuredData` section controls browser-side analytical work. Values are validated at backend startup and returned through the authenticated `/api/structured-data/config` endpoint. The application enforces these values in its analytical runtime; they are not a security boundary against a user who can already download a file and process it elsewhere.
 
 ```hocon
 structuredData {
@@ -101,3 +101,5 @@ These are the defaults. Lower them for memory-constrained clients or untrusted l
 ## Secret Placement
 
 Do not commit session secrets, password verifier source passwords, S3 keys, or private endpoints. Compose can read an untracked `.env`; Kubernetes deployments should use a Secret or external secret integration. See [Security](security.md).
+
+For each authentication model, see [providers](../reference/authentication.md), [identity and sessions](../reference/identity-and-sessions.md), [policy](../reference/authorization.md), and [storage access](../reference/storage-access.md). Existing installations need the [v2 migration procedure](../guides/migrating-auth.md).

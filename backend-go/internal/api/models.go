@@ -68,11 +68,11 @@ type StructuredExportConfigResponse struct {
 }
 
 type UserProfile struct {
-	ID          string            `json:"id"`
-	DisplayName string            `json:"displayName"`
-	Roles       []string          `json:"roles"`
-	Groups      []string          `json:"groups"`
-	Claims      map[string]string `json:"claims"`
+	ID          string   `json:"id"`
+	ProviderID  string   `json:"providerId"`
+	Subject     string   `json:"subject"`
+	DisplayName string   `json:"displayName"`
+	Groups      []string `json:"groups"`
 }
 
 type SessionResponse struct {
@@ -123,6 +123,7 @@ type CapabilityStatus struct {
 }
 
 type NavigationRoot struct {
+	Actions        []string           `json:"actions"`
 	ID             string             `json:"id"`
 	Label          string             `json:"label"`
 	Tunnel         string             `json:"tunnel"`

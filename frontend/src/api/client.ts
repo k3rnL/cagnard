@@ -57,7 +57,8 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     ...init,
     credentials: "same-origin",
     headers: {
-      ...(init?.headers ?? {})
+      ...(init?.headers ?? {}),
+      "X-Cagnard-Request": "1"
     }
   });
   const body = await parseOptionalJson(response);
@@ -126,6 +127,7 @@ export const cagnardApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ providerId, username, password })
     }),
+  startOIDC: (providerId: string) => fetchJson<{ authorizationUrl: string }>(`/api/auth/providers/${encodeURIComponent(providerId)}/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ returnTo: "/" }) }),
   logout: () =>
     fetchJson<{ success: boolean }>("/api/auth/logout", {
       method: "POST"

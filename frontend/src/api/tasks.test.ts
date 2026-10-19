@@ -26,6 +26,7 @@ const root: NavigationRoot = {
   providerFamily: "unix",
   accountId: "local-admin",
   readOnly: false,
+    actions: ["storage.list", "storage.read", "storage.write", "storage.mkdir", "storage.rename", "storage.delete"],
   capabilities: []
 };
 
@@ -153,7 +154,7 @@ describe("generic task state", () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init).toMatchObject({ method: "PUT", body, signal: controller.signal });
-    expect(init.headers).toEqual({ "Content-Type": "text/plain" });
+    expect(init.headers).toEqual({ "Content-Type": "text/plain", "X-Cagnard-Request": "1" });
   });
 });
 

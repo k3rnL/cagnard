@@ -17,6 +17,7 @@ data/
 *.log
 
 # Manual test captures in example storage should not inflate image build contexts.
+examples/storage/**/*.pdf
 examples/storage/**/*.mov
 examples/storage/**/*.mp4
 examples/storage/**/*.mkv

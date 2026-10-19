@@ -14,30 +14,30 @@ Cagnard SHALL allow administrators to declare, identify, enable, disable, and re
 - **THEN** Cagnard SHALL prevent new browsing, operation, and transfer sessions from using that account
 
 ### Requirement: Plugin-declared authentication schemes
-Cagnard SHALL support authentication schemes declared by storage plugins, including delegated identity, access keys, SSH keys, local filesystem permissions, and provider-specific credential references.
+Cagnard SHALL use the authentication schemes implemented by its configured storage providers. Filesystem access SHALL use local process permissions; S3 access SHALL use static account credentials, an AWS profile, or the AWS default credential chain. Browser OIDC tokens SHALL NOT be delegated to storage providers.
 
-#### Scenario: Delegated identity provider
-- **WHEN** a plugin declares support for delegated identity
-- **THEN** Cagnard SHALL use the authenticated user's externally supplied claims or tokens according to configured policy
+#### Scenario: Unsupported delegated identity
+- **WHEN** an account requests an unsupported end-user token delegation mode
+- **THEN** configuration SHALL be rejected rather than forwarding browser identity tokens
 
 #### Scenario: Unix filesystem provider
-- **WHEN** the Unix filesystem plugin uses local process permissions instead of stored remote credentials
+- **WHEN** the Unix filesystem provider uses local process permissions
 - **THEN** Cagnard SHALL represent that authentication mode explicitly in the account configuration
 
 ### Requirement: Stateless credential references
-Cagnard SHALL avoid requiring a local credential database and SHALL resolve storage credentials from configuration, environment variables, mounted secret files, or external identity providers.
+Cagnard SHALL avoid a local credential database and resolve storage credentials from startup configuration, environment substitutions, mounted configuration or AWS credential profiles, or the AWS default credential chain.
 
 #### Scenario: Resolve configured secret reference
-- **WHEN** a storage account references a secret by environment variable or mounted file
-- **THEN** Cagnard SHALL resolve the secret at runtime without persisting it to application storage
+- **WHEN** a storage account uses credentials supplied by its supported configuration source
+- **THEN** Cagnard SHALL resolve the credentials without persisting them to application storage
 
-#### Scenario: Use external identity token
-- **WHEN** a storage account is configured to use the authenticated user's external identity token
-- **THEN** Cagnard SHALL derive provider access from that token according to configured policy
+#### Scenario: Browser identity is not a storage credential
+- **WHEN** a principal signs in through OIDC
+- **THEN** storage access SHALL use the configured backend account credentials rather than the principal's ID or access token
 
 #### Scenario: Avoid secret logging
-- **WHEN** authentication, browsing, transfer, or plugin operations fail
-- **THEN** Cagnard SHALL omit secrets and credential-derived values from logs and user-visible diagnostics
+- **WHEN** authentication, browsing, transfer, or provider operations fail
+- **THEN** Cagnard SHALL omit secrets from logs and user-visible diagnostics
 
 ### Requirement: Credential access boundaries
 Cagnard SHALL provide plugins only the credential access necessary for an authorized operation and SHALL prevent the primary UI from directly reading raw secrets.
@@ -51,27 +51,27 @@ Cagnard SHALL provide plugins only the credential access necessary for an author
 - **THEN** Cagnard SHALL provide redacted credential metadata instead of raw credential values
 
 ### Requirement: Account permissions and operation policy
-Cagnard SHALL enforce configured account permissions, read-only modes, user claim rules, and operation policies before browsing, mutation, or transfer operations are executed.
+Cagnard SHALL enforce scoped role permissions, account enabled/read-only state, provider capabilities, and operation confirmation policies before invoking storage operations. Account restrictions SHALL remain an upper bound that role grants cannot override.
 
 #### Scenario: Read-only account blocks mutation
-- **WHEN** an account is configured as read-only
-- **THEN** Cagnard SHALL block upload, create folder, rename, copy, move, delete, and source-delete phases of transfer operations for that account
+- **WHEN** an operation would write, create a folder, rename, delete, copy into, or move into/from a read-only account in a way that mutates it
+- **THEN** Cagnard SHALL block the mutating phase while permitting separately authorized reads and copy-out operations
 
 #### Scenario: Read-only account blocks provider write
-- **WHEN** the active account is read-only and the user requests a write operation
-- **THEN** Cagnard SHALL reject the operation before invoking the provider write
+- **WHEN** a role grants write but the account is read-only
+- **THEN** Cagnard SHALL reject the write before invoking the provider
 
 #### Scenario: Writable account allows authorized mutation
-- **WHEN** the active account is writable and the user is authorized for the storage root
-- **THEN** Cagnard SHALL allow the provider operation to run subject to provider capability checks
+- **WHEN** the account is writable, the scoped action is granted, and the provider supports it
+- **THEN** Cagnard SHALL allow the operation subject to its confirmation and overwrite requirements
 
-#### Scenario: Claim rule filters account
-- **WHEN** the authenticated user's claims do not satisfy an account's access rule
-- **THEN** Cagnard SHALL hide or deny access to that account according to configured policy
+#### Scenario: Claim mapping controls account-backed root access
+- **WHEN** an external identity has no mapped group or direct binding granting access to an account-backed root
+- **THEN** Cagnard SHALL deny that root without evaluating unvalidated claim expressions in the provider
 
 #### Scenario: Policy blocks public sharing change
-- **WHEN** an operation would create or modify public access
-- **THEN** Cagnard SHALL require an explicit policy allowance before executing the operation
+- **WHEN** an operation would create or modify public access without an explicitly supported and granted action
+- **THEN** Cagnard SHALL reject it regardless of role names such as admin
 
 ### Requirement: Sensitive operation confirmation
 Cagnard SHALL require confirmation or configured policy approval for destructive, bulk, overwrite, permission-changing, or public-access operations.
@@ -145,12 +145,12 @@ Cagnard SHALL report static-user login failures without enabling user enumeratio
 - **THEN** Cagnard SHALL be able to emit an audit-safe event without recording submitted password material
 
 ### Requirement: Auth provider credential boundary
-Cagnard SHALL keep authentication-provider credential handling separate from storage-provider credential handling while exposing only normalized principal data to downstream authorization.
+Cagnard SHALL keep authentication credentials separate from storage credentials and expose only normalized principal and authorized resource data downstream. This browser OIDC implementation SHALL NOT delegate end-user provider tokens to storage accounts.
 
 #### Scenario: Static auth provider returns principal
-- **WHEN** static-user authentication succeeds
-- **THEN** Cagnard SHALL pass downstream services a normalized principal and SHALL NOT expose static password verifier material to storage plugins or UI plugins
+- **WHEN** static authentication succeeds
+- **THEN** downstream services SHALL receive canonical identity and SHALL NOT receive password or verifier material
 
-#### Scenario: Future OIDC provider returns principal
-- **WHEN** a future OIDC provider authenticates a user
-- **THEN** Cagnard SHALL pass downstream services the same normalized principal shape without requiring storage authorization code to know the original auth provider type
+#### Scenario: OIDC provider returns principal
+- **WHEN** OIDC authentication succeeds
+- **THEN** downstream authorization SHALL receive the same principal contract and storage providers/UI SHALL NOT receive OIDC access, refresh, or ID tokens

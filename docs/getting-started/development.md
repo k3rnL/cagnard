@@ -19,7 +19,7 @@ cd backend-go
 go run ./cmd/cagnard-backend
 ```
 
-The default config is [`config/cagnard.example.conf`](../../config/cagnard.example.conf). Override it with `CAGNARD_CONFIG=/path/to/cagnard.conf`.
+The development form still uses static authentication; it does not implicitly trust a username header. The default config is [`config/cagnard.example.conf`](../../config/cagnard.example.conf). Override it with `CAGNARD_CONFIG=/path/to/cagnard.conf`.
 
 ## Run The Frontend
 
@@ -32,7 +32,7 @@ cd frontend
 pnpm dev --host 0.0.0.0
 ```
 
-Open `http://127.0.0.1:5173`. Vite proxies API calls to `http://127.0.0.1:8080`.
+Open [http://localhost:5173](http://localhost:5173) and sign in with `alice` / `cagnard`. Vite proxies API calls to `http://127.0.0.1:8080`. Use the exact configured origin: changing the host or port also requires changing `auth.publicUrl`. For SSO, follow the [local Keycloak exercise](../../examples/run/oidc-keycloak/README.md).
 
 ## Useful Checks
 

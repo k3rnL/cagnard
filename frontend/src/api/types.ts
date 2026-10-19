@@ -33,9 +33,9 @@ export interface StructuredDataConfigResponse {
 export interface UserProfile {
   id: string;
   displayName: string;
-  roles: string[];
+  providerId: string;
+  subject: string;
   groups: string[];
-  claims: Record<string, string>;
 }
 
 export interface SessionResponse {
@@ -79,7 +79,10 @@ export interface CapabilityStatus {
   description?: string;
 }
 
+export type StorageAction = "storage.list" | "storage.read" | "storage.write" | "storage.mkdir" | "storage.rename" | "storage.delete";
+
 export interface NavigationRoot {
+  actions: StorageAction[];
   id: string;
   label: string;
   tunnel: "personal" | "global";

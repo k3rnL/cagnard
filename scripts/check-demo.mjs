@@ -93,7 +93,7 @@ async function exercise() {
   const login = await cagnard.handle({
     method: "POST",
     url: "/api/auth/login",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Cagnard-Request": "1" },
     body: new TextEncoder().encode(
       JSON.stringify({ providerId: "static", username: "alice", password: "cagnard" })
     ),
@@ -102,7 +102,7 @@ async function exercise() {
   check("login succeeds with a session cookie", login.status === 200 && cookie.length > 0);
 
   const authed = (method, url, headers = {}) =>
-    cagnard.handle({ method, url, headers: { Cookie: cookie, ...headers }, body: null });
+    cagnard.handle({ method, url, headers: { Cookie: cookie, "X-Cagnard-Request": "1", ...headers }, body: null });
   const json = (response) => JSON.parse(decoder.decode(response.body));
 
   const navigation = await authed("GET", "/api/storage/navigation");
@@ -180,14 +180,14 @@ async function exercise() {
   const forbidden = await cagnard.handle({
     method: "POST",
     url: "/api/storage/folders",
-    headers: { Cookie: cookie, "Content-Type": "application/json" },
+    headers: { Cookie: cookie, "Content-Type": "application/json", "X-Cagnard-Request": "1" },
     body: new TextEncoder().encode(
       JSON.stringify({ tunnel: "global", rootId: "shared", parentPath: "", name: "nope" })
     ),
   });
   check(
-    "mutations are rejected as read_only_root",
-    forbidden.status === 400 && json(forbidden).code === "read_only_root"
+    "mutations are rejected as forbidden",
+    forbidden.status === 403 && json(forbidden).code === "forbidden"
   );
 }
 
@@ -203,6 +203,7 @@ server.listen(0, "127.0.0.1", () => {
   }
   shadow.argv0 = "cagnard-demo-check";
   globalThis.process = shadow;
+  globalThis.location = { origin: "http://localhost", href: "http://localhost/" };
 
   globalThis.__onCagnardReady = async () => {
     try {

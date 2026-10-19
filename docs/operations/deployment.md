@@ -8,6 +8,23 @@ Cagnard is delivered as two images and one Helm chart:
 
 Use matching frontend and backend release tags. The frontend serves static assets and proxies `/api` to the backend; only the frontend normally needs public ingress.
 
+## Request path and public origin
+
+Use one browser origin for the frontend and `/api`. Internal service addresses are not the value of `auth.publicUrl`.
+
+```mermaid
+flowchart TD
+  Browser["Browser<br/>https://files.example.test"] --> Proxy["TLS ingress or reverse proxy"]
+  Proxy --> Frontend["Frontend service<br/>static assets + API proxy"]
+  Frontend -->|/api| Backend["Backend service<br/>authentication + authorization"]
+  Backend --> FS["Mounted filesystem"]
+  Backend --> S3["S3 endpoint"]
+  Browser -->|SSO sign-in redirect| IdP["Identity provider"]
+  Backend -->|discovery, code exchange, keys| IdP
+```
+
+Set `auth.publicUrl = "https://files.example.test"`, keep Secure cookies enabled, and register the [OIDC callback](../guides/oidc.md) under that same origin. Preserve the browser’s `Origin` header. If ingress routes `/api` directly to the backend, it replaces the frontend API-proxy hop; the public origin remains the same.
+
 ## Containers
 
 The backend requires a HOCON file and access to every configured provider endpoint or filesystem path. The frontend requires `CAGNARD_API_UPSTREAM` when its API upstream is not the default backend service name.
@@ -21,7 +38,7 @@ docker compose up -d
 docker compose ps
 ```
 
-The examples use release images by default. Add `docker-compose.build.yaml` only when testing a source checkout.
+The examples pin v0.12.0 application images and auth v2 configuration. Add `docker-compose.build.yaml` when testing local source changes. For other releases, use the configuration and examples from the same tag. See [migration](../guides/migrating-auth.md) before combining a new binary with existing configuration.
 
 ## Kubernetes And Helm
 
@@ -44,7 +61,7 @@ S3 roots do not need a data volume, but their endpoint and credentials must be r
 
 ## Health And Rollout
 
-`GET /api/health` reports service readiness and safe aggregate configuration state. The Helm chart uses it for liveness and readiness probes.
+`GET /api/health` confirms that the HTTP process is running and returns safe aggregate counts. It does not test storage reachability or OIDC discovery. The Helm chart uses it for liveness and readiness probes.
 
 After rollout, verify:
 
@@ -68,7 +85,7 @@ The request API is stateless, but active tasks are held in backend memory. A bac
 
 ## Production Checklist
 
-- Replace all demo verifier material, access keys, and signing secrets.
+- Replace all demo verifier material, access keys, and session protection keys.
 - Use TLS and secure cookies.
 - Mount durable filesystem roots or use external object storage.
 - Apply CPU/memory requests and limits based on transfer and opener workloads.

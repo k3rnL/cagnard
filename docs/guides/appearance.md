@@ -31,4 +31,4 @@ Set `allowUserOverride = false` to lock the configured palette and mode and hide
 
 All four concrete theme combinations share semantic colors for focus, selection, success, warning, error, transfer state, code, logs, and diffs. Status remains accompanied by text or iconography rather than relying on color alone. Native controls receive the active browser `color-scheme`.
 
-Custom CSS, arbitrary operator colors, and uploaded theme plugins are intentionally unsupported in the current theme contract.
+Custom CSS, arbitrary operator colors, and uploaded theme plugins are intentionally unsupported in the current theme contract. For exact defaults see the [appearance fields](../reference/configuration.md#appearance); for deployment changes see [configuration](../operations/configuration.md#change-management).

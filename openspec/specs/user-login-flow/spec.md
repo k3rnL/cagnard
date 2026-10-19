@@ -4,15 +4,15 @@
 TBD - created by archiving change add-user-login-static-users. Update Purpose after archive.
 ## Requirements
 ### Requirement: Authentication provider discovery
-Cagnard SHALL expose enabled authentication providers through a provider-neutral discovery API so the frontend can render static-user login now and OIDC/SSO login options later without changing the storage browser contract.
+Cagnard SHALL expose enabled authentication providers through a provider-neutral discovery API so static and OIDC login can coexist without changing storage-browser contracts.
 
-#### Scenario: Discover static login provider
-- **WHEN** static-user login is enabled in configuration
-- **THEN** the auth provider discovery response SHALL include a static provider with provider id, display label, login method, and required credential fields
+#### Scenario: Discover static provider
+- **WHEN** a static provider is enabled
+- **THEN** discovery SHALL describe its ID, label, fields, and login action
 
-#### Scenario: Preserve future SSO provider shape
-- **WHEN** a future OIDC or SSO provider is enabled
-- **THEN** the discovery response SHALL be able to describe that provider without changing the static provider response shape
+#### Scenario: Discover external provider
+- **WHEN** an implemented OIDC provider is enabled
+- **THEN** discovery SHALL describe its ID, label, login initiation action, and availability without exposing client secrets
 
 ### Requirement: Static user login
 Cagnard SHALL allow a configured static user to authenticate through an explicit login endpoint using configured credential verifier material.
@@ -30,57 +30,76 @@ Cagnard SHALL allow a configured static user to authenticate through an explicit
 - **THEN** Cagnard SHALL reject static login attempts without authenticating the submitted user
 
 ### Requirement: Stateless browser session
-Cagnard SHALL issue and verify browser sessions without requiring backend-local persistent session storage.
+Cagnard SHALL issue and verify versioned authenticated-encryption browser session cookies without requiring persistent backend session storage. Static and OIDC login SHALL share the same session service. Session integrity, expiry, identity shape, and current provider configuration SHALL be checked on every protected request.
 
 #### Scenario: Issue session after login
-- **WHEN** static-user login succeeds
-- **THEN** Cagnard SHALL issue a stateless signed session token scoped to the authenticated provider and subject
+- **WHEN** static or OIDC authentication succeeds
+- **THEN** Cagnard SHALL issue an HttpOnly SameSite=Lax session scoped to the authenticated provider and subject, using Secure cookies for production HTTPS
 
 #### Scenario: Resolve session on API request
-- **WHEN** an API request presents a valid session token
-- **THEN** Cagnard SHALL resolve the current configured user and authorization data from runtime configuration before serving the request
+- **WHEN** a request presents a valid session
+- **THEN** Cagnard SHALL resolve current static-user data or validated external session evidence and apply current authorization configuration before serving the request
 
 #### Scenario: Reject missing session
-- **WHEN** login is required and an API request does not present a valid session token
-- **THEN** Cagnard SHALL return an unauthorized response without falling back to an implicit default user
+- **WHEN** a protected request does not present a valid session outside explicit development mode
+- **THEN** Cagnard SHALL return unauthorized without implicit default-user fallback
 
 #### Scenario: Expire session
-- **WHEN** a session token is expired, malformed, or signed with an untrusted key
-- **THEN** Cagnard SHALL reject the request and require the user to authenticate again
+- **WHEN** a session is expired, malformed, from an old format, or protected by an untrusted key
+- **THEN** Cagnard SHALL reject it and require authentication again
+
+#### Scenario: Invalidate changed static credentials
+- **WHEN** the configured static user is disabled, removed, or has changed verifier material after configuration restart
+- **THEN** existing sessions for that user SHALL fail validation
 
 ### Requirement: Logout
-Cagnard SHALL provide logout behavior that removes the browser's current stateless session credential.
+Cagnard SHALL provide idempotent local logout that removes the browser's application credential and private UI state. Local logout SHALL NOT be presented as identity-provider logout, individual stateless-token revocation, or automatic cancellation of accepted background work.
 
 #### Scenario: Logout current session
 - **WHEN** the user logs out
-- **THEN** Cagnard SHALL instruct the browser to clear the session credential and subsequent protected API requests SHALL be unauthorized
+- **THEN** Cagnard SHALL clear the application cookie, shut down private browser work, and make subsequent requests without a valid credential unauthorized
 
 #### Scenario: Logout without active session
 - **WHEN** logout is requested without an active session
-- **THEN** Cagnard SHALL return a successful idempotent logout response without creating user state
+- **THEN** Cagnard SHALL return a successful idempotent response without creating user state
 
 ### Requirement: Frontend authentication shell
-Cagnard SHALL gate the storage browser behind explicit authentication when login is required and SHALL keep the login UI provider-neutral.
+Cagnard SHALL gate storage browsing behind explicit authentication and render available static and OIDC choices through one integrated login screen.
 
 #### Scenario: Show login before browser
-- **WHEN** the frontend starts and the session endpoint reports no authenticated user
-- **THEN** the frontend SHALL show the configured login providers instead of the storage browser
+- **WHEN** startup session discovery reports no authenticated principal
+- **THEN** the frontend SHALL display available login providers instead of protected browser content
 
 #### Scenario: Enter browser after login
 - **WHEN** login succeeds
-- **THEN** the frontend SHALL load session, navigation, storage entries, and UI plugins for the authenticated user
+- **THEN** the frontend SHALL load session, authorized navigation, and owner-scoped tasks, or show an authenticated no-access state
 
 #### Scenario: Handle session loss
-- **WHEN** a protected API request reports that the session is unauthorized
-- **THEN** the frontend SHALL clear local session state and return the user to the login view
+- **WHEN** a protected request reports 401
+- **THEN** the frontend SHALL clear private state, stop analytical workers, and return to login
+
+#### Scenario: Integrated accessible login
+- **WHEN** login choices, loading state, or errors render across supported themes and desktop/mobile sizes
+- **THEN** controls SHALL preserve existing styling, keyboard focus, readable labels, stable loading dimensions, and freedom from clipping or horizontal overflow
 
 ### Requirement: Provider-neutral authenticated principal
-Cagnard SHALL represent authenticated users as a normalized principal independent of whether authentication came from static users, development mode, or future OIDC/SSO.
+Cagnard SHALL represent every authenticated identity using a canonical provider-qualified principal containing stable identity, display attributes, normalized application groups, and authentication context. Cagnard SHALL preserve provider and subject information through authorization and task ownership. Scoped role grants SHALL be computed by authorization rather than embedded as global principal roles.
 
 #### Scenario: Static user principal
-- **WHEN** a static configured user authenticates
-- **THEN** Cagnard SHALL produce an authenticated principal with provider id, subject, display name, roles, groups, and claims derived from configuration
+- **WHEN** a configured static user authenticates
+- **THEN** the principal SHALL identify the configured provider and immutable user ID and resolve its declared groups from current configuration
 
-#### Scenario: Future external principal
-- **WHEN** a future OIDC or SSO provider authenticates a user
-- **THEN** Cagnard SHALL be able to produce the same normalized principal shape for downstream authorization
+#### Scenario: External principal
+- **WHEN** an OIDC user authenticates
+- **THEN** the principal SHALL identify the configured provider, verified issuer, and subject, with memberships obtained through explicit mappings
+
+#### Scenario: Identity collision
+- **WHEN** two providers or issuers have the same subject, username, or email
+- **THEN** their principal IDs and task ownership SHALL remain distinct unless a separate explicit linking feature is introduced
+
+### Requirement: Same-origin browser mutations
+Cagnard SHALL require the configured origin and an application-specific request header for browser state-changing endpoints, including static login, logout, upload, and OIDC start. OIDC callback SHALL use its separate validated transaction contract. Cookie SameSite alone SHALL NOT be the mutation protection mechanism.
+
+#### Scenario: Cross-origin mutation
+- **WHEN** a browser mutation has a missing or mismatched Origin or lacks the required request header
+- **THEN** Cagnard SHALL reject it before authentication state changes or storage mutations

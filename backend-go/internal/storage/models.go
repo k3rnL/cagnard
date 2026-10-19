@@ -82,6 +82,7 @@ type HTTPRootTarget struct {
 func (HTTPRootTarget) rootTarget() {}
 
 type ResolvedStorageRoot struct {
+	Actions        []string
 	ID             string
 	Label          string
 	Tunnel         string

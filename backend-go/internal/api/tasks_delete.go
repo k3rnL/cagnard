@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/k3rnl/cagnard/backend-go/internal/auth"
+	auth "github.com/k3rnl/cagnard/backend-go/internal/authn"
 	"github.com/k3rnl/cagnard/backend-go/internal/storage"
 )
 
@@ -51,7 +51,7 @@ func (s *Server) startDeleteTaskRequest(identity auth.RequestIdentity, request D
 	if apiErr != nil {
 		return TaskResponse{}, apiErr
 	}
-	if _, rootErr := s.rootForIdentity(identity, location.Tunnel, location.RootID, false); rootErr != nil {
+	if _, rootErr := s.rootForIdentity(identity, location.Tunnel, location.RootID); rootErr != nil {
 		return TaskResponse{}, rootErr
 	}
 
@@ -64,7 +64,7 @@ func (s *Server) startDeleteTaskRequest(identity auth.RequestIdentity, request D
 		if err != nil {
 			return TaskResponse{}, badRequestAPIError("invalid_source_path", fmt.Sprintf("Delete source %d has an invalid path", index+1))
 		}
-		if _, rootErr := s.rootForIdentity(identity, source.Tunnel, source.RootID, true); rootErr != nil {
+		if _, rootErr := s.rootForIdentity(identity, source.Tunnel, source.RootID, "storage.delete"); rootErr != nil {
 			return TaskResponse{}, rootErr
 		}
 		source.Path = cleaned
@@ -87,7 +87,7 @@ func (s *Server) startDeleteTaskRequest(identity auth.RequestIdentity, request D
 		Tasks:         tasks,
 	}
 	job.Progress = aggregateTaskProgress(job.Tasks)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := identity.DeadlineContext(context.Background())
 	s.tasks.mu.Lock()
 	s.pruneTransferJobsLocked(resolved.Profile.ID, time.Now())
 	s.tasks.jobs[jobID] = indexStoredTask(storedTransferJob{ownerID: resolved.Profile.ID, job: job, ctx: ctx, cancel: cancel, deleteRequest: &request})
@@ -178,12 +178,12 @@ func (s *Server) runDeleteTask(jobID string, identity auth.RequestIdentity, requ
 func (s *Server) deleteTaskSource(jobID string, index int, identity auth.RequestIdentity, source TaskSourceRequest) deleteSourceOutcome {
 	taskID := transferTaskID(index)
 	ctx := s.taskContext(jobID)
-	root, apiErr := s.rootForIdentity(identity, source.Tunnel, source.RootID, true)
+	root, apiErr := s.rootForIdentity(identity, source.Tunnel, source.RootID, "storage.delete")
 	if apiErr != nil {
 		s.finishDeleteSource(jobID, taskID, "error", apiErr.Error.Message, false)
 		return deleteSourceOutcome{index: index, err: fmt.Errorf("%s", apiErr.Error.Message)}
 	}
-	provider, err := s.registry.Provider(root.ProviderID)
+	provider, err := s.guardedProvider(identity, root, "storage.delete")
 	if err != nil {
 		s.finishDeleteSource(jobID, taskID, "error", "Storage provider is unavailable", false)
 		return deleteSourceOutcome{index: index, err: err}

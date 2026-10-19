@@ -4,14 +4,17 @@ Cagnard runs copy, move, delete, download, and upload through one owner-scoped t
 
 ## Lifecycle
 
+This diagram shows the main task-level paths. Items may also be queued, and validation can finish a task before it reaches running. Terminal states do not transition back into execution.
+
 ```mermaid
 stateDiagram-v2
   [*] --> pending
   pending --> running
   pending --> blocked
   pending --> canceled
-  blocked --> pending: resolve
+  blocked --> pending: eligible resolution + current login
   blocked --> canceled
+  running --> blocked: conflict
   running --> completed
   running --> partial
   running --> error
@@ -52,4 +55,14 @@ Delete is irreversible: descendants removed before cancellation stay removed. Mo
 
 `tasks.maxConcurrentItems` defaults to `4`. If absent, the deprecated `tasks.maxConcurrentTransfers` value remains a compatibility fallback. ZIP file reads are sequential to preserve deterministic archive order and bounded memory.
 
+For operator setup, see [deployment scaling limits](../operations/deployment.md#scaling-limits); for request bodies and status codes, see the [task API](../reference/task-api.md).
+
 The manager is process-local and in memory. Restarting the backend loses active tasks and retained history. Multiple replicas do not share task URLs, upload manifests, conflict decisions, or progress. Use one backend replica or session affinity until a durable task store is introduced.
+
+## Authentication and continuation
+
+Owners use [canonical principal IDs](../reference/identity-and-sessions.md#principal-model), so equal subjects from different login providers cannot access each other's tasks. Jobs carry bounded verified evidence instead of raw cookies or bearer tokens. Every new storage operation checks current identity and grants; contexts end at the originating authentication deadline. Local logout clears browser state without revoking accepted server work.
+
+At expiry, no new work may start and active contexts are canceled where supported. Already copied, uploaded, or deleted data remains; cancellation does not promise rollback. Waiting conflict resolution is explicit and requires a valid current login and current root actions. A fresh resolution can replace an expired execution deadline. Transfers that already mutated storage cannot replay their task wholesale: submit a new request for the remaining items. Downloads and other canceled/partial jobs require a new task. Completed upload items are retained when resolving a blocked upload.
+
+See the [authorization action composition](../reference/authorization.md#effective-permissions-and-operation-composition) and [session freshness contract](../reference/identity-and-sessions.md#freshness-and-invalidation).

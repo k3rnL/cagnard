@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	auth "github.com/k3rnl/cagnard/backend-go/internal/authn"
 	"strings"
 
 	"github.com/k3rnl/cagnard/backend-go/internal/storage"
@@ -62,12 +63,7 @@ func (s *Server) signPageRef(value string) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-func (s *Server) pageRefSecret() string {
-	if s.cfg.Auth.Session != nil && s.cfg.Auth.Session.SigningSecret != nil {
-		return *s.cfg.Auth.Session.SigningSecret
-	}
-	return ""
-}
+func (s *Server) pageRefSecret() string { return string(auth.PurposeKey(s.cfg, "pagination")) }
 
 func (r entryPageRef) validate(root storage.ResolvedStorageRoot, path string, query string, sortKey string, sortDirection string, pageSize int) error {
 	if r.Tunnel != root.Tunnel || r.RootID != root.ID {

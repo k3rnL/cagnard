@@ -1,3 +1,4 @@
+import { allows } from "./permissions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiRequestError, cagnardApi, isUnauthorizedError } from "./client";
@@ -139,6 +140,7 @@ export interface PasteboardItem {
     providerId: string;
     accountId: string;
     readOnly: boolean;
+    actions: NavigationRoot["actions"];
     path: string;
   };
   entry: StorageEntry;
@@ -556,7 +558,8 @@ export function useCagnardData(): CagnardDataState {
         void fetch(`/api/tasks/${encodeURIComponent(taskId)}/cancel`, {
           method: "POST",
           credentials: "same-origin",
-          keepalive: true
+          keepalive: true,
+          headers: { "X-Cagnard-Request": "1" }
         });
       }
     };
@@ -655,6 +658,7 @@ export function useCagnardData(): CagnardDataState {
 
   useEffect(() => {
     if (!session || !selectedRoot) return;
+    if (!allows(selectedRoot,"storage.list")) { setEntryResponse(undefined); setLoading(false); setError("You do not have permission to list this storage root."); return; }
     let active = true;
     setLoading(true);
     const currentPageRef = activePageNavigation.currentPageRef;
@@ -820,6 +824,7 @@ export function useCagnardData(): CagnardDataState {
       options: { history?: LocationHistoryMode; root?: NavigationRoot } = {}
     ) => {
       const root = options.root ?? requireRoot();
+      if (!allows(root, "storage.read")) { setError("You do not have permission to read files in this storage root."); return; }
       if (placement === "page" && options.history !== "none") queueLocationHistoryPush();
       setRestoreOpenedFilePath(undefined);
       const match = resolveFileOpener(entry);
@@ -1085,7 +1090,7 @@ export function useCagnardData(): CagnardDataState {
       setOpenedFile({ ...current, error: "This file is only partially loaded and cannot be saved." });
       return;
     }
-    if (!canWriteBack(current.entry, root.readOnly)) {
+    if (!allows(root,"storage.write") || !canWriteBack(current.entry, root.readOnly)) {
       setOpenedFile({ ...current, error: "This storage entry does not support write-back." });
       return;
     }
@@ -1329,7 +1334,7 @@ export function useCagnardData(): CagnardDataState {
 
   const addSelectionToPasteboard = useCallback((intent: PasteboardIntent) => {
     const root = requireRoot();
-    if (intent === "move" && root.readOnly) {
+    if (!allows(root,"storage.read") || (intent === "move" && !allows(root,"storage.delete"))) {
       setError("Cannot move from a read-only storage root.");
       return;
     }
@@ -1348,6 +1353,7 @@ export function useCagnardData(): CagnardDataState {
         providerId: root.providerId,
         accountId: root.accountId,
         readOnly: root.readOnly,
+        actions: root.actions,
         path: entry.path
       },
       entry
@@ -1383,7 +1389,7 @@ export function useCagnardData(): CagnardDataState {
 
   const pasteboardTransfer = useCallback(async (intent: PasteboardIntent = "copy") => {
     const root = requireRoot();
-    if (root.readOnly) {
+    if (!allows(root,"storage.write")) {
       setError("Cannot paste into a read-only storage root.");
       return;
     }
@@ -1392,7 +1398,7 @@ export function useCagnardData(): CagnardDataState {
       setError("Select at least one pasteboard item to paste.");
       return;
     }
-    if (intent === "move" && selectedItems.some((item) => item.source.readOnly)) {
+    if (intent === "move" && selectedItems.some((item) => !item.source.actions?.includes("storage.delete"))) {
       setError("Cannot move entries from a read-only storage root.");
       return;
     }
@@ -1469,7 +1475,7 @@ export function useCagnardData(): CagnardDataState {
 
   const uploadItems = useCallback(async (items: BrowserUploadItem[]) => {
     const root = requireRoot();
-    if (root.readOnly) {
+    if (!allows(root,"storage.write")) {
       setError("Cannot upload into a read-only storage root.");
       return;
     }

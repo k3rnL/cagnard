@@ -1,3 +1,4 @@
+import { allows } from "../api/permissions";
 import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, RefObject } from "react";
 import type { ReactNode } from "react";
@@ -97,7 +98,7 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
   const selectedEntry = state.selectedEntry;
   const pageOpenedFile = state.openedFile?.placement === "page" ? state.openedFile : undefined;
   const inlineOpenedFile = state.openedFile?.placement === "inline" ? state.openedFile : undefined;
-  const canMutate = Boolean(state.selectedRoot && !state.selectedRoot.readOnly);
+  const canMutate = allows(state.selectedRoot, "storage.write");
   const selectedIdSet = new Set(state.selectedEntryIds);
   const hasSelection = state.selectionCount > 0;
   const singleSelection = state.selectionCount === 1;
@@ -205,7 +206,7 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
             <RefreshCw size={18} />
           </button>
           <ActionMenuGroup
-            primary={{ icon: <FolderPlus size={17} />, label: "New folder", onClick: state.createFolder, disabled: !canMutate }}
+            primary={{ icon: <FolderPlus size={17} />, label: "New folder", onClick: state.createFolder, disabled: !allows(state.selectedRoot, "storage.mkdir") }}
             items={[
               { icon: <FilePlus size={16} />, label: "New file", onClick: state.createFile, disabled: !canMutate }
             ]}
@@ -215,12 +216,12 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
               className="transfer-action-group"
               primary={{ icon: <Upload size={17} />, label: "Upload files", onClick: () => uploadFilesInput.current?.click(), disabled: !canMutate }}
               items={[
-                { icon: <FolderPlus size={16} />, label: "Upload folder", onClick: () => uploadDirectoryInput.current?.click(), disabled: !canMutate },
+                { icon: <FolderPlus size={16} />, label: "Upload folder", onClick: () => uploadDirectoryInput.current?.click(), disabled: !canMutate || !allows(state.selectedRoot, "storage.mkdir") },
                 {
                   icon: <Download size={16} />,
                   label: "Download current folder",
                   onClick: state.download,
-                  disabled: Boolean(currentDirectoryDownloadReason),
+                  disabled: Boolean(currentDirectoryDownloadReason) || !allows(state.selectedRoot, "storage.read"),
                   disabledReason: currentDirectoryDownloadReason,
                 },
               ]}
@@ -228,16 +229,16 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
           ) : (
             <ActionMenuGroup
               className="transfer-action-group"
-              primary={{ icon: <Download size={17} />, label: "Download", onClick: state.download, disabled: !state.selectedRoot }}
+              primary={{ icon: <Download size={17} />, label: "Download", onClick: state.download, disabled: !allows(state.selectedRoot, "storage.read") }}
               items={[
                 { icon: <Upload size={16} />, label: "Upload files", onClick: () => uploadFilesInput.current?.click(), disabled: !canMutate },
-                { icon: <FolderPlus size={16} />, label: "Upload folder", onClick: () => uploadDirectoryInput.current?.click(), disabled: !canMutate }
+                { icon: <FolderPlus size={16} />, label: "Upload folder", onClick: () => uploadDirectoryInput.current?.click(), disabled: !canMutate || !allows(state.selectedRoot, "storage.mkdir") }
               ]}
             />
           )}
           <ActionMenuGroup
-            primary={{ icon: <Pencil size={17} />, label: "Rename", onClick: state.renameSelected, disabled: !singleSelection || !canMutate }}
-            items={[{ icon: <Trash2 size={16} />, label: "Delete", onClick: state.deleteSelected, disabled: !hasSelection || !canMutate, danger: true }]}
+            primary={{ icon: <Pencil size={17} />, label: "Rename", onClick: state.renameSelected, disabled: !singleSelection || !allows(state.selectedRoot, "storage.rename") }}
+            items={[{ icon: <Trash2 size={16} />, label: "Delete", onClick: state.deleteSelected, disabled: !hasSelection || !allows(state.selectedRoot, "storage.delete"), danger: true }]}
           />
           <PasteboardControl state={state} />
           <TaskQueueControl state={state} />
@@ -396,11 +397,11 @@ export function StorageBrowser({ state }: StorageBrowserProps) {
                 />
               </label>
               <span className="entry-name">
-                <span className={entry.kind === "file" ? "entry-icon-slot can-inline-open" : "entry-icon-slot"}>
+                <span className={entry.kind === "file" && allows(state.selectedRoot, "storage.read") ? "entry-icon-slot can-inline-open" : "entry-icon-slot"}>
                   <span className="entry-kind-icon">
                     <EntryIcon entry={entry} size={16} />
                   </span>
-                  {entry.kind === "file" ? (
+                  {entry.kind === "file" && allows(state.selectedRoot, "storage.read") ? (
                     <button
                       className="entry-inline-open"
                       type="button"
@@ -1163,7 +1164,7 @@ function pasteboardBlockedReason(state: CagnardDataState, intent: "copy" | "move
 
 function pasteboardDestinationBlockReason(state: CagnardDataState): string | undefined {
   if (!state.selectedRoot) return "Select a destination root.";
-  if (state.selectedRoot.readOnly) return "The current destination is read-only.";
+  if (!allows(state.selectedRoot,"storage.write")) return "You do not have permission to write to this destination.";
   return undefined;
 }
 
@@ -1174,8 +1175,10 @@ function pasteboardItemBlockReason(
 ): string | undefined {
   const root = state.selectedRoot;
   if (!root) return "Select a destination root.";
-  if (root.readOnly) return "The current destination is read-only.";
-  if (intent === "move" && item.source.readOnly) return "The source storage root is read-only.";
+  if (!allows(root,"storage.write")) return "You do not have permission to write to this destination.";
+  if (!item.source.actions?.includes("storage.read")) return "You do not have permission to read this source.";
+  if (intent === "move" && !item.source.actions?.includes("storage.delete")) return "You do not have permission to delete from this source.";
+  if (item.entry.kind === "directory" && !allows(root,"storage.mkdir")) return "You do not have permission to create folders at this destination.";
   if (item.source.tunnel !== root.tunnel || item.source.rootId !== root.id) return undefined;
 
   const targetPath = joinBrowserPath(state.currentPath, item.entry.name);
@@ -1630,7 +1633,7 @@ function FileOpenerSurface({ state, opened, inline = false }: { state: CagnardDa
   const content = opened.editedContent ?? opened.content ?? "";
   const canEdit = match?.opener.mode === "editor" && match.opener.editMode !== "none" && !opened.truncated;
   const canSave = Boolean(
-    match && match.opener.saveStrategy === "overwrite" && opened.dirty && !opened.loading && !opened.truncated && state.selectedRoot && !state.selectedRoot.readOnly
+    match && match.opener.saveStrategy === "overwrite" && opened.dirty && !opened.loading && !opened.truncated && allows(state.selectedRoot, "storage.write")
   );
   const hasSource = Boolean(match && openerSupportsRaw(match.opener) && opened.content !== undefined);
   const searchable = hasSource;

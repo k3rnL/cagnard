@@ -1,6 +1,6 @@
 # Provider Capability Reference
 
-Capabilities describe what the active root can do and whether Cagnard uses a native or degraded implementation. Entry-specific restrictions can further reduce the available actions.
+Capabilities describe what the storage implementation can do and whether Cagnard uses a native or degraded implementation. Entry-specific restrictions can further reduce the available actions.
 
 | Area | Unix filesystem | S3-compatible storage |
 | --- | --- | --- |
@@ -11,25 +11,28 @@ Capabilities describe what the active root can do and whether Cagnard uses a nat
 | Stream read/write | Supported | Supported |
 | Range read | Supported | Supported when endpoint honors ranges |
 | Create folder | Native directory | Prefix marker / virtual prefix semantics |
-| Rename/move | Native filesystem operation where possible | Degraded copy then delete |
+| Rename | Native filesystem rename | Copy then delete for objects; directory-like prefixes cannot be renamed directly |
+| Move | Authorized copy followed by source deletion | Authorized copy followed by source deletion |
 | Recursive delete | Supported | Prefix enumeration and object deletion |
-| Same-root copy | Native filesystem copy | Object copy |
+| Same-root copy | Guarded read/write path | Guarded read/write path; recursive transfer handles directories |
 | Cross-provider copy | Backend stream | Backend stream |
 | Watch/follow | Native filesystem notifications | Degraded backend polling |
 | Owner/permissions | Filesystem metadata where available | Usually unavailable or provider-specific |
 | Version/retention/encryption | Filesystem/provider dependent | Returned when API/endpoint exposes it |
 
-The runtime API returns `supported`, `degraded`, or `unsupported` with explanatory text. The table is a product-level baseline, not a promise for every mount, bucket policy, S3 clone, or object.
+The runtime API returns `supported`, `degraded`, or `unsupported` with explanatory text. Some legacy capability entries are marked `planned`; that label does not enable an operation. The table is a product-level baseline, not a promise for every mount, bucket policy, S3 clone, or object.
 
 ## Common Capability Names
 
-Cagnard uses capabilities for list, metadata/stat, preview/download, upload, create folder, rename, delete, copy, move, stream read/write, range read, and watch. UI openers can declare required names; action controls also consider root read-only state and selected-entry capability state.
+Cagnard uses capabilities for list, metadata/stat, preview/download, upload, create folder, rename, delete, copy, move, stream read/write, range read, and watch. UI openers can declare required names; action controls also consider [effective authorization actions](authorization.md#effective-permissions-and-operation-composition), root read-only state, and selected-entry capability state. A capability is not a permission grant.
 
 ## Accuracy And Metadata
 
 Listing responses separately describe search, sort, and total-count accuracy. A provider can support pagination while reporting approximate or unavailable totals. The frontend must not infer an exact result count from one page.
 
 Metadata fields include size, MIME type and source, owner, permissions, modified time, version, retention, encryption, file category, and icon. Missing fields are explicit and should remain absent rather than fabricated.
+
+The legacy S3 `multipart-upload` capability is still labelled `planned`, although the streaming writer uses multipart upload for large files. Consult `stream-write` for transfer support; the flag is not a reliable description of the writer’s implementation.
 
 ## Provider-Specific Behavior
 

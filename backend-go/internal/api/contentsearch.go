@@ -17,7 +17,7 @@ const contentSearchLineBufferBytes = 256 * 1024
 const contentSearchMatchTextLimit = 400
 
 func (s *Server) contentSearch(w http.ResponseWriter, r *http.Request) {
-	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), false)
+	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), "storage.read")
 	if !ok {
 		return
 	}

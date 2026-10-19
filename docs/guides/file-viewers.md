@@ -1,6 +1,6 @@
 # File Viewers
 
-Selecting a row updates metadata without downloading content. Opening a file routes it through Cagnard's typed first-party opener registry. Provider credentials stay in the backend; viewers use authorized Cagnard APIs and same-origin content URLs.
+Click a file to open it. To select an entry without opening its content, use its checkbox, Ctrl/Cmd-click, or Space on a focused row. Selection updates the metadata panel. Opening a file routes it through Cagnard's typed first-party opener registry. Provider credentials stay in the backend; viewers use authorized Cagnard APIs and same-origin content URLs. See [browsing and file operations](browsing-and-transfers.md) for selection, transfers, and downloads.
 
 ## Included Openers
 
@@ -31,7 +31,7 @@ All analytical viewers are read-only. CSV and JSON exports contain the current p
 
 The analytical worker and DuckDB-Wasm runtime are lazy and shared only within the browser tab. Each opened source owns its connection, registration, cancellation, and cleanup. Closing a source releases those resources; logout, page teardown, or a fatal runtime failure terminates the complete worker runtime.
 
-Parquet and Iceberg use authenticated same-origin range reads. The selected NetCDF adapter and bounded relational ingestion use complete buffers with explicit byte and row ceilings. Errors distinguish authorization, network, malformed/truncated input, unsupported codecs or semantics, configured limits, cancellation, and internal failure. Original download remains available when a viewer cannot open content safely.
+Parquet and Iceberg use authenticated same-origin range reads. The selected NetCDF adapter and bounded relational ingestion use complete buffers with explicit byte and row ceilings. Errors distinguish authorization, network, malformed/truncated input, unsupported codecs or semantics, configured limits, cancellation, and internal failure. If you have read access, original download remains available when a viewer cannot open the format or exceeds its processing limits.
 
 ## Avro Codecs
 

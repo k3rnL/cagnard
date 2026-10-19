@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/k3rnl/cagnard/backend-go/internal/testconfig"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,7 +16,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/k3rnl/cagnard/backend-go/internal/auth"
+
 	appconfig "github.com/k3rnl/cagnard/backend-go/internal/config"
 	"github.com/k3rnl/cagnard/backend-go/internal/storage"
 )
@@ -48,19 +49,13 @@ func TestS3MinIOIcebergFacadeIntegration(t *testing.T) {
 		t.Fatalf("create MinIO test bucket: %v", err)
 	}
 
-	mode := "development"
-	defaultUser := "alice"
 	label := "S3 Iceberg"
 	cfg := &appconfig.CagnardConfig{
 		Server: appconfig.ServerConfig{Host: "127.0.0.1", Port: 0},
-		Auth:   appconfig.AuthConfig{Mode: &mode, ConfiguredUsersEnabled: true, DefaultUser: &defaultUser},
-		Users:  []appconfig.ConfiguredUser{{ID: "alice", DisplayName: "Alice", Roles: []string{"user"}, Claims: map[string]string{}}},
+		Auth:   testconfig.Development(),
 		Providers: []appconfig.ProviderConfig{{
 			ID: "minio", Type: "s3", Family: "s3", DisplayName: "MinIO",
-			Settings: map[string]string{
-				"region": region, "endpoint": endpoint, "pathStyleAccess": "true",
-				"sslEnabled": "false", "requestChecksumCalculation": "when_required",
-			},
+			Settings: map[string]string{"region": region, "endpoint": endpoint, "pathStyleAccess": "true", "sslEnabled": "false", "requestChecksumCalculation": "when_required"},
 		}},
 		Accounts: []appconfig.StorageAccountConfig{{
 			ID: "minio-account", ProviderID: "minio", DisplayName: "MinIO", Enabled: true, AuthMode: "static",
@@ -68,11 +63,12 @@ func TestS3MinIOIcebergFacadeIntegration(t *testing.T) {
 		}},
 		GlobalStorage: []appconfig.StorageRootConfig{{
 			ID: "s3-iceberg", Label: &label, ProviderID: "minio", AccountID: "minio-account",
-			Settings: map[string]string{"bucket": bucket, "prefix": "documents"}, AllowedRoles: []string{"user"},
+			Settings: map[string]string{"bucket": bucket, "prefix": "documents"},
 		}},
 	}
+	testconfig.GrantAll(cfg)
 	server := NewServer(cfg)
-	root, rootErr := server.rootForIdentity(auth.RequestIdentity{}, "global", "s3-iceberg", true)
+	root, rootErr := server.rootForIdentity(testIdentity(t, server), "global", "s3-iceberg", "storage.write")
 	if rootErr != nil {
 		t.Fatal(rootErr.Error)
 	}
@@ -114,6 +110,7 @@ func TestS3MinIOIcebergFacadeIntegration(t *testing.T) {
 	base := strings.TrimSuffix(*probe.SourceURL, "metadata/v1.metadata.json")
 	manifestRequest := httptest.NewRequest(http.MethodGet, base+"metadata/snap-7.avro", nil)
 	manifestResponse := httptest.NewRecorder()
+	prepareTestRequest(server, manifestRequest)
 	server.Handler().ServeHTTP(manifestResponse, manifestRequest)
 	if manifestResponse.Code != http.StatusOK || manifestResponse.Body.String() != "manifest-list" {
 		t.Fatalf("unexpected manifest response status=%d body=%q", manifestResponse.Code, manifestResponse.Body.String())
@@ -122,6 +119,7 @@ func TestS3MinIOIcebergFacadeIntegration(t *testing.T) {
 	dataRequest := httptest.NewRequest(http.MethodGet, base+"data/part-1.parquet", nil)
 	dataRequest.Header.Set("Range", "bytes=4-11")
 	dataResponse := httptest.NewRecorder()
+	prepareTestRequest(server, dataRequest)
 	server.Handler().ServeHTTP(dataResponse, dataRequest)
 	if dataResponse.Code != http.StatusPartialContent || dataResponse.Body.Len() != 8 || dataResponse.Header().Get("Accept-Ranges") != "bytes" {
 		t.Fatalf("unexpected data range status=%d bytes=%d headers=%v", dataResponse.Code, dataResponse.Body.Len(), dataResponse.Header())

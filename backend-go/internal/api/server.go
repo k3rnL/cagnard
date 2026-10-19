@@ -3,13 +3,14 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/k3rnl/cagnard/backend-go/internal/storageaccess"
 	"io"
 	"net/http"
 	"path"
 	"strconv"
 	"strings"
 
-	"github.com/k3rnl/cagnard/backend-go/internal/auth"
+	auth "github.com/k3rnl/cagnard/backend-go/internal/authn"
 	"github.com/k3rnl/cagnard/backend-go/internal/config"
 	"github.com/k3rnl/cagnard/backend-go/internal/storage"
 )
@@ -22,7 +23,7 @@ type Server struct {
 	cfg            *config.CagnardConfig
 	mux            *http.ServeMux
 	resolver       *auth.UserResolver
-	access         *auth.AccessService
+	access         *storageaccess.AccessService
 	registry       *storage.Registry
 	tasks          *taskManager
 	structuredData config.StructuredDataConfig
@@ -33,7 +34,7 @@ func NewServer(cfg *config.CagnardConfig) *Server {
 		cfg:            cfg,
 		mux:            http.NewServeMux(),
 		resolver:       auth.NewUserResolver(cfg),
-		access:         auth.NewAccessService(cfg),
+		access:         storageaccess.NewAccessService(cfg),
 		registry:       storage.NewRegistry(cfg),
 		tasks:          newTaskManager(),
 		structuredData: cfg.EffectiveStructuredData(),
@@ -43,7 +44,7 @@ func NewServer(cfg *config.CagnardConfig) *Server {
 }
 
 func (s *Server) Handler() http.Handler {
-	return s.mux
+	return http.HandlerFunc(s.serveAuthenticated)
 }
 
 func (s *Server) routes() {
@@ -54,6 +55,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/auth/providers", s.authProviders)
 	s.mux.HandleFunc("POST /api/auth/login", s.login)
 	s.mux.HandleFunc("POST /api/auth/logout", s.logout)
+	s.mux.HandleFunc("POST /api/auth/providers/{providerId}/start", s.oidcStart)
+	s.mux.HandleFunc("GET /api/auth/providers/{providerId}/callback", s.oidcCallback)
 	s.mux.HandleFunc("GET /api/storage/navigation", s.navigation)
 	s.mux.HandleFunc("GET /api/storage/entries", s.listEntries)
 	s.mux.HandleFunc("GET /api/storage/stat", s.statEntry)
@@ -155,7 +158,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		Status:          "ok",
 		Stateless:       true,
 		Providers:       len(s.cfg.Providers),
-		ConfiguredUsers: len(s.cfg.Users),
+		ConfiguredUsers: s.cfg.StaticUserCount(),
 	})
 }
 
@@ -189,7 +192,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resolved, token, failure := s.resolver.LoginStatic(username, password)
+	resolved, token, failure := s.resolver.LoginStatic(request.ProviderID, username, password)
 	if failure != nil {
 		writeAuthFailure(w, failure)
 		return
@@ -199,7 +202,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Set-Cookie", s.resolver.ClearSessionCookie())
+	w.Header().Add("Set-Cookie", s.resolver.ClearSessionCookie())
+	w.Header().Add("Set-Cookie", s.resolver.ClearTransactionCookie())
 	writeJSON(w, http.StatusOK, LogoutResponse{Success: true})
 }
 
@@ -209,13 +213,13 @@ func (s *Server) navigation(w http.ResponseWriter, r *http.Request) {
 		writeAuthFailure(w, failure)
 		return
 	}
-	personal := s.navigationSection("Home", s.access.PersonalRoots(resolved.Profile))
-	global := s.navigationSection("Global", s.access.GlobalRoots(resolved.Profile))
+	personal := s.navigationSection("Home", s.access.PersonalRoots(resolved))
+	global := s.navigationSection("Global", s.access.GlobalRoots(resolved))
 	writeJSON(w, http.StatusOK, NavigationResponse{Personal: personal, Global: global})
 }
 
 func (s *Server) listEntries(w http.ResponseWriter, r *http.Request) {
-	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), false)
+	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), "storage.list")
 	if !ok {
 		return
 	}
@@ -240,7 +244,7 @@ func (s *Server) listEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) statEntry(w http.ResponseWriter, r *http.Request) {
-	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), false)
+	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), "storage.read")
 	if !ok {
 		return
 	}
@@ -254,7 +258,7 @@ func (s *Server) statEntry(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) downloadContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
-	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), false)
+	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), "storage.read")
 	if !ok {
 		return
 	}
@@ -373,7 +377,7 @@ func parseByteRange(header string, size int64) (parsed *byteRange, unsatisfiable
 }
 
 func (s *Server) uploadContent(w http.ResponseWriter, r *http.Request) {
-	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), true)
+	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), "storage.write")
 	if !ok {
 		return
 	}
@@ -401,7 +405,7 @@ func (s *Server) uploadContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) previewContent(w http.ResponseWriter, r *http.Request) {
-	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), false)
+	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), "storage.read")
 	if !ok {
 		return
 	}
@@ -426,7 +430,7 @@ func (s *Server) createFolder(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	root, provider, ok := s.providerForRequest(w, r, request.Tunnel, request.RootID, true)
+	root, provider, ok := s.providerForRequest(w, r, request.Tunnel, request.RootID, "storage.mkdir")
 	if !ok {
 		return
 	}
@@ -444,7 +448,7 @@ func (s *Server) renameEntry(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	root, provider, ok := s.providerForRequest(w, r, request.Tunnel, request.RootID, true)
+	root, provider, ok := s.providerForRequest(w, r, request.Tunnel, request.RootID, "storage.rename")
 	if !ok {
 		return
 	}
@@ -466,7 +470,7 @@ func (s *Server) deleteEntry(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, APIError{Code: "confirmation_required", Message: "Delete requires explicit confirmation"})
 		return
 	}
-	root, provider, ok := s.providerForRequest(w, r, request.Tunnel, request.RootID, true)
+	root, provider, ok := s.providerForRequest(w, r, request.Tunnel, request.RootID, "storage.delete")
 	if !ok {
 		return
 	}
@@ -482,7 +486,7 @@ func (s *Server) copyEntry(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	root, provider, ok := s.providerForRequest(w, r, request.Tunnel, request.RootID, true)
+	root, provider, ok := s.providerForRequest(w, r, request.Tunnel, request.RootID, "storage.read", "storage.write")
 	if !ok {
 		return
 	}
@@ -500,7 +504,7 @@ func (s *Server) moveEntry(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &request) {
 		return
 	}
-	root, provider, ok := s.providerForRequest(w, r, request.Tunnel, request.RootID, true)
+	root, provider, ok := s.providerForRequest(w, r, request.Tunnel, request.RootID, "storage.read", "storage.write", "storage.delete")
 	if !ok {
 		return
 	}
@@ -589,8 +593,8 @@ func (s *Server) clearTransferJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) sessionFor(resolved auth.ResolvedUser) SessionResponse {
-	personal := s.access.PersonalRoots(resolved.Profile)
-	global := s.access.GlobalRoots(resolved.Profile)
+	personal := s.access.PersonalRoots(resolved)
+	global := s.access.GlobalRoots(resolved)
 	return SessionResponse{
 		User:            userProfile(resolved.Profile),
 		AuthMode:        resolved.AuthMode,
@@ -622,6 +626,13 @@ func writeAuthFailure(w http.ResponseWriter, failure *auth.Failure) {
 }
 
 func writeAPIError(w http.ResponseWriter, status int, err APIError) {
+	if err.Code == "forbidden" {
+		status = http.StatusForbidden
+	}
+	if err.Code == "session_expired" || err.Code == "invalid_session" {
+		status = http.StatusUnauthorized
+	}
+
 	writeJSON(w, status, err)
 }
 
@@ -642,46 +653,18 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, out any) bool {
 	return true
 }
 
-func (s *Server) providerForRequest(w http.ResponseWriter, r *http.Request, tunnel string, rootID string, writable bool) (storage.ResolvedStorageRoot, storage.StorageProvider, bool) {
-	root, ok := s.rootForRequest(w, r, tunnel, rootID, writable)
-	if !ok {
+func (s *Server) providerForRequest(w http.ResponseWriter, r *http.Request, tunnel, rootID string, actions ...string) (storage.ResolvedStorageRoot, storage.StorageProvider, bool) {
+	root, apiErr := s.rootForIdentity(requestIdentity(r), tunnel, rootID, actions...)
+	if apiErr != nil {
+		writeAPIError(w, apiErr.Status, apiErr.Error)
 		return storage.ResolvedStorageRoot{}, nil, false
 	}
-	provider, err := s.registry.Provider(root.ProviderID)
+	provider, err := s.guardedProvider(requestIdentity(r), root, actions...)
 	if err != nil {
-		writeAPIError(w, http.StatusBadRequest, APIError{Code: "unknown_provider", Message: err.Error()})
+		writeAPIError(w, http.StatusBadRequest, APIError{Code: "unknown_provider", Message: "Storage provider is unavailable"})
 		return storage.ResolvedStorageRoot{}, nil, false
 	}
 	return root, provider, true
-}
-
-func (s *Server) rootForRequest(w http.ResponseWriter, r *http.Request, tunnel string, rootID string, writable bool) (storage.ResolvedStorageRoot, bool) {
-	resolved, failure := s.resolver.Resolve(requestIdentity(r))
-	if failure != nil {
-		writeAuthFailure(w, failure)
-		return storage.ResolvedStorageRoot{}, false
-	}
-	var roots []storage.ResolvedStorageRoot
-	switch tunnel {
-	case "personal":
-		roots = s.access.PersonalRoots(resolved.Profile)
-	case "global":
-		roots = s.access.GlobalRoots(resolved.Profile)
-	default:
-		writeAPIError(w, http.StatusBadRequest, APIError{Code: "unknown_tunnel", Message: fmt.Sprintf("Unknown storage tunnel '%s'", tunnel)})
-		return storage.ResolvedStorageRoot{}, false
-	}
-	for _, root := range roots {
-		if root.ID == rootID {
-			if writable && root.ReadOnly {
-				writeAPIError(w, http.StatusBadRequest, APIError{Code: "read_only_root", Message: "Storage root is read-only"})
-				return storage.ResolvedStorageRoot{}, false
-			}
-			return root, true
-		}
-	}
-	writeAPIError(w, http.StatusBadRequest, APIError{Code: "unknown_root", Message: fmt.Sprintf("Storage root '%s' is not available", rootID)})
-	return storage.ResolvedStorageRoot{}, false
 }
 
 func queryValue(r *http.Request, key string) string {
@@ -781,6 +764,12 @@ func operationError(err error) APIError {
 	lower := strings.ToLower(message)
 	code := "storage_operation_failed"
 	switch {
+	case strings.HasPrefix(lower, "forbidden:"):
+		code = "forbidden"
+	case strings.HasPrefix(lower, "session_expired:"):
+		code = "session_expired"
+	case strings.HasPrefix(lower, "invalid_session:"):
+		code = "invalid_session"
 	case strings.Contains(lower, "already exists"):
 		code = "target_conflict"
 	case strings.Contains(lower, "escapes configured storage root"):
@@ -792,24 +781,7 @@ func operationError(err error) APIError {
 }
 
 func requestIdentity(r *http.Request) auth.RequestIdentity {
-	return auth.RequestIdentity{
-		ConfiguredUserHeader: r.Header.Get("X-Cagnard-User"),
-		AuthorizationHeader:  r.Header.Get("Authorization"),
-		Cookies:              parseCookies(r.Header.Values("Cookie")),
-	}
-}
-
-func parseCookies(headers []string) map[string]string {
-	out := map[string]string{}
-	for _, header := range headers {
-		for _, part := range strings.Split(header, ";") {
-			key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
-			if ok && key != "" {
-				out[key] = value
-			}
-		}
-	}
-	return out
+	return auth.IdentityFromContext(r.Context())
 }
 
 func authProviderMetadata(provider auth.ProviderMetadata) AuthProviderMetadata {
@@ -836,6 +808,7 @@ func navigationRoot(root storage.ResolvedStorageRoot, capabilities []storage.Cap
 		AccountID:      root.AccountID,
 		ProviderFamily: root.ProviderFamily,
 		ReadOnly:       root.ReadOnly,
+		Actions:        append([]string{}, root.Actions...),
 		Capabilities:   capabilityStatuses(capabilities),
 	}
 }
@@ -889,9 +862,9 @@ func userProfile(profile auth.UserProfile) UserProfile {
 	return UserProfile{
 		ID:          profile.ID,
 		DisplayName: profile.DisplayName,
-		Roles:       append([]string{}, profile.Roles...),
+		ProviderID:  profile.ProviderID,
+		Subject:     profile.Subject,
 		Groups:      append([]string{}, profile.Groups...),
-		Claims:      copyStringMap(profile.Claims),
 	}
 }
 

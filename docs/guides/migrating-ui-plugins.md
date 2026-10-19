@@ -18,4 +18,4 @@ Clients must stop requesting `/api/plugins/ui`. File opener discovery is not a b
 
 ## Custom Behavior
 
-There is currently no supported third-party frontend extension contract. Add maintained behavior as a first-party opener with tests and documentation. Executable third-party UI plugins may return later only with an isolation, versioning, and distribution design.
+There is currently no supported third-party frontend extension contract. Add maintained behavior as a first-party opener with tests and documentation. Executable third-party UI plugins may return later only with an isolation, versioning, and distribution design. Start with the [opener architecture](../architecture/file-openers.md) and [contributor guide](../contributing/file-openers.md).

@@ -1,8 +1,9 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { KeyRound, LogIn, ShieldCheck, UserRound } from "lucide-react";
 
 import type { CagnardDataState } from "../api/useCagnardData";
 import type { AuthProviderMetadata } from "../api/types";
+import { cagnardApi } from "../api/client";
 import { AppearanceSelector } from "./AppearanceSelector";
 import { BrandMark } from "./BrandMark";
 
@@ -19,7 +20,28 @@ export function LoginScreen({ state }: LoginScreenProps) {
     () => state.authProviders.filter((provider) => provider.kind !== "static"),
     [state.authProviders]
   );
-  const selectedProvider = staticProviders[0];
+  const [selectedProviderId, setSelectedProviderId] = useState<string>();
+  const selectedProvider = staticProviders.find((provider) => provider.id === selectedProviderId) ?? staticProviders[0];
+  const [ssoPending, setSSOPending] = useState<string>();
+  const [ssoError, setSSOError] = useState<string>();
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("authError")) {
+      setSSOError("SSO sign-in could not be completed. Please try again.");
+      url.searchParams.delete("authError");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+  }, []);
+  async function startSSO(providerId: string) {
+    setSSOPending(providerId); setSSOError(undefined);
+    try {
+      const result = await cagnardApi.startOIDC(providerId);
+      window.location.assign(result.authorizationUrl);
+    } catch {
+      setSSOError("SSO is temporarily unavailable. Please try again.");
+      setSSOPending(undefined);
+    }
+  }
 
   return (
     <main className="login-shell">
@@ -35,18 +57,21 @@ export function LoginScreen({ state }: LoginScreenProps) {
           </div>
         </div>
 
-        {selectedProvider ? <StaticProviderForm provider={selectedProvider} state={state} /> : null}
+        {staticProviders.length > 1 ? <label className="login-field">Account provider<select value={selectedProvider?.id} onChange={(event) => setSelectedProviderId(event.target.value)}>{staticProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}</select></label> : null}
+        {selectedProvider ? <StaticProviderForm key={selectedProvider.id} provider={selectedProvider} state={state} /> : null}
 
         {externalProviders.length > 0 ? (
           <div className="external-provider-list">
             {externalProviders.map((provider) => (
-              <a className="provider-button" href={provider.loginUrl ?? "#"} key={provider.id}>
+              <button type="button" className="provider-button" disabled={Boolean(ssoPending)} aria-busy={ssoPending === provider.id} onClick={() => void startSSO(provider.id)} key={provider.id}>
                 <ShieldCheck size={17} />
-                <span>{provider.label}</span>
-              </a>
+                <span>{ssoPending === provider.id ? "Connecting…" : provider.label}</span>
+              </button>
             ))}
           </div>
         ) : null}
+
+        {ssoError ? <div className="error-banner" role="alert">{ssoError}</div> : null}
 
         {!state.loading && state.authProviders.length === 0 ? (
           <div className="error-banner">No login provider is available.</div>
@@ -105,7 +130,7 @@ function StaticProviderForm({ provider, state }: { provider: AuthProviderMetadat
         </div>
       </label>
 
-      {state.loginError ? <div className="error-banner">{state.loginError}</div> : null}
+      {state.loginError ? <div className="error-banner" role="alert">{state.loginError}</div> : null}
 
       <button className="primary-button" disabled={state.loginLoading} type="submit">
         <LogIn size={18} />

@@ -126,13 +126,16 @@ jobs:
           go-version-file: backend-go/go.mod
           cache-dependency-path: backend-go/go.sum
 
+      - name: Build MinIO from pinned sources
+        run: docker build -f examples/run/minio/Containerfile --target server -t cagnard-minio:ci examples/run/minio
+
       - name: Start MinIO
         run: |
           docker run --detach --rm --name cagnard-minio \
             --publish 9000:9000 \
             --env MINIO_ROOT_USER=cagnard \
             --env MINIO_ROOT_PASSWORD=cagnard-secret \
-            quay.io/minio/minio:latest server /data
+            cagnard-minio:ci server /data
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null; then
               exit 0

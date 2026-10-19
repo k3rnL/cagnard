@@ -34,6 +34,7 @@ func TestIcebergProbeAndAuthorizedContent(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, *probe.SourceURL, nil)
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"table-uuid":"events-table"`) {
 		t.Fatalf("unexpected Iceberg content status=%d body=%s", response.Code, response.Body.String())
@@ -42,6 +43,7 @@ func TestIcebergProbeAndAuthorizedContent(t *testing.T) {
 	rangeRequest := httptest.NewRequest(http.MethodGet, *probe.SourceURL, nil)
 	rangeRequest.Header.Set("Range", "bytes=0-15")
 	rangeResponse := httptest.NewRecorder()
+	prepareTestRequest(server, rangeRequest)
 	server.Handler().ServeHTTP(rangeResponse, rangeRequest)
 	if rangeResponse.Code != http.StatusPartialContent || rangeResponse.Body.Len() != 16 {
 		t.Fatalf("unexpected Iceberg range status=%d bytes=%d", rangeResponse.Code, rangeResponse.Body.Len())
@@ -72,6 +74,7 @@ func TestIcebergProbeStatesAndConfinement(t *testing.T) {
 	escaping := strings.TrimSuffix(*candidate.SourceURL, "metadata/v3.metadata.json") + url.PathEscape("../private.txt")
 	request := httptest.NewRequest(http.MethodGet, escaping, nil)
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	if response.Code >= 200 && response.Code < 300 {
 		t.Fatalf("escaping Iceberg reference was served: %d %s", response.Code, response.Body.String())
@@ -148,6 +151,7 @@ func TestIcebergFacadeRejectsAbsoluteAndUnauthorizedReferences(t *testing.T) {
 	for _, reference := range []string{"%2Fetc%2Fpasswd", "https:%2F%2Fexample.test%2Fdata.parquet", "%252e%252e%252fprivate.txt"} {
 		request := httptest.NewRequest(http.MethodGet, base+reference, nil)
 		response := httptest.NewRecorder()
+		prepareTestRequest(server, request)
 		server.Handler().ServeHTTP(response, request)
 		if response.Code >= 200 && response.Code < 300 {
 			t.Fatalf("unsafe reference %q was served: %d %s", reference, response.Code, response.Body.String())
@@ -156,8 +160,9 @@ func TestIcebergFacadeRejectsAbsoluteAndUnauthorizedReferences(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, strings.Replace(*probe.SourceURL, "/home/", "/missing-root/", 1), nil)
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest {
+	if response.Code != http.StatusNotFound {
 		t.Fatalf("unauthorized root status=%d body=%s", response.Code, response.Body.String())
 	}
 }

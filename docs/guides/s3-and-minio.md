@@ -7,10 +7,10 @@ Cagnard's S3 provider works with AWS S3 and compatible endpoints such as MinIO, 
 ```bash
 cd examples/run/s3-minio-static
 cp .env.example .env
-docker compose up -d
+docker compose -f docker-compose.yaml -f docker-compose.build.yaml up -d --build
 ```
 
-The initializer creates the bucket and sample objects. Open `http://127.0.0.1:5173` and sign in with `alice` / `cagnard`.
+The initializer creates the bucket and sample objects. Open `http://localhost:5173` and sign in with `alice` / `cagnard`.
 
 Open **Global > Structured data** to inspect the generated Parquet, Avro OCF, Arrow IPC/Feather, NDJSON, CSV, and TSV fixtures through the S3 provider. The initializer mirrors [`examples/storage/global/structured-data`](../../examples/storage/global/structured-data/README.md), including safe malformed and truncated cases. Parquet requests stay on Cagnard's authenticated content endpoint and use S3-backed HTTP ranges rather than browser-visible S3 credentials.
 
@@ -61,5 +61,7 @@ label = "Documents"
 - Search and non-native sorting may scan multiple pages up to configured safety limits.
 - Stream and range reads avoid whole-object buffering for transfers and media.
 - S3 file watching uses backend polling and is reported as degraded.
+
+Root access also needs an [authorization binding](../reference/authorization.md#binding-model). For complete provider/account/root wiring, use the [storage model reference](../reference/storage-access.md) and [combined configuration](../../config/cagnard.oidc.example.conf).
 
 See the [provider capability reference](../reference/provider-capabilities.md) for cross-provider behavior.

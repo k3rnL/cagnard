@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/k3rnl/cagnard/backend-go/internal/testconfig"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,6 +21,7 @@ func TestHealthAndDiscoveryRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	testconfig.GrantAll(cfg)
 	server := NewServer(cfg)
 
 	health := getJSON[HealthResponse](t, server, "/api/health")
@@ -33,11 +35,12 @@ func TestHealthAndDiscoveryRoutes(t *testing.T) {
 	}
 	request := httptest.NewRequest(http.MethodGet, "/api/appearance", nil)
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	if body := response.Body.String(); strings.Contains(body, "alice") || strings.Contains(body, "providers") || strings.Contains(body, "signingSecret") {
 		t.Fatalf("appearance response exposed protected configuration: %s", body)
 	}
-	structured := getJSON[StructuredDataConfigResponse](t, server, "/api/structured-data/config")
+	structured := getJSONWithCookie[StructuredDataConfigResponse](t, server, "/api/structured-data/config", loginCookie(t, server, "alice", "cagnard"))
 	if structured.Relational.MaxIngestionBytes != 64*1024*1024 || structured.SQL.TimeoutMilliseconds != 30_000 || structured.NetCDF.MaxSourceBytes != 128*1024*1024 {
 		t.Fatalf("unexpected structured-data config: %#v", structured)
 	}
@@ -51,13 +54,13 @@ func TestHealthAndDiscoveryRoutes(t *testing.T) {
 	}
 
 	unauthorized := getAPIError(t, server, "/api/storage/navigation", "")
-	if unauthorized.Code != "unauthorized" {
+	if unauthorized.Code != "invalid_session" {
 		t.Fatalf("unexpected unauthorized response: %#v", unauthorized)
 	}
 
 	cookie := loginCookie(t, server, "alice", "cagnard")
 	session := getJSONWithCookie[SessionResponse](t, server, "/api/session", cookie)
-	if session.User.ID != "alice" || session.AuthMode != "static" || !session.PersonalEnabled || !session.GlobalEnabled {
+	if session.User.Subject != "alice" || session.AuthMode != "static" || !session.PersonalEnabled || !session.GlobalEnabled {
 		t.Fatalf("unexpected session: %#v", session)
 	}
 
@@ -71,6 +74,7 @@ func TestHealthAndDiscoveryRoutes(t *testing.T) {
 	removedPluginRoute := httptest.NewRequest(http.MethodGet, "/api/plugins/ui", nil)
 	removedPluginRoute.Header.Set("Cookie", cookie)
 	removedPluginResponse := httptest.NewRecorder()
+	prepareTestRequest(server, removedPluginRoute)
 	server.Handler().ServeHTTP(removedPluginResponse, removedPluginRoute)
 	if removedPluginResponse.Code != http.StatusNotFound {
 		t.Fatalf("removed UI plugin route status = %d, want 404", removedPluginResponse.Code)
@@ -97,20 +101,19 @@ func TestDevelopmentSessionCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mode := "development"
-	defaultUser := "alice"
-	cfg.Auth.Mode = &mode
-	cfg.Auth.DefaultUser = &defaultUser
+	cfg.Auth = testconfig.Development()
+	testconfig.GrantAll(cfg)
 	server := NewServer(cfg)
 
 	session := getJSON[SessionResponse](t, server, "/api/session")
-	if session.User.ID != "alice" || session.AuthMode != "configured-user" {
+	if session.User.Subject != "alice" || session.AuthMode != "development" {
 		t.Fatalf("unexpected default development session: %#v", session)
 	}
 
 	request := httptest.NewRequest(http.MethodGet, "/api/session", nil)
 	request.Header.Set("X-Cagnard-User", "alice")
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	if response.Code < http.StatusOK || response.Code >= http.StatusMultipleChoices {
 		t.Fatalf("header session status = %d body = %s", response.Code, response.Body.String())
@@ -384,6 +387,7 @@ func TestDownloadContentRangeRequests(t *testing.T) {
 	headRequest := httptest.NewRequest(http.MethodHead, url, nil)
 	headRequest.Header.Set("Range", "bytes=0-")
 	head := httptest.NewRecorder()
+	prepareTestRequest(server, headRequest)
 	server.Handler().ServeHTTP(head, headRequest)
 	if head.Code != http.StatusPartialContent || head.Body.Len() != 0 || head.Header().Get("Content-Range") != "bytes 0-9/10" {
 		t.Fatalf("range HEAD response = %d %q %#v", head.Code, head.Body.String(), head.Header())
@@ -428,6 +432,7 @@ func doContentRequest(t *testing.T, server *Server, path string, rangeHeader str
 		request.Header.Set("Range", rangeHeader)
 	}
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	return response
 }
@@ -448,6 +453,7 @@ func getJSONWithCookie[T any](t *testing.T, server *Server, path string, cookie 
 func doJSON[T any](t *testing.T, server *Server, request *http.Request) T {
 	t.Helper()
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	if response.Code < http.StatusOK || response.Code >= http.StatusMultipleChoices {
 		t.Fatalf("%s status = %d body = %s", request.URL.Path, response.Code, response.Body.String())
@@ -479,6 +485,7 @@ func readContent(t *testing.T, server *Server, path string) []byte {
 	t.Helper()
 	request := httptest.NewRequest(http.MethodGet, path, nil)
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("%s status = %d body = %s", path, response.Code, response.Body.String())
@@ -492,6 +499,7 @@ func loginCookie(t *testing.T, server *Server, username string, password string)
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("login status = %d body = %s", response.Code, response.Body.String())
@@ -519,6 +527,7 @@ func getAPIErrorWithStatus(t *testing.T, server *Server, path string, cookie str
 		request.Header.Set("Cookie", cookie)
 	}
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != status {
 		t.Fatalf("%s status = %d body = %s", path, response.Code, response.Body.String())
@@ -541,21 +550,11 @@ func newTransferTestServer(t *testing.T) (*Server, string, string) {
 	if err := os.MkdirAll(global, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	mode := "development"
-	defaultUser := "alice"
 	homeLabel := "Home"
 	globalLabel := "Shared"
 	cfg := &config.CagnardConfig{
 		Server: config.ServerConfig{Host: "127.0.0.1", Port: 0},
-		Auth: config.AuthConfig{
-			Mode:                   &mode,
-			ConfiguredUsersEnabled: true,
-			DefaultUser:            &defaultUser,
-		},
-		Users: []config.ConfiguredUser{
-			{ID: "alice", DisplayName: "Alice", Roles: []string{"user"}, Groups: []string{}, Claims: map[string]string{}},
-			{ID: "bob", DisplayName: "Bob", Roles: []string{"user"}, Groups: []string{}, Claims: map[string]string{}},
-		},
+		Auth:   testconfig.Development(),
 		Providers: []config.ProviderConfig{
 			{ID: "unix", Type: "filesystem", Family: "filesystem", DisplayName: "Unix filesystem", Settings: map[string]string{}},
 		},
@@ -566,9 +565,10 @@ func newTransferTestServer(t *testing.T) (*Server, string, string) {
 			{ID: "home", Label: &homeLabel, ProviderID: "unix", AccountID: "local", Path: &home, Settings: map[string]string{}},
 		},
 		GlobalStorage: []config.StorageRootConfig{
-			{ID: "shared", Label: &globalLabel, ProviderID: "unix", AccountID: "local", Path: &global, Settings: map[string]string{}, AllowedRoles: []string{"user"}},
+			{ID: "shared", Label: &globalLabel, ProviderID: "unix", AccountID: "local", Path: &global, Settings: map[string]string{}},
 		},
 	}
+	testconfig.GrantAll(cfg)
 	return NewServer(cfg), home, global
 }
 
@@ -626,6 +626,7 @@ func postJSONError(t *testing.T, server *Server, path string, cookie string, bod
 		request.Header.Set("Cookie", cookie)
 	}
 	response := httptest.NewRecorder()
+	prepareTestRequest(server, request)
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != status {
 		t.Fatalf("%s status = %d body = %s", path, response.Code, response.Body.String())
@@ -635,4 +636,11 @@ func postJSONError(t *testing.T, server *Server, path string, cookie string, bod
 		t.Fatalf("decode post error response: %v", err)
 	}
 	return out
+}
+
+func prepareTestRequest(server *Server, r *http.Request) {
+	if r.Method != "GET" && r.Method != "HEAD" {
+		r.Header.Set("Origin", server.cfg.Auth.PublicURL)
+		r.Header.Set("X-Cagnard-Request", "1")
+	}
 }

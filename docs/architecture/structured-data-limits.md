@@ -4,6 +4,22 @@ Cagnard's analytical viewers lazy-load one structured-data worker per browser ta
 
 DuckDB-Wasm initializes once on first use. Its signed local Parquet and Iceberg extensions load from Cagnard assets, then sequential relational files, Iceberg tables, and NetCDF projections reuse the healthy engine. Every source still has an isolated connection and generation. Closing or replacing a source aborts requests, invalidates cursors, closes its reader and connection, and unregisters virtual files. Logout, page teardown, or a fatal database/worker error terminates the shared runtime; failed initialization is discarded so Retry starts cleanly.
 
+## Where data is processed
+
+File bytes travel through the authorized backend. Parsing, queries, and result paging run in the browser tab, while storage credentials remain on the server.
+
+```mermaid
+flowchart TD
+  UI["Viewer: Data, SQL, Schema, Metadata"] -->|bounded requests| Worker["Shared worker in this browser tab"]
+  Worker --> Reader["Source adapter<br/>Parquet, Iceberg, NetCDF or relational file"]
+  Reader -->|authenticated ranges or bounded full read| API["Cagnard content API<br/>identity, grants and path checks"]
+  API --> Storage["Filesystem or S3<br/>backend credentials"]
+  Reader --> Query["Source-owned relation and queries"]
+  Query -->|bounded result pages| UI
+```
+
+Each source owns its relation and cleanup. A healthy worker is reused; closing a file releases that source, while logout tears down the worker. The browser demo uses its public HTTP corpus instead of server-side storage. See the [overview](overview.md#browser-demo) and [user guide](../guides/structured-data.md).
+
 ## Source Models
 
 | Source | Access and relation model | Truthful fallback |
@@ -45,7 +61,7 @@ Validated SQL is wrapped in bounded paging with a result-row ceiling, worker-pay
 | Export rows | 100,000 | 500,000 |
 | Export bytes | 16 MiB | 64 MiB |
 
-The backend rejects non-positive or excessive values. Plot and projection limits cannot exceed the slice-cell limit; export bytes cannot exceed the worker response limit. The frontend receives only validated public limits from `/api/structured-data/config` and has conservative compiled defaults for temporary startup failures.
+The backend rejects non-positive or excessive values. Plot and projection limits cannot exceed the slice-cell limit; export bytes cannot exceed the worker response limit. The frontend receives validated limits from the authenticated `/api/structured-data/config` endpoint and has conservative compiled defaults for temporary startup failures.
 
 ## NetCDF Compatibility
 

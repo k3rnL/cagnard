@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/k3rnl/cagnard/backend-go/internal/testconfig"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -601,14 +602,9 @@ func s3Root(prefix string) ResolvedStorageRoot {
 }
 
 func s3TestConfig(rootLabel *string, prefix string) *config.CagnardConfig {
-	mode := "development"
-	defaultUser := "alice"
 	return &config.CagnardConfig{
 		Server: config.ServerConfig{Host: "127.0.0.1", Port: 8080},
-		Auth:   config.AuthConfig{Mode: &mode, ConfiguredUsersEnabled: true, DefaultUser: &defaultUser},
-		Users: []config.ConfiguredUser{
-			{ID: "alice", DisplayName: "Alice", Roles: []string{"user"}},
-		},
+		Auth:   testconfig.Development(),
 		Providers: []config.ProviderConfig{
 			{ID: "s3-main", Type: "s3", Family: "s3", DisplayName: "S3 compatible", Settings: map[string]string{"region": "us-east-1", "endpoint": "http://127.0.0.1:9000", "pathStyleAccess": "true"}},
 		},
@@ -616,7 +612,7 @@ func s3TestConfig(rootLabel *string, prefix string) *config.CagnardConfig {
 			{ID: "s3-account", ProviderID: "s3-main", DisplayName: "S3 account", Enabled: true, AuthMode: "static", Settings: map[string]string{"accessKeyId": "test-access", "secretAccessKey": "test-secret"}},
 		},
 		PersonalStorage: []config.StorageRootConfig{
-			{ID: "s3-home", Label: rootLabel, ProviderID: "s3-main", AccountID: "s3-account", Settings: map[string]string{"bucket": "cagnard-test", "prefix": prefix}, AllowedUsers: []string{"alice"}},
+			{ID: "s3-home", Label: rootLabel, ProviderID: "s3-main", AccountID: "s3-account", Settings: map[string]string{"bucket": "cagnard-test", "prefix": prefix}},
 		},
 	}
 }
@@ -859,5 +855,5 @@ func int64Ptr(value int64) *int64 {
 }
 
 func errorsForFakeS3(message string) error {
-	return fmt.Errorf(message)
+	return fmt.Errorf("%s", message)
 }

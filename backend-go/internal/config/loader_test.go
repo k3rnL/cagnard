@@ -28,8 +28,8 @@ func TestLoadExampleConfig(t *testing.T) {
 	if cfg.StructuredData != DefaultStructuredDataConfig() {
 		t.Fatalf("structured data = %#v", cfg.StructuredData)
 	}
-	if len(cfg.Users) != 1 || cfg.Users[0].ID != "alice" {
-		t.Fatalf("users = %#v", cfg.Users)
+	if len(cfg.Auth.Providers[0].Users) != 1 || cfg.Auth.Providers[0].Users[0].ID != "alice" {
+		t.Fatalf("users = %#v", cfg.Auth.Providers[0].Users)
 	}
 	if got := cfg.Providers[0].Type; got != "filesystem" {
 		t.Fatalf("provider type = %q", got)
@@ -155,7 +155,7 @@ func TestLoadRunnableExampleConfigs(t *testing.T) {
 			if cfg.AuthMode() != "static" {
 				t.Fatalf("auth mode = %q", cfg.AuthMode())
 			}
-			if len(cfg.Users) == 0 {
+			if len(cfg.Auth.Providers[0].Users) == 0 {
 				t.Fatal("expected configured users")
 			}
 			if len(cfg.Providers) == 0 {
@@ -190,6 +190,11 @@ func loadFixture(t *testing.T, path string) *CagnardConfig {
 
 func writeConfigFixture(t *testing.T, content string) string {
 	t.Helper()
+	if content == "{}" {
+		content = ""
+	}
+	content = `auth { version = 2, publicUrl = "http://localhost:8080", allowInsecureLoopback = true, session { key = "Y2FnbmFyZC10ZXN0LWtleS0zMi1ieXRlcy0wMDAwMDA=", ttlSeconds = 3600, secureCookies = false }, development { enabled = true, defaultUser = alice, users = [{id = alice, enabled = true}] } }
+` + content
 	path := filepath.Join(t.TempDir(), "cagnard.conf")
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)

@@ -1,6 +1,9 @@
 services:
   minio:
-    image: ${MINIO_IMAGE:-quay.io/minio/minio:latest}
+    build:
+      context: ../minio
+      dockerfile: Containerfile
+      target: server
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cagnard}
@@ -11,13 +14,16 @@ services:
     volumes:
       - minio-data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/minio/health/ready"]
       interval: 5s
       timeout: 5s
       retries: 20
 
   minio-init:
-    image: ${MINIO_MC_IMAGE:-quay.io/minio/mc:latest}
+    build:
+      context: ../minio
+      dockerfile: Containerfile
+      target: client
     depends_on:
       minio:
         condition: service_healthy
@@ -36,7 +42,7 @@ services:
       - ../../storage/global:/global:ro
 
   backend:
-    image: ghcr.io/k3rnl/cagnard-backend:${CAGNARD_VERSION:-v0.6.2}
+    image: ghcr.io/k3rnl/cagnard-backend:${CAGNARD_VERSION:-v0.12.0}
     environment:
       CAGNARD_CONFIG: /etc/cagnard/cagnard.conf
     ports:
@@ -48,7 +54,7 @@ services:
         condition: service_completed_successfully
 
   frontend:
-    image: ghcr.io/k3rnl/cagnard-frontend:${CAGNARD_VERSION:-v0.6.2}
+    image: ghcr.io/k3rnl/cagnard-frontend:${CAGNARD_VERSION:-v0.12.0}
     environment:
       CAGNARD_API_UPSTREAM: http://backend:8080
     ports:

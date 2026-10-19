@@ -1,9 +1,7 @@
 ## Purpose
 
 Defines personal and global storage tunnels, rights filtering, and user-facing navigation.
-
 ## Requirements
-
 ### Requirement: Independent personal and global storage tunnels
 Cagnard SHALL model personal storage access and global storage access as independent user-facing storage tunnels that can be enabled together or separately.
 
@@ -31,26 +29,34 @@ Cagnard SHALL support a personal "Home" or "My documents" storage area backed by
 - **THEN** Cagnard SHALL expose them as submenus or child entries under the personal storage navigation entry
 
 ### Requirement: Personal storage provisioning modes
-Cagnard SHALL support administrator-configured personal storage roots through explicit declarations, user-based path templates, auto volume declaration, or provider-side segmentation.
+Cagnard SHALL support administrator-declared personal roots with explicit targets or validated principal storage-key templates, including filesystem paths and S3 prefixes. Personal classification SHALL NOT itself grant access or imply user isolation.
 
 #### Scenario: Template-derived home path
-- **WHEN** a home storage root uses a user claim or username path template
-- **THEN** Cagnard SHALL resolve the user's personal root from the authenticated identity and configured template
+- **WHEN** an authorized personal root contains the principal storage-key template
+- **THEN** Cagnard SHALL resolve it using the validated key while preserving confinement to the configured base
 
 #### Scenario: Provider segmentation
-- **WHEN** a provider exposes per-user storage through segmentation rules
-- **THEN** Cagnard SHALL access only the user's configured segment for the personal storage tunnel
+- **WHEN** a personal S3 root uses the principal storage-key template in its prefix
+- **THEN** Cagnard SHALL scope access to the resolved segment under the configured prefix
+
+#### Scenario: Personal root without a grant
+- **WHEN** a root is personal but no binding grants the principal access
+- **THEN** Cagnard SHALL deny that root regardless of its path template
 
 ### Requirement: Global storage points
-Cagnard SHALL support administrator-configured global storage points that users can access according to their rights.
+Cagnard SHALL expose administrator-configured global roots according to centralized scoped role bindings and effective actions. Visibility SHALL NOT imply list permission; every operation SHALL require its own action.
 
 #### Scenario: Display authorized global storage
-- **WHEN** the administrator configures multiple global storage points and the user is authorized for some of them
-- **THEN** Cagnard SHALL show only the authorized storage points under the global navigation entry
+- **WHEN** a principal has effective actions on some configured global roots
+- **THEN** navigation SHALL show those roots with their effective action sets
 
 #### Scenario: Hide unauthorized global storage
-- **WHEN** the user lacks rights for a global storage point
-- **THEN** Cagnard SHALL hide or deny that storage point according to configured policy
+- **WHEN** the principal has no effective actions on a root
+- **THEN** navigation SHALL omit it and direct access SHALL return not found
+
+#### Scenario: Write-only root
+- **WHEN** a principal has write permission but no list permission on a visible root
+- **THEN** authorized writes SHALL remain possible while directory listing SHALL be denied
 
 ### Requirement: Storage tunnel labels
 Cagnard SHALL let administrators configure user-facing labels for personal and global storage areas while preserving canonical tunnel semantics.
@@ -64,15 +70,15 @@ Cagnard SHALL let administrators configure user-facing labels for personal and g
 - **THEN** Cagnard SHALL display that label while treating the area as the global storage tunnel
 
 ### Requirement: Operation scoping by storage tunnel
-Cagnard SHALL include the storage tunnel, provider, account, and resolved root in every browse, mutation, and transfer operation.
+Cagnard SHALL retain tunnel, provider, account, resolved root, canonical actor, and requested action in authorized operations and sanitized audit context. All execution paths SHALL use the centralized authorization service.
 
 #### Scenario: Transfer from personal to global
-- **WHEN** the user transfers a file from personal storage to a global storage point
-- **THEN** Cagnard SHALL evaluate rights for both tunnels and include both scopes in the transfer audit event
+- **WHEN** a principal transfers a file between personal and global storage
+- **THEN** Cagnard SHALL check the required source/destination actions separately and include both scopes in the audit event
 
 #### Scenario: Mutation inside personal storage
-- **WHEN** the user deletes a file from personal storage
-- **THEN** Cagnard SHALL authorize the operation against the personal storage root and not against unrelated global storage rights
+- **WHEN** a principal deletes a personal-storage file
+- **THEN** Cagnard SHALL require delete permission on that resolved root rather than relying on global rights or personal classification
 
 ### Requirement: UI navigation for storage tunnels
 Cagnard SHALL present personal and global storage tunnels as separate primary navigation areas when both are enabled.

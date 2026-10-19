@@ -105,6 +105,10 @@ jobs:
             --jq '.body')"
 
           {
+            if [[ -f "docs/releases/$RELEASE_TAG.md" ]]; then
+              cat "docs/releases/$RELEASE_TAG.md"
+              echo
+            fi
             echo "## Container Images"
             echo
             echo "- \`$BACKEND_IMAGE\` (Go backend runtime)"
@@ -117,7 +121,7 @@ jobs:
             echo "Install with:"
             echo
             echo "\`\`\`bash"
-            echo "helm install cagnard $CHART_REPOSITORY/cagnard --version $CHART_VERSION"
+            echo "helm install cagnard $CHART_REPOSITORY/cagnard --version $CHART_VERSION -f cagnard-values.yaml"
             echo "\`\`\`"
             echo
             printf '%s\n' "$generated_notes"

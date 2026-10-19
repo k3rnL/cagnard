@@ -1,19 +1,19 @@
 # Docker Quick Start
 
-This path runs released Cagnard images with local filesystem storage and static login. You need Git, Docker, and Docker Compose; Go and Node.js are not required.
+This path runs v0.12.0 with local filesystem storage and static login. You need Git, Docker, and Docker Compose. The version-two configuration requires matching backend/frontend images; releases before v0.12.0 cannot load it.
 
-The release images are hosted on GHCR. For anonymous onboarding, their package visibility must be **Public** independently of repository visibility. If a pull returns `401`, the package owner must correct visibility or grant your GitHub account package access. To continue from the checkout immediately, use the [source-build command](#build-your-checkout) instead.
+For an existing deployment, first read the [auth migration guide](../guides/migrating-auth.md). To try SSO as well, use the [Keycloak exercise](../../examples/run/oidc-keycloak/README.md).
 
 ## Start Cagnard
 
 ```bash
-git clone https://github.com/k3rnL/cagnard.git
+git clone --branch v0.12.0 --depth 1 https://github.com/k3rnL/cagnard.git
 cd cagnard/examples/run/local-filesystem-static
 cp .env.example .env
 docker compose up -d
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173) and sign in:
+Open [http://localhost:5173](http://localhost:5173) and sign in:
 
 ```text
 User: alice
@@ -33,15 +33,19 @@ docker compose logs -f backend frontend
 
 The backend health endpoint is available at `http://127.0.0.1:8080/api/health`.
 
+## Registry troubleshooting
+
+A `401` while pulling an image is a registry access issue, before Cagnard starts. Use an image/tag available to your account or have the package owner grant access. Source builds avoid pulling Cagnard release images, but still need their base images. MinIO examples [build pinned upstream sources](../../examples/run/minio/README.md), so their first run also needs access to GitHub and Go dependencies. The [filesystem example](../../examples/run/local-filesystem-static/README.md) does not require MinIO.
+
 ## Select A Version
 
 `.env` contains one release selector:
 
 ```dotenv
-CAGNARD_VERSION=v0.6.2
+CAGNARD_VERSION=v0.12.0
 ```
 
-Frontend and backend must use compatible versions. Update this value to another published release tag when testing an upgrade.
+This selector applies when pulling released images without the build override. Use the configuration from the same release tag. Releases before v0.12.0 do not support this checkout’s v2 authentication configuration. Follow [migration](../guides/migrating-auth.md) when changing binary and configuration together.
 
 ## Try Multiple Providers
 
@@ -53,11 +57,13 @@ cp .env.example .env
 docker compose up -d
 ```
 
+Stop the first example before starting another with the same ports. Changing `FRONTEND_PORT` also requires updating `auth.publicUrl` in its `cagnard.conf`.
+
 Use the pasteboard to copy files between the local and S3 roots. Both roots expose the structured-data fixture set so the viewers can be compared across filesystem and authorized S3 range access. MinIO's console is at `http://127.0.0.1:9001` with the local demo credentials documented in that example.
 
 ## Build Your Checkout
 
-To build local source instead of pulling a release:
+To build or rebuild local source, add the build override:
 
 ```bash
 docker compose -f docker-compose.yaml -f docker-compose.build.yaml up --build
@@ -71,4 +77,6 @@ On macOS, Mocker is also available for local image validation, but Docker remain
 docker compose down --volumes
 ```
 
-All included passwords, MinIO keys, and signing secrets are demo values. Do not reuse them outside a local disposable environment.
+This removes containers and named volumes. It does not delete bind-mounted files in `data/` or the shared example corpus; reset those separately only if you intend to discard your changes.
+
+All included passwords, MinIO keys, and session protection keys are demo values. Do not reuse them outside a local disposable environment.

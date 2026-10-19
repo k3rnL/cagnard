@@ -33,9 +33,9 @@ export function App() {
               <div className="session-card">
                 <div>
                   <strong>{data.session?.user.displayName ?? "Loading"}</strong>
-                  <span>{data.session?.user.id ?? "..."}</span>
+                  <span>{data.session ? `${data.session.user.providerId} / ${data.session.user.subject}` : "..."}</span>
                 </div>
-                <button className="icon-button compact" onClick={data.logout} title="Logout" type="button">
+                <button className="icon-button compact" onClick={data.logout} title="Sign out of Cagnard on this browser" aria-label="Sign out of Cagnard on this browser" type="button">
                   <LogOut size={15} />
                 </button>
               </div>
@@ -84,7 +84,14 @@ export function App() {
             </div>
           </aside>
 
-          <StorageBrowser state={data} />
+          {!data.loading && !data.session?.personalEnabled && !data.session?.globalEnabled ? (
+            <main className="no-storage-access" aria-labelledby="no-storage-title">
+              <ShieldCheck size={32} aria-hidden="true" />
+              <h1 id="no-storage-title">You’re signed in</h1>
+              <p>Your account has no storage access yet. Ask your Cagnard administrator to assign access.</p>
+              <button className="primary-button" type="button" onClick={() => void data.logout()}>Sign out of Cagnard</button>
+            </main>
+          ) : <StorageBrowser state={data} />}
         </div>
       ) : (
         <LoginScreen state={data} />

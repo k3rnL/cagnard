@@ -57,7 +57,7 @@ func (s *Server) icebergProbe(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, APIError{Code: "invalid_iceberg_path", Message: err.Error()})
 		return
 	}
-	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), false)
+	root, provider, ok := s.providerForRequest(w, r, queryValue(r, "tunnel"), queryValue(r, "rootId"), "storage.read")
 	if !ok {
 		return
 	}
@@ -203,7 +203,7 @@ func (s *Server) icebergProbe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) icebergContent(w http.ResponseWriter, r *http.Request) {
-	root, provider, ok := s.providerForRequest(w, r, r.PathValue("tunnel"), r.PathValue("rootId"), false)
+	root, provider, ok := s.providerForRequest(w, r, r.PathValue("tunnel"), r.PathValue("rootId"), "storage.read")
 	if !ok {
 		return
 	}

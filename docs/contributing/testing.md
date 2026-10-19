@@ -25,6 +25,19 @@ Go unit and API tests live under `backend-go`. Provider-independent tests must r
 
 Task-engine changes should cover owner isolation, state transitions, item pagination, cancellation, partial mutations, and disconnect handling. Provider stream tests must include unknown content lengths and cancellation during I/O; S3 write changes also require multipart verification against MinIO.
 
+## Authentication and authorization
+
+Run focused protocol/policy checks from the Go module, then exercise the real provider setup:
+
+```bash
+cd backend-go
+go test -race ./internal/authn ./internal/authz ./internal/storageaccess ./internal/api
+```
+
+The OIDC fixture is local and does not require a production IdP. It covers signature/issuer/audience/nonce failures, replay, transaction expiry, key rotation, outage, and claim bounds. Use the [Keycloak exercise](../../examples/run/oidc-keycloak/README.md) for live browser redirects and [OIDC verification steps](../guides/oidc.md#verify-the-deployment) for the deployment’s actual claims and callback configuration. Keep test storage disposable.
+
+Check static and SSO users with equivalent groups, a user without grants, read-only accounts, cross-provider task isolation, expiry during work, and fresh conflict resolution. Provider support must never grant an action that policy denies.
+
 ## Frontend
 
 Vitest covers focused state and contract behavior. TypeScript typecheck and the production Vite build catch integration and bundling failures. User-facing workflow changes also require browser verification at desktop and constrained widths.
@@ -48,13 +61,15 @@ Task workflow changes require desktop and narrow-width browser checks for copy, 
 
 ## Examples And Packaging
 
-`scripts/validate-compose-examples.sh` renders every release-first Compose file and its source-build override. `scripts/validate-helm-examples.sh` lints/templates the chart with maintained values. Run actual smoke tests when changing container startup, proxying, providers, seeded data, or credentials.
+`scripts/validate-compose-examples.sh` renders every Compose file and its available source-build override, then checks referenced Quay manifests. Registry authorization or availability failures are separate from configuration-rendering failures. `scripts/validate-helm-examples.sh` lints/templates the chart with maintained values. Run actual smoke tests when changing container startup, proxying, providers, seeded data, or credentials.
+
+S3 CI builds its disposable [MinIO image from pinned sources](../../examples/run/minio/README.md). This removes the dependency on the unavailable upstream MinIO container images; it still requires GitHub, Go module, and base-image access.
 
 Mocker is for local macOS image validation only. CI, release publishing, and runnable Compose examples use Docker.
 
 ## Documentation
 
-`pnpm docs:check` validates local Markdown links and referenced assets. Also inspect README and documentation images at normal and narrow widths and verify that screenshots contain no credentials or private content.
+`pnpm docs:check` validates local Markdown links, heading anchors, and referenced assets in the reader documentation. It does not check external URLs, run examples, or parse/render Mermaid; review diagrams separately using the [documentation guidelines](documentation.md#diagrams-and-reading-paths). Also inspect README and documentation images at normal and narrow widths and verify that screenshots contain no credentials or private content.
 
 ## OpenSpec
 

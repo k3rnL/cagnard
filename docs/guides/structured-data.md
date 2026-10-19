@@ -1,6 +1,6 @@
 # Explore Structured Data
 
-Cagnard opens relational data files, Iceberg table folders, and NetCDF scientific datasets in one read-only analytical workspace. Processing stays in the browser worker, provider credentials stay in the backend, and every operation is bounded by server configuration.
+Cagnard opens relational data files, Iceberg table folders, and NetCDF scientific datasets in one read-only analytical workspace. Processing stays in the browser worker, provider credentials stay in the backend, and processing in the application follows limits supplied by the backend. These limits protect the viewer from excessive work; they do not restrict what an authorized user can do with a downloaded file.
 
 ## Relational Files
 

@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/k3rnl/cagnard/backend-go/internal/auth"
+	auth "github.com/k3rnl/cagnard/backend-go/internal/authn"
 	"github.com/k3rnl/cagnard/backend-go/internal/storage"
 )
 
@@ -56,11 +56,11 @@ func (s *Server) startDownloadTaskRequest(identity auth.RequestIdentity, request
 		if err != nil {
 			return TaskResponse{}, badRequestAPIError("invalid_source_path", fmt.Sprintf("Download source %d has an invalid path", index+1))
 		}
-		root, rootErr := s.rootForIdentity(identity, source.Tunnel, source.RootID, false)
+		root, rootErr := s.rootForIdentity(identity, source.Tunnel, source.RootID, "storage.read")
 		if rootErr != nil {
 			return TaskResponse{}, rootErr
 		}
-		provider, err := s.registry.Provider(root.ProviderID)
+		provider, err := s.guardedProvider(identity, root, "storage.read")
 		if err != nil {
 			return TaskResponse{}, badRequestAPIError("unknown_provider", "Storage provider is unavailable")
 		}
@@ -92,7 +92,7 @@ func (s *Server) startDownloadTaskRequest(identity auth.RequestIdentity, request
 		Tasks:     tasks,
 	}
 	job.Progress = aggregateTaskProgress(job.Tasks)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := identity.DeadlineContext(context.Background())
 	s.tasks.mu.Lock()
 	s.pruneTransferJobsLocked(resolved.Profile.ID, time.Now())
 	s.tasks.jobs[jobID] = indexStoredTask(storedTransferJob{ownerID: resolved.Profile.ID, job: job, ctx: ctx, cancel: cancel, downloadRequest: &request})
@@ -183,7 +183,7 @@ func downloadFailureStatus(explicitlyCanceled bool) string {
 }
 
 func (s *Server) streamTaskFile(ctx context.Context, jobID string, identity auth.RequestIdentity, source TaskSourceRequest, r *http.Request, w http.ResponseWriter) error {
-	root, provider, apiErr := s.taskSourceProvider(identity, source, false)
+	root, provider, apiErr := s.taskSourceProvider(identity, source, "storage.read")
 	if apiErr != nil {
 		return errors.New(apiErr.Error.Message)
 	}
@@ -283,7 +283,7 @@ func (s *Server) streamTaskZIP(ctx context.Context, jobID string, identity auth.
 			_ = zipWriter.Close()
 			return err
 		}
-		root, provider, apiErr := s.taskSourceProvider(identity, source, false)
+		root, provider, apiErr := s.taskSourceProvider(identity, source, "storage.read")
 		if apiErr != nil {
 			stream.failures++
 			s.markTaskItemFinished(jobID, transferTaskID(index), "error", "Source is unavailable")
@@ -491,12 +491,12 @@ func zipMethod(entry storage.StorageEntry) uint16 {
 	}
 }
 
-func (s *Server) taskSourceProvider(identity auth.RequestIdentity, source TaskSourceRequest, writable bool) (storage.ResolvedStorageRoot, storage.StorageProvider, *transferAPIError) {
-	root, apiErr := s.rootForIdentity(identity, source.Tunnel, source.RootID, writable)
+func (s *Server) taskSourceProvider(identity auth.RequestIdentity, source TaskSourceRequest, actions ...string) (storage.ResolvedStorageRoot, storage.StorageProvider, *transferAPIError) {
+	root, apiErr := s.rootForIdentity(identity, source.Tunnel, source.RootID, actions...)
 	if apiErr != nil {
 		return storage.ResolvedStorageRoot{}, nil, apiErr
 	}
-	provider, err := s.registry.Provider(root.ProviderID)
+	provider, err := s.guardedProvider(identity, root, actions...)
 	if err != nil {
 		return storage.ResolvedStorageRoot{}, nil, badRequestAPIError("unknown_provider", "Storage provider is unavailable")
 	}

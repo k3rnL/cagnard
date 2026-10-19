@@ -314,3 +314,28 @@ func filesystemRoot(base string) ResolvedStorageRoot {
 		Settings:       map[string]string{},
 	}
 }
+
+func TestFilesystemRejectsSymlinkContentAndWrites(t *testing.T) {
+	base, outside := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "private.txt"), []byte("private"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(base, "link")); err != nil {
+		t.Fatal(err)
+	}
+	provider := NewFilesystemProvider(config.ProviderConfig{ID: "local", Type: "filesystem"})
+	root := filesystemRoot(base)
+	if _, err := provider.Download(root, "link/private.txt"); err == nil {
+		t.Fatal("read followed a symlink outside the root")
+	}
+	if _, err := provider.Upload(root, "link/private.txt", []byte("changed"), true); err == nil {
+		t.Fatal("write followed a symlink outside the root")
+	}
+	if _, err := provider.CreateFolder(root, "link", "new"); err == nil {
+		t.Fatal("mkdir followed a symlink outside the root")
+	}
+	data, err := os.ReadFile(filepath.Join(outside, "private.txt"))
+	if err != nil || string(data) != "private" {
+		t.Fatalf("outside file changed: %q %v", data, err)
+	}
+}

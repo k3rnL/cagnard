@@ -18,7 +18,7 @@ The API never accepts an arbitrary account ID or absolute backend path from the 
 
 Each capability is `supported`, `degraded`, or `unsupported`, with an optional explanation. Degraded means Cagnard can preserve the user-visible operation through a less-native path. Examples include S3 rename as copy then delete and S3 follow mode through polling.
 
-Capabilities drive toolbar availability, opener matching, and transfer planning. Code must still handle runtime provider failures; capability discovery is not a guarantee that an external service remains available.
+Capabilities describe technical support. [Root actions](../reference/authorization.md) separately describe the user’s permissions; both constrain the UI and operations. Code must still handle runtime provider failures; capability discovery is not a guarantee that an external service remains available.
 
 ## Listing And Pagination
 
@@ -28,9 +28,11 @@ The response reports accuracy for search, sort, and totals. Filesystem listing c
 
 ## Transfer Interoperability
 
-Same-root native copy or move can be used when semantics match. Cross-provider transfers stream from source to destination when both providers implement streaming capabilities; otherwise the backend permits only bounded buffering under the configured safety limit. Recursive directories are expanded into child items before or during execution so progress and conflicts are attached to real files.
+The API-facing guarded provider currently implements same-root copy through checked reads/writes and move through copy then delete. Native provider methods exist underneath it, but their presence does not mean the browser uses a native fast path. Cross-provider transfers stream from source to destination when both providers implement streaming capabilities; otherwise the backend permits only bounded buffering under the configured safety limit. Recursive directories are expanded into child items before or during execution so progress and conflicts are attached to real files.
 
-Move is copy plus source deletion across roots. Source deletion happens only after destination success.
+Move is copy plus source deletion, including within one root. Source deletion happens only after destination success.
+
+See [storage configuration relationships](../reference/storage-access.md), the [capability matrix](../reference/provider-capabilities.md), and [task execution](tasks.md).
 
 ## Adding A Provider
 

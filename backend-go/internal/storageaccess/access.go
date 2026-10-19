@@ -1,7 +1,11 @@
-package auth
+// Package storageaccess combines policy grants with configured storage ceilings.
+package storageaccess
 
 import (
+	"github.com/k3rnl/cagnard/backend-go/internal/authz"
+	"github.com/k3rnl/cagnard/backend-go/internal/identity"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/k3rnl/cagnard/backend-go/internal/config"
@@ -26,18 +30,18 @@ func NewAccessService(cfg *config.CagnardConfig) *AccessService {
 	return &AccessService{cfg: cfg, accounts: accounts, providers: providers}
 }
 
-func (s *AccessService) PersonalRoots(user UserProfile) []storage.ResolvedStorageRoot {
+func (s *AccessService) PersonalRoots(user identity.Principal) []storage.ResolvedStorageRoot {
 	return s.roots("personal", s.cfg.PersonalStorage, user)
 }
 
-func (s *AccessService) GlobalRoots(user UserProfile) []storage.ResolvedStorageRoot {
+func (s *AccessService) GlobalRoots(user identity.Principal) []storage.ResolvedStorageRoot {
 	return s.roots("global", s.cfg.GlobalStorage, user)
 }
 
-func (s *AccessService) roots(tunnel string, roots []config.StorageRootConfig, user UserProfile) []storage.ResolvedStorageRoot {
+func (s *AccessService) roots(tunnel string, roots []config.StorageRootConfig, user identity.Principal) []storage.ResolvedStorageRoot {
 	out := make([]storage.ResolvedStorageRoot, 0, len(roots))
 	for _, root := range roots {
-		if !isAllowed(root, user) {
+		if len(authz.New(s.cfg).Actions(user, tunnel, root.ID)) == 0 {
 			continue
 		}
 		if resolved, ok := s.resolve(tunnel, root, user); ok {
@@ -47,7 +51,7 @@ func (s *AccessService) roots(tunnel string, roots []config.StorageRootConfig, u
 	return out
 }
 
-func (s *AccessService) resolve(tunnel string, root config.StorageRootConfig, user UserProfile) (storage.ResolvedStorageRoot, bool) {
+func (s *AccessService) resolve(tunnel string, root config.StorageRootConfig, user identity.Principal) (storage.ResolvedStorageRoot, bool) {
 	account, ok := s.accounts[root.AccountID]
 	if !ok || !account.Enabled {
 		return storage.ResolvedStorageRoot{}, false
@@ -60,30 +64,32 @@ func (s *AccessService) resolve(tunnel string, root config.StorageRootConfig, us
 	if !ok {
 		return storage.ResolvedStorageRoot{}, false
 	}
+	actions := authz.New(s.cfg).Actions(user, tunnel, root.ID)
+	if account.ReadOnly || provider.Type == "http" {
+		actions = slices.DeleteFunc(actions, identity.Mutating)
+	}
+	if len(actions) == 0 {
+		return storage.ResolvedStorageRoot{}, false
+	}
+	writable := false
+	for _, a := range actions {
+		writable = writable || identity.Mutating(a)
+	}
 	return storage.ResolvedStorageRoot{
+		Actions:        actions,
 		ID:             root.ID,
 		Label:          displayLabel(provider.Type, root),
 		Tunnel:         tunnel,
 		ProviderID:     root.ProviderID,
 		AccountID:      root.AccountID,
 		ProviderFamily: provider.Family,
-		ReadOnly:       account.ReadOnly,
+		ReadOnly:       account.ReadOnly || !writable,
 		Target:         target,
 		Settings:       root.Settings,
 	}, true
 }
 
-func isAllowed(root config.StorageRootConfig, user UserProfile) bool {
-	hasRules := len(root.AllowedUsers) > 0 || len(root.AllowedRoles) > 0 || len(root.AllowedGroups) > 0
-	if !hasRules {
-		return true
-	}
-	return contains(root.AllowedUsers, user.ID) ||
-		intersects(user.Roles, root.AllowedRoles) ||
-		intersects(user.Groups, root.AllowedGroups)
-}
-
-func rootTarget(providerType string, root config.StorageRootConfig, user UserProfile) (storage.RootTarget, bool) {
+func rootTarget(providerType string, root config.StorageRootConfig, user identity.Principal) (storage.RootTarget, bool) {
 	switch providerType {
 	case "filesystem":
 		if root.Path == nil {
@@ -95,9 +101,9 @@ func rootTarget(providerType string, root config.StorageRootConfig, user UserPro
 		if bucket == "" {
 			return nil, false
 		}
-		return storage.ObjectStoreRootTarget{Bucket: bucket, Prefix: normalizePrefix(root.Settings["prefix"])}, true
+		return storage.ObjectStoreRootTarget{Bucket: bucket, Prefix: normalizePrefix(interpolate(root.Settings["prefix"], user))}, true
 	case "http":
-		return storage.HTTPRootTarget{Prefix: normalizePrefix(root.Settings["prefix"])}, true
+		return storage.HTTPRootTarget{Prefix: normalizePrefix(interpolate(root.Settings["prefix"], user))}, true
 	default:
 		return nil, false
 	}
@@ -128,36 +134,22 @@ func normalizePrefix(raw string) string {
 	return strings.Join(out, "/")
 }
 
-func interpolate(raw string, user UserProfile) string {
-	out := strings.ReplaceAll(raw, "{user.id}", user.ID)
-	out = strings.ReplaceAll(out, "{user.name}", user.ID)
-	for key, value := range user.Claims {
-		out = strings.ReplaceAll(out, "{claim."+key+"}", value)
-	}
-	return out
+func interpolate(raw string, user identity.Principal) string {
+	return strings.ReplaceAll(raw, "{principal.storageKey}", user.StorageKey)
 }
 
-func contains(values []string, expected string) bool {
-	for _, value := range values {
-		if value == expected {
-			return true
+func (s *AccessService) Root(user identity.Principal, tunnel, id string) (storage.ResolvedStorageRoot, bool) {
+	var roots []storage.ResolvedStorageRoot
+	switch tunnel {
+	case "personal":
+		roots = s.PersonalRoots(user)
+	case "global":
+		roots = s.GlobalRoots(user)
+	}
+	for _, root := range roots {
+		if root.ID == id {
+			return root, true
 		}
 	}
-	return false
-}
-
-func intersects(left []string, right []string) bool {
-	if len(left) == 0 || len(right) == 0 {
-		return false
-	}
-	lookup := map[string]bool{}
-	for _, value := range right {
-		lookup[value] = true
-	}
-	for _, value := range left {
-		if lookup[value] {
-			return true
-		}
-	}
-	return false
+	return storage.ResolvedStorageRoot{}, false
 }

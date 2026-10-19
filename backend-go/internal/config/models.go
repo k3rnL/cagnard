@@ -6,7 +6,7 @@ type CagnardConfig struct {
 	Auth            AuthConfig
 	Tasks           TaskConfig
 	StructuredData  StructuredDataConfig
-	Users           []ConfiguredUser
+	Authorization   AuthorizationConfig
 	Providers       []ProviderConfig
 	Accounts        []StorageAccountConfig
 	PersonalStorage []StorageRootConfig
@@ -169,46 +169,96 @@ func fillInt64(value *int64, fallback int64) {
 	}
 }
 
+// AuthConfig declares login providers and browser-session policy. See docs/reference/authentication.md.
 type AuthConfig struct {
-	Mode                   *string
-	ConfiguredUsersEnabled bool
-	DefaultUser            *string
-	Session                *SessionConfig
-	StaticProvider         *StaticProviderConfig
-	OIDCProviders          []OIDCProviderConfig
+	Version               int                  `json:"version"`
+	PublicURL             string               `json:"publicUrl"`
+	AllowInsecureLoopback bool                 `json:"allowInsecureLoopback"`
+	Session               SessionConfig        `json:"session"`
+	Providers             []AuthProviderConfig `json:"providers"`
+	Development           *DevelopmentConfig   `json:"development"`
 }
 
 type SessionConfig struct {
-	SigningSecret *string
-	TTLSeconds    *int64
-	CookieName    *string
-	SecureCookies *bool
+	Key           string `json:"key"`
+	TTLSeconds    int64  `json:"ttlSeconds"`
+	SecureCookies bool   `json:"secureCookies"`
 }
 
-type StaticProviderConfig struct {
-	ID      *string
-	Label   *string
-	Enabled *bool
+type AuthProviderConfig struct {
+	ID            string              `json:"id"`
+	Type          string              `json:"type"`
+	Label         string              `json:"label"`
+	Enabled       bool                `json:"enabled"`
+	Users         []ConfiguredUser    `json:"users,omitempty"`
+	Issuer        string              `json:"issuer,omitempty"`
+	ClientID      string              `json:"clientId,omitempty"`
+	ClientSecret  string              `json:"clientSecret,omitempty"`
+	Scopes        []string            `json:"scopes,omitempty"`
+	GroupMappings []GroupMapping      `json:"groupMappings,omitempty"`
+	StorageKeys   []StorageKeyMapping `json:"storageKeys,omitempty"`
 }
 
-type OIDCProviderConfig struct {
-	ID          string
-	Issuer      string
-	Audience    string
-	GroupsClaim string
+type GroupMapping struct {
+	Claim string `json:"claim"`
+	Value string `json:"value"`
+	Group string `json:"group"`
+}
+
+type StorageKeyMapping struct {
+	Subject    string `json:"subject"`
+	StorageKey string `json:"storageKey"`
+}
+
+type DevelopmentConfig struct {
+	Enabled     bool             `json:"enabled"`
+	DefaultUser string           `json:"defaultUser"`
+	Users       []ConfiguredUser `json:"users"`
 }
 
 type ConfiguredUser struct {
-	ID          string
-	DisplayName string
-	Roles       []string
-	Groups      []string
-	Claims      map[string]string
-	Credential  *StaticUserCredentialConfig
+	ID          string                      `json:"id"`
+	DisplayName string                      `json:"displayName"`
+	Enabled     bool                        `json:"enabled"`
+	Groups      []string                    `json:"groups"`
+	StorageKey  string                      `json:"storageKey,omitempty"`
+	Credential  *StaticUserCredentialConfig `json:"credential,omitempty"`
 }
 
 type StaticUserCredentialConfig struct {
-	Verifier string
+	Verifier string `json:"verifier"`
+}
+
+// AuthorizationConfig declares membership names, action sets, and resource grants.
+// See docs/reference/authorization.md. Empty bindings always deny access.
+type AuthorizationConfig struct {
+	Groups   []GroupConfig   `json:"groups"`
+	Roles    []RoleConfig    `json:"roles"`
+	Bindings []BindingConfig `json:"bindings"`
+}
+
+type GroupConfig struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+type RoleConfig struct {
+	ID      string   `json:"id"`
+	Actions []string `json:"actions"`
+}
+type SubjectConfig struct {
+	Group         string `json:"group,omitempty"`
+	ProviderID    string `json:"providerId,omitempty"`
+	Subject       string `json:"subject,omitempty"`
+	Authenticated bool   `json:"authenticated,omitempty"`
+}
+type RootRef struct {
+	Tunnel string `json:"tunnel"`
+	RootID string `json:"rootId"`
+}
+type BindingConfig struct {
+	Subjects []SubjectConfig `json:"subjects"`
+	Roles    []string        `json:"roles"`
+	Roots    []RootRef       `json:"roots"`
 }
 
 type ProviderConfig struct {
@@ -230,20 +280,28 @@ type StorageAccountConfig struct {
 }
 
 type StorageRootConfig struct {
-	ID            string
-	Label         *string
-	ProviderID    string
-	AccountID     string
-	Path          *string
-	Settings      map[string]string
-	AllowedUsers  []string
-	AllowedRoles  []string
-	AllowedGroups []string
+	ID         string
+	Label      *string
+	ProviderID string
+	AccountID  string
+	Path       *string
+	Settings   map[string]string
 }
 
 func (c CagnardConfig) AuthMode() string {
-	if c.Auth.Mode == nil || *c.Auth.Mode == "" {
+	if c.Auth.Development != nil && c.Auth.Development.Enabled {
 		return "development"
 	}
-	return *c.Auth.Mode
+	if len(c.Auth.Providers) == 1 {
+		return c.Auth.Providers[0].Type
+	}
+	return "providers"
+}
+
+func (c CagnardConfig) StaticUserCount() int {
+	count := 0
+	for _, provider := range c.Auth.Providers {
+		count += len(provider.Users)
+	}
+	return count
 }

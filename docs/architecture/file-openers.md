@@ -28,7 +28,7 @@ Filters, ordered sorts, projection, exact counts, and exports appear only when t
 
 ## Security And Lifecycle
 
-Adapters receive an authenticated same-origin Cagnard content URL and validated public limits, never provider credentials. DuckDB SQL is AST-allowlisted, external access is disabled or narrowed to the source facade, extension auto-install is disabled, and worker responses are bounded. Iceberg references resolve through an authorized backend facade. NetCDF is full-buffered only below its configured ceiling.
+Adapters receive an authenticated same-origin Cagnard content URL and validated processing limits, never provider credentials. DuckDB SQL is AST-allowlisted, external access is disabled or narrowed to the source facade, extension auto-install is disabled, and worker responses are bounded. Iceberg references resolve through an authorized backend facade. NetCDF is full-buffered only below its configured ceiling.
 
 Closing or replacing a source aborts requests, closes decoder state and DuckDB connections, and unregisters source files. The healthy worker and DuckDB runtime remain reusable; logout, page teardown, or fatal runtime failure terminates them.
 

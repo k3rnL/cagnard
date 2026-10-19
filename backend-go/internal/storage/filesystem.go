@@ -500,6 +500,9 @@ func (p *FilesystemProvider) DeleteRecursive(ctx context.Context, root ResolvedS
 		if onItem != nil {
 			onItem(DeleteItemEvent{Path: normalized, Name: filepath.Base(current), Kind: kind, Status: "running", Size: size})
 		}
+		if err := ctx.Err(); err != nil {
+			return summary, errors.Join(append(failures, err)...)
+		}
 		if statErr == nil {
 			statErr = os.Remove(current)
 		}
@@ -614,6 +617,25 @@ func (p *FilesystemProvider) validateInside(root ResolvedStorageRoot, target str
 		return err
 	}
 	if rel == "." || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." && !filepath.IsAbs(rel)) {
+		// Do not follow links in a user's root or its descendants into another root.
+		current := base
+		components := []string{""}
+		if rel != "." {
+			components = append(components, strings.Split(rel, string(filepath.Separator))...)
+		}
+		for _, component := range components {
+			current = filepath.Join(current, component)
+			info, err := os.Lstat(current)
+			if os.IsNotExist(err) {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				return errors.New("Symbolic links are not supported inside storage roots")
+			}
+		}
 		return nil
 	}
 	return errors.New("Path escapes configured storage root")
@@ -628,6 +650,9 @@ func (p *FilesystemProvider) base(root ResolvedStorageRoot) (string, error) {
 }
 
 func (p *FilesystemProvider) entry(root ResolvedStorageRoot, target string) (StorageEntry, error) {
+	if err := p.validateInside(root, target); err != nil {
+		return StorageEntry{}, err
+	}
 	base, err := p.base(root)
 	if err != nil {
 		return StorageEntry{}, err

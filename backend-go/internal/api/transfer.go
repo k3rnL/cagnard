@@ -8,12 +8,13 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/k3rnl/cagnard/backend-go/internal/auth"
+	auth "github.com/k3rnl/cagnard/backend-go/internal/authn"
 	"github.com/k3rnl/cagnard/backend-go/internal/storage"
 )
 
@@ -155,7 +156,7 @@ func (s *Server) startTransferJobRequest(identity auth.RequestIdentity, request 
 	s.tasks.mu.Lock()
 	s.pruneTransferJobsLocked(resolved.Profile.ID, time.Now())
 	request.ConflictPolicy = policy
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := identity.DeadlineContext(context.Background())
 	s.tasks.jobs[jobID] = indexStoredTask(storedTransferJob{ownerID: resolved.Profile.ID, job: job, request: request, ctx: ctx, cancel: cancel})
 	s.tasks.mu.Unlock()
 	if len(preflight) == 0 && len(request.Sources) > 0 {
@@ -245,6 +246,10 @@ func (s *Server) resolveTransferJobRequest(identity auth.RequestIdentity, jobID 
 		s.tasks.mu.RUnlock()
 		return TaskResponse{}, badRequestAPIError("task_not_blocked", "Transfer task is not waiting for a conflict decision")
 	}
+	if stored.job.MutationCount > 0 {
+		s.tasks.mu.RUnlock()
+		return TaskResponse{}, &transferAPIError{Status: http.StatusConflict, Error: APIError{Code: "partial_task_requires_new_request", Message: "This task already changed storage. Start a new task for the remaining items to avoid replaying completed work."}}
+	}
 	request := stored.request
 	s.tasks.mu.RUnlock()
 
@@ -265,6 +270,10 @@ func (s *Server) resolveTransferJobRequest(identity auth.RequestIdentity, jobID 
 		return TaskResponse{}, badRequestAPIError("task_not_blocked", "Transfer task is not waiting for a conflict decision")
 	}
 	delete(s.tasks.canceled, jobID)
+	if stored.cancel != nil {
+		stored.cancel()
+	}
+	stored.ctx, stored.cancel = identity.DeadlineContext(context.Background())
 	stored.request = request
 	stored.job.Status = "pending"
 	stored.job.Message = "Transfer conflict resolved"
@@ -402,7 +411,7 @@ func (s *Server) preflightTransfer(identity auth.RequestIdentity, source Transfe
 	}
 	targetPath := joinTransferPath(destinationPath, context.entry.Name)
 	sameRoot := context.root.Tunnel == destinationRoot.Tunnel && context.root.ID == destinationRoot.ID
-	if intent == "move" && context.root.ReadOnly {
+	if intent == "move" && !slices.Contains(context.root.Actions, "storage.delete") {
 		result := failedResult(source, nil, "Source root is read-only")
 		return &result
 	}
@@ -467,7 +476,7 @@ func (s *Server) transferOne(identity auth.RequestIdentity, source TransferSourc
 	if apiErr != nil {
 		return failedResult(source, nil, apiErr.Error.Message)
 	}
-	if intent == "move" && context.root.ReadOnly {
+	if intent == "move" && !slices.Contains(context.root.Actions, "storage.delete") {
 		return failedResult(source, nil, "Source root is read-only")
 	}
 	if context.entry.Kind != "file" && context.entry.Kind != "directory" {
@@ -789,11 +798,17 @@ func (s *Server) resolveTarget(source TransferSourceRequest, provider storage.St
 }
 
 func (s *Server) sourceContext(identity auth.RequestIdentity, source TransferSourceRequest) (transferContext, *transferAPIError) {
-	root, apiErr := s.rootForIdentity(identity, source.Tunnel, source.RootID, false)
+	if strings.ToLower(strings.TrimSpace(source.Intent)) == "move" {
+		if _, e := s.rootForIdentity(identity, source.Tunnel, source.RootID, "storage.delete"); e != nil {
+			return transferContext{}, e
+		}
+	}
+
+	root, apiErr := s.rootForIdentity(identity, source.Tunnel, source.RootID, "storage.read")
 	if apiErr != nil {
 		return transferContext{}, apiErr
 	}
-	provider, err := s.registry.Provider(root.ProviderID)
+	provider, err := s.guardedProvider(identity, root, "storage.read")
 	if err != nil {
 		return transferContext{}, badRequestAPIError("unknown_provider", err.Error())
 	}
@@ -806,40 +821,15 @@ func (s *Server) sourceContext(identity auth.RequestIdentity, source TransferSou
 }
 
 func (s *Server) destinationForTransfer(identity auth.RequestIdentity, destination TransferDestinationRequest) (storage.ResolvedStorageRoot, storage.StorageProvider, *transferAPIError) {
-	root, apiErr := s.rootForIdentity(identity, destination.Tunnel, destination.RootID, true)
+	root, apiErr := s.rootForIdentity(identity, destination.Tunnel, destination.RootID, "storage.write")
 	if apiErr != nil {
 		return storage.ResolvedStorageRoot{}, nil, apiErr
 	}
-	provider, err := s.registry.Provider(root.ProviderID)
+	provider, err := s.guardedProvider(identity, root, "storage.write")
 	if err != nil {
 		return storage.ResolvedStorageRoot{}, nil, badRequestAPIError("unknown_provider", err.Error())
 	}
 	return root, provider, nil
-}
-
-func (s *Server) rootForIdentity(identity auth.RequestIdentity, tunnel string, rootID string, writable bool) (storage.ResolvedStorageRoot, *transferAPIError) {
-	resolved, failure := s.resolver.Resolve(identity)
-	if failure != nil {
-		return storage.ResolvedStorageRoot{}, authAPIError(failure)
-	}
-	var roots []storage.ResolvedStorageRoot
-	switch tunnel {
-	case "personal":
-		roots = s.access.PersonalRoots(resolved.Profile)
-	case "global":
-		roots = s.access.GlobalRoots(resolved.Profile)
-	default:
-		return storage.ResolvedStorageRoot{}, badRequestAPIError("unknown_tunnel", fmt.Sprintf("Unknown storage tunnel '%s'", tunnel))
-	}
-	for _, root := range roots {
-		if root.ID == rootID {
-			if writable && root.ReadOnly {
-				return storage.ResolvedStorageRoot{}, badRequestAPIError("read_only_root", "Storage root is read-only")
-			}
-			return root, nil
-		}
-	}
-	return storage.ResolvedStorageRoot{}, badRequestAPIError("unknown_root", fmt.Sprintf("Storage root '%s' is not available", rootID))
 }
 
 func destinationExists(provider storage.StorageProvider, root storage.ResolvedStorageRoot, path string) (bool, error) {

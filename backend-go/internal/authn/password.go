@@ -1,4 +1,4 @@
-package auth
+package authn
 
 import (
 	"crypto/sha256"
@@ -19,7 +19,7 @@ func VerifyPassword(password string, verifier string) bool {
 	}
 
 	iterations, err := strconv.Atoi(parts[1])
-	if err != nil || iterations <= 0 {
+	if err != nil || iterations < 10000 || iterations > 2000000 {
 		return false
 	}
 
@@ -28,7 +28,7 @@ func VerifyPassword(password string, verifier string) bool {
 		return false
 	}
 	expected, err := decodeURLBase64(parts[3])
-	if err != nil || len(expected) == 0 {
+	if err != nil || len(expected) != 32 {
 		return false
 	}
 

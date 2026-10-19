@@ -94,6 +94,7 @@ func serve(handler http.Handler, request bridgeRequest) js.Value {
 		httpRequest.Header.Set(key, value)
 	}
 
+	httpRequest.Header.Set("Origin", js.Global().Get("location").Get("origin").String())
 	recorder := &bufferedResponse{header: http.Header{}, status: http.StatusOK}
 	handler.ServeHTTP(recorder, httpRequest)
 	return responseToJS(recorder.status, recorder.header, recorder.body.Bytes())
@@ -157,36 +158,14 @@ func demoDataURL() string {
 // demoConfig serves the published examples/storage/global corpus through the
 // read-only http provider; there is no personal storage in the demo.
 func demoConfig() *config.CagnardConfig {
-	mode := "static"
-	signingSecret := "wasm-demo-cagnard-session-signing-secret"
-	providerID := "static"
-	providerLabel := "Cagnard account"
-	enabled := true
 	sharedLabel := "Global"
 	return &config.CagnardConfig{
 		Server: config.ServerConfig{Host: "wasm", Port: 0},
 		// GitHub Pages compresses responses and rejects ranged HEAD requests,
 		// so browser query engines must read the corpus files whole.
 		StructuredData: config.StructuredDataConfig{DirectContentFullReads: true},
-		Auth: config.AuthConfig{
-			Mode:                   &mode,
-			ConfiguredUsersEnabled: true,
-			Session:                &config.SessionConfig{SigningSecret: &signingSecret},
-			StaticProvider:         &config.StaticProviderConfig{ID: &providerID, Label: &providerLabel, Enabled: &enabled},
-		},
-		Users: []config.ConfiguredUser{
-			{
-				ID:          "alice",
-				DisplayName: "Alice Example",
-				Roles:       []string{"user", "admin"},
-				Groups:      []string{"engineering"},
-				Claims:      map[string]string{"email": "alice@example.test"},
-				// Demo password: cagnard
-				Credential: &config.StaticUserCredentialConfig{
-					Verifier: "pbkdf2-sha256:120000:Y2FnbmFyZC1kZW1vLXN0YXRpYy11c2VyLXNhbHQ:fUdgpOu_Z3MHhgdWzUku12tWnSH5s9BhfjJVv1fiIms",
-				},
-			},
-		},
+		Auth:           config.AuthConfig{Version: 2, PublicURL: js.Global().Get("location").Get("origin").String(), Session: config.SessionConfig{Key: "Y2FnbmFyZC10ZXN0LWtleS0zMi1ieXRlcy0wMDAwMDA=", TTLSeconds: 3600}, Providers: []config.AuthProviderConfig{{ID: "static", Type: "static", Label: "Demo account", Enabled: true, Users: []config.ConfiguredUser{{ID: "alice", DisplayName: "Alice Example", Enabled: true, Credential: &config.StaticUserCredentialConfig{Verifier: "pbkdf2-sha256:120000:Y2FnbmFyZC1kZW1vLXN0YXRpYy11c2VyLXNhbHQ:fUdgpOu_Z3MHhgdWzUku12tWnSH5s9BhfjJVv1fiIms"}}}}}},
+		Authorization:  config.AuthorizationConfig{Roles: []config.RoleConfig{{ID: "reader", Actions: []string{"storage.list", "storage.read"}}}, Bindings: []config.BindingConfig{{Subjects: []config.SubjectConfig{{ProviderID: "static", Subject: "alice"}}, Roles: []string{"reader"}, Roots: []config.RootRef{{Tunnel: "global", RootID: "shared"}}}}},
 		Providers: []config.ProviderConfig{
 			{
 				ID:          "demo-http",
@@ -200,7 +179,7 @@ func demoConfig() *config.CagnardConfig {
 			{ID: "demo-readonly", ProviderID: "demo-http", DisplayName: "Read-only demo account", Enabled: true, ReadOnly: true, AuthMode: "none"},
 		},
 		GlobalStorage: []config.StorageRootConfig{
-			{ID: "shared", Label: &sharedLabel, ProviderID: "demo-http", AccountID: "demo-readonly", AllowedRoles: []string{"user", "admin"}},
+			{ID: "shared", Label: &sharedLabel, ProviderID: "demo-http", AccountID: "demo-readonly"},
 		},
 	}
 }
