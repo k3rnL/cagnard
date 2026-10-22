@@ -1,6 +1,6 @@
 # Local Filesystem With Static Login
 
-The smallest complete Cagnard environment: v0.12.0 frontend and backend images, one static demo user, and generated Unix filesystem content.
+The smallest complete Cagnard environment: v0.12.1 frontend and backend images, one static demo user, and generated Unix filesystem content.
 
 ## Start the release
 
@@ -35,6 +35,6 @@ docker compose down --volumes
 
 Kubernetes users can start from the [matching example values](../../../deploy/helm/cagnard/examples/local-filesystem-static-values.yaml), as shown in the [Helm guide](../../../docs/getting-started/helm.md).
 
-This checkout uses authentication schema v2. The base Compose file pins matching v0.12.0 images; the build override runs local source changes. Cleanup removes containers and named volumes; bind-mounted files remain. The configured browser origin is `http://localhost:5173`; update `auth.publicUrl` when changing it. See the [migration guide](../../../docs/guides/migrating-auth.md).
+This checkout uses authentication schema v2. The base Compose file pins matching v0.12.1 images; the build override runs local source changes. Cleanup removes containers and named volumes; bind-mounted files remain. The configured browser origin is `http://localhost:5173`; update `auth.publicUrl` when changing it. See the [migration guide](../../../docs/guides/migrating-auth.md).
 
 See [users and storage access](../../../docs/guides/users-and-storage-access.md), [file operations](../../../docs/guides/browsing-and-transfers.md), and the [example catalog](../README.md).

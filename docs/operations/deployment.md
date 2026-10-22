@@ -25,6 +25,8 @@ flowchart TD
 
 Set `auth.publicUrl = "https://files.example.test"`, keep Secure cookies enabled, and register the [OIDC callback](../guides/oidc.md) under that same origin. Preserve the browser’s `Origin` header. If ingress routes `/api` directly to the backend, it replaces the frontend API-proxy hop; the public origin remains the same.
 
+An identity provider's private CA must be trusted inside the backend container. The [OIDC certificate guide](../guides/oidc.md#self-signed-certificates-and-private-cas) includes Helm and Compose mounts and the explicit per-provider verification bypass.
+
 ## Containers
 
 The backend requires a HOCON file and access to every configured provider endpoint or filesystem path. The frontend requires `CAGNARD_API_UPSTREAM` when its API upstream is not the default backend service name.
@@ -38,7 +40,7 @@ docker compose up -d
 docker compose ps
 ```
 
-The examples pin v0.12.0 application images and auth v2 configuration. Add `docker-compose.build.yaml` when testing local source changes. For other releases, use the configuration and examples from the same tag. See [migration](../guides/migrating-auth.md) before combining a new binary with existing configuration.
+The examples pin v0.12.1 application images and auth v2 configuration. Add `docker-compose.build.yaml` when testing local source changes. For other releases, use the configuration and examples from the same tag. See [migration](../guides/migrating-auth.md) before combining a new binary with existing configuration.
 
 ## Kubernetes And Helm
 

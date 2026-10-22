@@ -162,7 +162,7 @@ func authConfigurationErrors(cfg *CagnardConfig) []string {
 		switch p.Type {
 		case "static":
 			checkUsers(p.Users, true)
-			if p.Issuer != "" || p.ClientID != "" || p.ClientSecret != "" || len(p.GroupMappings) > 0 || len(p.StorageKeys) > 0 {
+			if p.Issuer != "" || p.ClientID != "" || p.ClientSecret != "" || p.TrustAllCertificates || len(p.GroupMappings) > 0 || len(p.StorageKeys) > 0 {
 				add("OIDC fields are not allowed on a static provider")
 			}
 		case "oidc":

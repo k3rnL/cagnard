@@ -1,6 +1,6 @@
 # Helm quick start
 
-Install the v0.12.0 chart with matching images and auth v2 configuration. The supplied filesystem example uses static login and an ephemeral writable home. Read [auth migration](../guides/migrating-auth.md) before upgrading an older deployment.
+Install the v0.12.1 chart with matching images and auth v2 configuration. The supplied filesystem example uses static login and an ephemeral writable home. Read [auth migration](../guides/migrating-auth.md) before upgrading an older deployment.
 
 ## Prerequisites
 
@@ -15,10 +15,10 @@ Download starter values from the same release as the chart. This disposable exam
 
 ```bash
 curl -fsSLo cagnard-demo-values.yaml \
-  https://raw.githubusercontent.com/k3rnL/cagnard/v0.12.0/deploy/helm/cagnard/examples/local-filesystem-static-values.yaml
+  https://raw.githubusercontent.com/k3rnL/cagnard/v0.12.1/deploy/helm/cagnard/examples/local-filesystem-static-values.yaml
 
 helm upgrade --install cagnard oci://ghcr.io/k3rnl/charts/cagnard \
-  --version 0.12.0 -f cagnard-demo-values.yaml
+  --version 0.12.1 -f cagnard-demo-values.yaml
 
 kubectl rollout status deployment/cagnard-backend
 kubectl rollout status deployment/cagnard-frontend

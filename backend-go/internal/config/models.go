@@ -186,17 +186,18 @@ type SessionConfig struct {
 }
 
 type AuthProviderConfig struct {
-	ID            string              `json:"id"`
-	Type          string              `json:"type"`
-	Label         string              `json:"label"`
-	Enabled       bool                `json:"enabled"`
-	Users         []ConfiguredUser    `json:"users,omitempty"`
-	Issuer        string              `json:"issuer,omitempty"`
-	ClientID      string              `json:"clientId,omitempty"`
-	ClientSecret  string              `json:"clientSecret,omitempty"`
-	Scopes        []string            `json:"scopes,omitempty"`
-	GroupMappings []GroupMapping      `json:"groupMappings,omitempty"`
-	StorageKeys   []StorageKeyMapping `json:"storageKeys,omitempty"`
+	ID                   string              `json:"id"`
+	Type                 string              `json:"type"`
+	Label                string              `json:"label"`
+	Enabled              bool                `json:"enabled"`
+	Users                []ConfiguredUser    `json:"users,omitempty"`
+	Issuer               string              `json:"issuer,omitempty"`
+	ClientID             string              `json:"clientId,omitempty"`
+	ClientSecret         string              `json:"clientSecret,omitempty"`
+	TrustAllCertificates bool                `json:"trustAllCertificates,omitempty"`
+	Scopes               []string            `json:"scopes,omitempty"`
+	GroupMappings        []GroupMapping      `json:"groupMappings,omitempty"`
+	StorageKeys          []StorageKeyMapping `json:"storageKeys,omitempty"`
 }
 
 type GroupMapping struct {

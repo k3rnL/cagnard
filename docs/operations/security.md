@@ -10,6 +10,8 @@ For an internet-facing deployment, set the exact HTTPS `auth.publicUrl`, inject 
 
 OIDC groups are bounded ID-token snapshots. IdP membership removal is not immediate session revocation. Local logout does not sign out at the IdP or revoke a copied cookie. Session-key rotation invalidates all local sessions; disabling users/providers or changing local grants takes effect after the coordinated configuration restart.
 
+For private/self-signed IdP certificates, prefer [installing the CA in the backend trust store](../guides/oidc.md#method-1-install-a-trusted-certificate). The OIDC provider option [`trustAllCertificates`](../guides/oidc.md#method-2-skip-verification-for-one-provider) disables chain and hostname verification for that provider only and logs a startup warning. It permits server impersonation despite encrypted transport. Browser trust and storage TLS settings are independent. See [safe auth diagnostics](../guides/oidc.md#read-the-backend-diagnostics) when troubleshooting.
+
 ## Authorization
 
 Declared [groups, roles, and bindings](../reference/authorization.md) grant explicit actions on tunnel/root pairs, with default deny. There is no implicit admin or unrestricted root. Read-only accounts remove mutation actions. Direct, transfer, task, archive, preview, range, watch, search, and Iceberg paths use the shared access layer.

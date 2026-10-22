@@ -33,7 +33,7 @@ The encoded cookie is limited to 3,500 bytes. Its version, issue/expiry times, p
 
 ## Freshness and invalidation
 
-Configuration is read at startup, not hot-reloaded. After restarting with changed policy, existing valid sessions use the new bindings and group mappings. Removed/disabled static users, changed static verifiers, and disabled/removed providers invalidate sessions. Changing OIDC issuer, client ID, requested scopes, or selected claim paths requires fresh sign-in.
+Configuration is read at startup, not hot-reloaded. After restarting with changed policy, existing valid sessions use the new bindings and group mappings. Removed/disabled static users, changed static verifiers, and disabled/removed providers invalidate sessions. Changing OIDC issuer, client ID, requested scopes, selected claim paths, or `trustAllCertificates` requires fresh sign-in.
 
 OIDC membership is a snapshot. A membership removal at the IdP does not immediately revoke a Cagnard cookie; the change becomes visible at the next login, bounded by absolute expiry. There is no silent refresh or sliding session extension. Changing local mapping values can reinterpret an existing selected claim snapshot; adding a new claim path invalidates that evidence.
 
@@ -46,7 +46,7 @@ Rotating the shared session key invalidates all cookies and pagination reference
 | Role actions, bindings, or static group membership | After backend restart; a still-valid cookie uses the new policy. |
 | OIDC group membership at the IdP | Next successful OIDC login; the current snapshot lasts until its absolute expiry. |
 | Change a static password verifier or disable a user/provider | After restart; affected existing sessions are rejected. |
-| OIDC issuer, client ID, scopes, or selected claim paths | After restart; affected users must sign in again. |
+| OIDC issuer, client ID, scopes, selected claim paths, or `trustAllCertificates` | After restart; affected users must sign in again. |
 | Shared session key | After restart on every replica; all sessions are invalidated. |
 | Local logout | This browser loses its Cagnard session; the IdP session and already accepted server tasks are not revoked. |
 

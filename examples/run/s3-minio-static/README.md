@@ -1,6 +1,6 @@
 # S3/MinIO With Static Login
 
-Runs Cagnard v0.12.0 against local MinIO built from pinned official sources. Initialization creates `cagnard-demo` and seeds generated objects under `documents/`.
+Runs Cagnard v0.12.1 against local MinIO built from pinned official sources. Initialization creates `cagnard-demo` and seeds generated objects under `documents/`.
 
 ## Start the release
 
@@ -29,7 +29,7 @@ docker compose down --volumes
 
 Kubernetes users can start from the [matching example values](../../../deploy/helm/cagnard/examples/s3-minio-static-values.yaml), as shown in the [Helm guide](../../../docs/getting-started/helm.md). That values file expects a separately managed S3-compatible service.
 
-This checkout uses authentication schema v2. The base Compose file pins matching v0.12.0 images; the build override runs local source changes. Cleanup removes containers and named volumes; bind-mounted files remain. The configured browser origin is `http://localhost:5173`; update `auth.publicUrl` when changing it. See the [migration guide](../../../docs/guides/migrating-auth.md).
+This checkout uses authentication schema v2. The base Compose file pins matching v0.12.1 images; the build override runs local source changes. Cleanup removes containers and named volumes; bind-mounted files remain. The configured browser origin is `http://localhost:5173`; update `auth.publicUrl` when changing it. See the [migration guide](../../../docs/guides/migrating-auth.md).
 
 See [users and storage access](../../../docs/guides/users-and-storage-access.md), [file operations](../../../docs/guides/browsing-and-transfers.md), and the [example catalog](../README.md).
 

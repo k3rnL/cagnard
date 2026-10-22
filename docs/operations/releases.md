@@ -1,20 +1,20 @@
 # Releases And Upgrades
 
-Cagnard release tags publish a GitHub release, frontend and backend images, and an OCI Helm chart. A tag such as `v0.12.0` maps to image tag `v0.12.0` and chart version `0.12.0`.
+Cagnard release tags publish a GitHub release, frontend and backend images, and an OCI Helm chart. A tag such as `v0.12.1` maps to image tag `v0.12.1` and chart version `0.12.1`.
 
 Use the exact artifact coordinates from the release notes and check their availability before deploying. v0.12.0 introduces auth v2; follow [migration](../guides/migrating-auth.md) before upgrading an earlier installation. Check configuration compatibility along with chart and image versions.
 
 ## Published Artifacts
 
 ```text
-ghcr.io/k3rnl/cagnard-backend:v0.12.0
-ghcr.io/k3rnl/cagnard-frontend:v0.12.0
-oci://ghcr.io/k3rnl/charts/cagnard --version 0.12.0
+ghcr.io/k3rnl/cagnard-backend:v0.12.1
+ghcr.io/k3rnl/cagnard-frontend:v0.12.1
+oci://ghcr.io/k3rnl/charts/cagnard --version 0.12.1
 ```
 
 GitHub release notes list the exact artifact coordinates. The publishing workflow uses Docker for images and Helm OCI push for the chart.
 
-The [v0.12.0 release notes](../releases/v0.12.0.md) cover auth v2 migration and deployment changes. Maintainers can add `docs/releases/<tag>.md`; the publishing workflow includes that text before artifact coordinates and generated commit notes.
+The [v0.12.1 release notes](../releases/v0.12.1.md) cover OIDC TLS options and authentication diagnostics. The [v0.12.0 notes](../releases/v0.12.0.md) cover the initial auth v2 migration. Maintainers can add `docs/releases/<tag>.md`; the publishing workflow includes that text before artifact coordinates and generated commit notes.
 
 After first publication, set package visibility deliberately in GitHub Packages. A public repository does not automatically make its container packages public. The documented anonymous quick starts require public visibility for the backend image, frontend image, and chart.
 
@@ -23,7 +23,7 @@ After first publication, set package visibility deliberately in GitHub Packages.
 Set the single version value in the example `.env` and recreate both application containers:
 
 ```dotenv
-CAGNARD_VERSION=v0.12.0
+CAGNARD_VERSION=v0.12.1
 ```
 
 ```bash
@@ -39,10 +39,10 @@ Review release notes and values changes, render the chart, then upgrade:
 
 ```bash
 helm template cagnard oci://ghcr.io/k3rnl/charts/cagnard \
-  --version 0.12.0 -f cagnard-values.yaml > rendered.yaml
+  --version 0.12.1 -f cagnard-values.yaml > rendered.yaml
 
 helm upgrade cagnard oci://ghcr.io/k3rnl/charts/cagnard \
-  --version 0.12.0 -f cagnard-values.yaml
+  --version 0.12.1 -f cagnard-values.yaml
 ```
 
 Keep `backend.image.tag` and `frontend.image.tag` aligned with the application release unless the release notes explicitly describe compatibility across versions.

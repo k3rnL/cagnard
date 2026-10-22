@@ -27,6 +27,7 @@ func (s *Server) serveAuthenticated(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	if r.Method != "GET" && r.Method != "HEAD" && !s.resolver.ValidMutation(r) {
+		slog.Warn("authentication", "outcome", "mutation_rejected", "reason", "invalid_origin_or_application_header")
 		writeAPIError(w, http.StatusForbidden, APIError{Code: "invalid_origin", Message: "A same-origin application request is required"})
 		return
 	}
@@ -56,7 +57,7 @@ func (s *Server) oidcStart(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	target, cookie, err := s.resolver.StartOIDC(ctx, r.PathValue("providerId"), req.ReturnTo)
 	if err != nil {
-		slog.Info("authentication", "provider", r.PathValue("providerId"), "outcome", "start_failed")
+		slog.Warn("authentication", "provider", r.PathValue("providerId"), "outcome", "start_failed", "failure", err)
 		writeAPIError(w, 503, APIError{Code: "provider_unavailable", Message: "SSO is temporarily unavailable; please try again"})
 		return
 	}
@@ -67,7 +68,7 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Set-Cookie", s.resolver.ClearTransactionCookie())
 	token, target, err := s.resolver.CompleteOIDC(r, r.PathValue("providerId"))
 	if err != nil {
-		slog.Info("authentication", "provider", r.PathValue("providerId"), "outcome", "callback_failed")
+		slog.Warn("authentication", "provider", r.PathValue("providerId"), "outcome", "callback_failed", "failure", err)
 		http.Redirect(w, r, "/?authError=sso_failed", http.StatusSeeOther)
 		return
 	}

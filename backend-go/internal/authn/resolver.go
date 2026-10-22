@@ -26,6 +26,11 @@ type UserResolver struct {
 }
 
 func NewUserResolver(cfg *config.CagnardConfig) *UserResolver {
+	for _, p := range cfg.Auth.Providers {
+		if p.Enabled && p.Type == "oidc" && p.TrustAllCertificates {
+			slog.Warn("OIDC TLS certificate and hostname verification disabled", "provider", p.ID, "trustAllCertificates", true)
+		}
+	}
 	return &UserResolver{cfg: cfg, sessions: NewSessionService(cfg), oidcProviders: map[string]*oidcRuntime{}, clock: time.Now}
 }
 func (r *UserResolver) provider(id string) (config.AuthProviderConfig, bool) {
@@ -69,6 +74,11 @@ func (r *UserResolver) revision(p config.AuthProviderConfig, verifier string) st
 	}
 	sort.Strings(paths)
 	data, _ := json.Marshal([]any{p.ID, p.Type, p.Issuer, p.ClientID, p.Scopes, paths, verifier})
+	// Preserve v0.12.0 revisions with the default policy; toggling the exception
+	// invalidates transactions and sessions created with the other TLS policy.
+	if p.TrustAllCertificates {
+		data = append(data, []byte("\ntrustAllCertificates=true")...)
+	}
 	mac := hmac.New(sha256.New, PurposeKey(r.cfg, "identity-revision"))
 	mac.Write(data)
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
@@ -77,22 +87,25 @@ func (r *UserResolver) LoginStatic(providerID, username, password string) (Resol
 	p, ok := r.provider(providerID)
 	failure := &Failure{"authentication_failed", "Invalid username or password"}
 	if !ok || p.Type != "static" {
+		slog.Info("authentication", "provider", providerID, "outcome", "failure", "reason", "provider_unavailable")
 		return ResolvedUser{}, "", failure
 	}
 	for _, u := range p.Users {
 		if u.ID == username && u.Enabled && u.Credential != nil {
 			if !VerifyPassword(password, u.Credential.Verifier) {
-				slog.Info("authentication", "provider", p.ID, "outcome", "failure")
+				slog.Info("authentication", "provider", p.ID, "outcome", "failure", "reason", "invalid_credentials")
 				return ResolvedUser{}, "", failure
 			}
 			now := r.clock().Unix()
 			e := sessionEvidence{Version: 2, ProviderID: p.ID, Subject: u.ID, Revision: r.revision(p, u.Credential.Verifier), IssuedAt: now, ExpiresAt: now + r.cfg.Auth.Session.TTLSeconds}
 			resolved, f := r.Resolve(RequestIdentity{&e})
 			if f != nil {
+				slog.Warn("authentication", "provider", p.ID, "outcome", "failure", "reason", "identity_rejected")
 				return resolved, "", f
 			}
 			token, err := r.sessions.Issue(e)
 			if err != nil {
+				slog.Warn("authentication", "provider", p.ID, "outcome", "failure", "reason", "session_cookie_encode_failed")
 				return ResolvedUser{}, "", invalidSession()
 			}
 			slog.Info("authentication", "provider", p.ID, "principal", resolved.Profile.ID, "outcome", "success")
@@ -102,7 +115,7 @@ func (r *UserResolver) LoginStatic(providerID, username, password string) (Resol
 	// Unknown/disabled users also perform one password derivation. Configured
 	// iteration counts can differ, so this is not a constant-time login protocol.
 	VerifyPassword(password, "pbkdf2-sha256:120000:Y2FnbmFyZC1kdW1teS1zYWx0:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-	slog.Info("authentication", "provider", p.ID, "outcome", "failure")
+	slog.Info("authentication", "provider", p.ID, "outcome", "failure", "reason", "invalid_credentials")
 	return ResolvedUser{}, "", failure
 }
 func (r *UserResolver) Authenticate(req *http.Request) (RequestIdentity, *Failure) {

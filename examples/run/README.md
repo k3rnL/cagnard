@@ -1,6 +1,6 @@
 # Runnable Examples
 
-These examples pin Cagnard v0.12.0 and use auth schema v2. Keep configuration and images on matching releases. The MinIO examples [build their test storage service from pinned sources](minio/README.md).
+These examples pin Cagnard v0.12.1 and use auth schema v2. Keep configuration and images on matching releases. The MinIO examples [build their test storage service from pinned sources](minio/README.md).
 
 | Example | Storage | Local services | Best for |
 | --- | --- | --- | --- |

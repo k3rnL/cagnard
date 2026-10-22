@@ -1,13 +1,13 @@
 # Docker Quick Start
 
-This path runs v0.12.0 with local filesystem storage and static login. You need Git, Docker, and Docker Compose. The version-two configuration requires matching backend/frontend images; releases before v0.12.0 cannot load it.
+This path runs v0.12.1 with local filesystem storage and static login. You need Git, Docker, and Docker Compose. The version-two configuration requires matching backend/frontend images; releases before v0.12.0 cannot load it.
 
 For an existing deployment, first read the [auth migration guide](../guides/migrating-auth.md). To try SSO as well, use the [Keycloak exercise](../../examples/run/oidc-keycloak/README.md).
 
 ## Start Cagnard
 
 ```bash
-git clone --branch v0.12.0 --depth 1 https://github.com/k3rnL/cagnard.git
+git clone --branch v0.12.1 --depth 1 https://github.com/k3rnL/cagnard.git
 cd cagnard/examples/run/local-filesystem-static
 cp .env.example .env
 docker compose up -d
@@ -42,7 +42,7 @@ A `401` while pulling an image is a registry access issue, before Cagnard starts
 `.env` contains one release selector:
 
 ```dotenv
-CAGNARD_VERSION=v0.12.0
+CAGNARD_VERSION=v0.12.1
 ```
 
 This selector applies when pulling released images without the build override. Use the configuration from the same release tag. Releases before v0.12.0 do not support this checkout’s v2 authentication configuration. Follow [migration](../guides/migrating-auth.md) when changing binary and configuration together.

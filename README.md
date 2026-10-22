@@ -34,10 +34,10 @@ No installation: open [k3rnl.github.io/cagnard](https://k3rnl.github.io/cagnard/
 
 ### Docker Compose
 
-Run the v0.12.0 filesystem demo with Docker and Compose:
+Run the v0.12.1 filesystem demo with Docker and Compose:
 
 ```bash
-git clone --branch v0.12.0 --depth 1 https://github.com/k3rnL/cagnard.git
+git clone --branch v0.12.1 --depth 1 https://github.com/k3rnL/cagnard.git
 cd cagnard/examples/run/local-filesystem-static
 cp .env.example .env
 docker compose up -d
@@ -49,7 +49,7 @@ v0.12.0 introduces authentication schema v2. Upgrade the backend, frontend, and 
 
 ### Helm
 
-Use the [Helm quick start](docs/getting-started/helm.md) to install the v0.12.0 chart and open the demo through a port-forward. For a published release, keep the chart, both images, configuration, and starter values on that same release.
+Use the [Helm quick start](docs/getting-started/helm.md) to install the v0.12.1 chart and open the demo through a port-forward. For a published release, keep the chart, both images, configuration, and starter values on that same release.
 
 ## Supported Today
 

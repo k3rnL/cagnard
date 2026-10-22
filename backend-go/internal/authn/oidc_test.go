@@ -38,13 +38,17 @@ type fakeIDP struct {
 }
 
 func newIDP(t *testing.T) *fakeIDP {
+	return newIDPWithTLS(t, false)
+}
+
+func newIDPWithTLS(t *testing.T, useTLS bool) *fakeIDP {
 	t.Helper()
 	key, e := rsa.GenerateKey(rand.Reader, 2048)
 	if e != nil {
 		t.Fatal(e)
 	}
 	f := &fakeIDP{key: key, kid: "one", codes: map[string]fakeLogin{}}
-	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	f.server = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
@@ -101,6 +105,11 @@ func newIDP(t *testing.T) *fakeIDP {
 			w.WriteHeader(404)
 		}
 	}))
+	if useTLS {
+		f.server.StartTLS()
+	} else {
+		f.server.Start()
+	}
 	t.Cleanup(f.server.Close)
 	return f
 }

@@ -82,6 +82,7 @@ Treat the result as sensitive configuration. Restart after updating it; the old 
 | `type` | `oidc` |
 | `issuer` | Exact trusted issuer URL. HTTPS except the explicit loopback exception. |
 | `clientId`, `clientSecret` | Confidential backend client credentials. Use required environment substitution for the secret. |
+| `trustAllCertificates` | Optional boolean, default `false`, available from v0.12.1. `true` skips TLS certificate-chain and hostname verification for this provider's discovery, token and signing-key requests. HTTPS and OIDC validation remain required. Emits a startup warning; changing it requires fresh login. Prefer installing a trusted CA. See [both self-signed certificate methods](../guides/oidc.md#self-signed-certificates-and-private-cas). |
 | `scopes[]` | Requested scopes; `openid` is always included. Request only needed claims. No refresh flow. |
 | `groupMappings[]` | Provider-scoped mapping objects, described below. |
 | `storageKeys[]` | Optional `{ subject, storageKey }` assignments for deliberately reassigning existing homes. No automatic email linking. |
@@ -89,6 +90,8 @@ Treat the result as sensitive configuration. Restart after updating it; the old 
 Register exactly `<publicUrl>/api/auth/providers/<id>/callback` with the identity provider. Enable authorization code flow with PKCE S256 and client authentication. Configure mapped claims in the **ID token**. Cagnard does not call UserInfo, so UserInfo-only groups will not grant access.
 
 The backend validates signature, allowed algorithm (RS256, ES256, PS256), issuer, audience, authorized party, expiry, nonce, and subject. Discovery, exchange, and key retrieval have bounded responses and network timeouts. A temporary SSO failure leaves static login usable; it never changes the authenticated identity automatically. See the [flow and package boundaries](../architecture/authentication.md).
+
+Backend failure logs include safe stage/reason diagnostics; browser responses remain generic. Use the [diagnostic guide](../guides/oidc.md#read-the-backend-diagnostics) to distinguish certificate, network, discovery, transaction and token failures.
 
 ## External group mapping model
 

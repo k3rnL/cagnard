@@ -15,6 +15,8 @@ func TestAuthConfigurationRejectsAmbiguity(t *testing.T) {
 	for _, change := range []struct{ name, from, to string }{
 		{"legacy", "version = 2", "version = 2\nmode = static"},
 		{"unknown-auth-field", "version = 2", "version = 2\nunknown = true"},
+		{"static-tls-bypass", "type = static", "type = static\ntrustAllCertificates = true"},
+		{"invalid-tls-bypass-type", "type = static", "type = static\ntrustAllCertificates = \"yes\""},
 		{"bad-key", "Y2FnbmFyZC10ZXN0LWtleS0zMi1ieXRlcy0wMDAwMDA=", "weak"},
 		{"unknown-group", "groups = [engineering]", "groups = [missing]"},
 		{"unknown-role", "roles = [manager]", "roles = [missing]"},
@@ -43,6 +45,27 @@ func TestAuthConfigurationRejectsAmbiguity(t *testing.T) {
 		os.WriteFile(path, []byte(body), 0600)
 		if _, err := Load(path); err == nil {
 			t.Fatal("implicit mode accepted")
+		}
+	}
+}
+
+func TestOIDCTLSConfiguration(t *testing.T) {
+	original, err := os.ReadFile(filepath.Join("..", "..", "..", "examples", "run", "oidc-keycloak", "cagnard.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"", "trustAllCertificates = false", "trustAllCertificates = true"} {
+		body := strings.Replace(string(original), "type = oidc", "type = oidc\n"+value, 1)
+		path := filepath.Join(t.TempDir(), "oidc.conf")
+		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Auth.Providers[1].TrustAllCertificates != (value == "trustAllCertificates = true") {
+			t.Fatalf("incorrect TLS opt-in for %q", value)
 		}
 	}
 }
