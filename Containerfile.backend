@@ -20,11 +20,17 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 
+LABEL org.opencontainers.image.title="Cagnard backend" \
+      org.opencontainers.image.description="Backend for the Cagnard self-hosted storage browser" \
+      org.opencontainers.image.source="https://github.com/k3rnL/cagnard" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"
+
 WORKDIR /opt/cagnard
 
 COPY --from=build --chown=nonroot:nonroot /out/cagnard-backend ./cagnard-backend
 COPY --chown=nonroot:nonroot config ./config
 COPY --chown=nonroot:nonroot examples ./examples
+COPY --chown=nonroot:nonroot LICENSE /usr/share/licenses/cagnard/LICENSE
 
 ENV CAGNARD_CONFIG=/opt/cagnard/config/cagnard.example.conf
 

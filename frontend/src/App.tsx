@@ -81,6 +81,9 @@ export function App() {
 
             <div className="sidebar-appearance">
               <AppearanceSelector />
+              <a className="license-link" href="https://github.com/k3rnL/cagnard" rel="noreferrer" target="_blank">
+                Source code · AGPL-3.0-or-later
+              </a>
             </div>
           </aside>
 

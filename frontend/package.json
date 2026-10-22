@@ -2,6 +2,7 @@
   "name": "@cagnard/frontend",
   "version": "0.12.1",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "dev": "vite",

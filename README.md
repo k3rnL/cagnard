@@ -6,6 +6,7 @@
 
 [![Validate](https://github.com/k3rnL/cagnard/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/k3rnL/cagnard/actions/workflows/validate.yml)
 [![Latest release](https://img.shields.io/github/v/release/k3rnL/cagnard)](https://github.com/k3rnL/cagnard/releases/latest)
+[![License: AGPL v3 or later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 **Built in Occitania for files that live everywhere.**
 
@@ -17,7 +18,7 @@ Cagnard is a self-hosted storage browser that gives Unix filesystems and S3-comp
 
 - **One browser across providers.** Storage roots share a normalized contract while keeping provider-specific metadata and degraded-operation notices visible.
 - **Cross-provider transfers.** A tab-synchronized pasteboard, recursive tasks, conflict resolution, streaming, progress, cancellation, and per-file detail make copy and move practical.
-- **Useful file opening.** Text, Markdown, JSON, YAML, Parquet, Avro, Arrow, NDJSON, CSV, diffs, logs, media, PDF, and archives open in the application with bounded or range-based reads.
+- **Useful file opening.** Text, Markdown, JSON, YAML, Parquet, Avro, Arrow, NDJSON, CSV, Iceberg tables, NetCDF, diffs, logs, media, PDF, and archives open in the application with bounded or range-based reads.
 - **Stateless operation.** One HOCON file defines users, access rules, providers, accounts, roots, and appearance; no application database is required.
 - **Personal and shared spaces.** Users can receive one or more personal homes alongside administrator-controlled global roots.
 - **Operator-controlled appearance.** Classic and Solar palettes each include light, dark, and live system modes, with optional user overrides.
@@ -60,7 +61,7 @@ Use the [Helm quick start](docs/getting-started/helm.md) to install the v0.12.1 
 | Storage access | Declared groups and action roles, root-scoped bindings, read-only accounts, default deny |
 | Browser | Provider pagination, backend search/sort, metadata, multi-select, upload/download, rename/delete |
 | Transfers | Cross-provider files and directories, streams, conflict policies, task queue, progress and cancellation |
-| File experiences | Text/source editing, Markdown, JSON/YAML, read-only Parquet/Avro/Arrow/NDJSON/CSV/TSV inspection, logs, diffs, media, PDF, archives |
+| File experiences | Text/source editing, Markdown, JSON/YAML, read-only Parquet/Avro/Arrow/NDJSON/CSV/TSV, Iceberg, and NetCDF inspection, logs, diffs, media, PDF, archives |
 | Deployment | Release images, Docker Compose examples, OCI Helm chart, GitHub release automation |
 
 OIDC uses authorization code flow with PKCE and backend token validation. Follow the [OIDC guide](docs/guides/oidc.md) to configure your IdP and group claims. Sessions have an absolute lifetime, and logout is local to Cagnard; see [session behavior](docs/reference/identity-and-sessions.md). Active tasks are process-local and disappear when the backend restarts.
@@ -95,3 +96,13 @@ pnpm check
 ```
 
 See [Development setup](docs/getting-started/development.md), [Testing and validation](docs/contributing/testing.md), and [Documentation maintenance](docs/contributing/documentation.md).
+
+## Contributing And Security
+
+Contributions are welcome. Read the [contribution guide](CONTRIBUTING.md) before opening an issue or pull request. Report suspected vulnerabilities through the private process in the [security policy](SECURITY.md), not through a public issue.
+
+## License
+
+Cagnard is free software licensed under the [GNU Affero General Public License v3.0 or later](LICENSE). If you run a modified version as a network service, you must offer its corresponding source code to the users of that service under the same license.
+
+Copyright © 2026 Cagnard contributors.

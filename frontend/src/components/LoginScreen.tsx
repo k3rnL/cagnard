@@ -78,6 +78,10 @@ export function LoginScreen({ state }: LoginScreenProps) {
         ) : null}
 
         {state.error && state.authProviders.length === 0 ? <div className="error-banner">{state.error}</div> : null}
+
+        <a className="license-link login-license-link" href="https://github.com/k3rnL/cagnard" rel="noreferrer" target="_blank">
+          Source code · AGPL-3.0-or-later
+        </a>
       </section>
     </main>
   );

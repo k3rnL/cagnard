@@ -1,6 +1,23 @@
 {
   "name": "cagnard",
   "private": true,
+  "license": "AGPL-3.0-or-later",
+  "description": "Self-hosted storage browser for Unix filesystems and S3-compatible object storage.",
+  "homepage": "https://k3rnl.github.io/cagnard/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/k3rnL/cagnard.git"
+  },
+  "keywords": [
+    "self-hosted",
+    "file-browser",
+    "s3",
+    "object-storage",
+    "minio",
+    "docker",
+    "kubernetes",
+    "helm"
+  ],
   "scripts": {
     "backend:test": "cd backend-go && go test ./...",
     "backend:go:test": "cd backend-go && go test ./...",

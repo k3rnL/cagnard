@@ -1,0 +1,85 @@
+name: Bug report
+description: Report reproducible behavior that differs from the documentation.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Cagnard. For suspected vulnerabilities, stop here and follow the security policy instead of submitting a public issue.
+  - type: input
+    id: version
+    attributes:
+      label: Cagnard version
+      description: Use a release tag, image tag, or commit SHA.
+      placeholder: v0.x.y
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Docker Compose
+        - Kubernetes / Helm
+        - Local development
+        - Browser demo
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Storage provider
+      options:
+        - Unix filesystem
+        - AWS S3
+        - MinIO
+        - Other S3-compatible service
+        - Browser demo HTTP provider
+        - Not storage-specific
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and its impact.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Use disposable data and remove credentials, tokens, cookies, private URLs, and personal information.
+      placeholder: |
+        1. Configure ...
+        2. Open ...
+        3. Select ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      description: Optional. Redact secrets, session material, storage paths, and user data.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and pull requests.
+          required: true
+        - label: This report does not contain credentials, tokens, private keys, or sensitive data.
+          required: true
+        - label: This is not a vulnerability report.
+          required: true

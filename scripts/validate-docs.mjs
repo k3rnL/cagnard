@@ -4,7 +4,14 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const inputs = ["README.md", "docs", "examples/run", "assets/brand/README.md"];
+const inputs = [
+  "README.md",
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+  "docs",
+  "examples/run",
+  "assets/brand/README.md",
+];
 const markdownFiles = inputs.flatMap((input) => collectMarkdown(resolve(root, input))).sort();
 const failures = [];
 

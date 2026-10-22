@@ -17,9 +17,15 @@ RUN pnpm --filter @cagnard/frontend build
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
 
+LABEL org.opencontainers.image.title="Cagnard frontend" \
+      org.opencontainers.image.description="Web interface for the Cagnard self-hosted storage browser" \
+      org.opencontainers.image.source="https://github.com/k3rnL/cagnard" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"
+
 ENV CAGNARD_API_UPSTREAM=http://cagnard-backend:8080
 
 COPY frontend/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /workspace/frontend/dist /usr/share/nginx/html
+COPY LICENSE /usr/share/licenses/cagnard/LICENSE
 
 EXPOSE 8080

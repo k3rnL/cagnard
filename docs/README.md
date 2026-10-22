@@ -51,6 +51,9 @@ Cagnard is a self-hosted, provider-neutral storage browser. Start with a runnabl
 
 ## Contribute
 
+- [Contribution guide](../CONTRIBUTING.md)
+- [Security policy](../SECURITY.md)
+- [License](../LICENSE)
 - [Testing and validation](contributing/testing.md)
 - [Adding a first-party file opener](contributing/file-openers.md)
 - [Documentation maintenance](contributing/documentation.md)
